@@ -19,7 +19,7 @@ export const ModelCard = function ModelCard({
   className,
   children,
   ...props
-}: ModelCardProps & { ref?: React.RefObject<HTMLDivElement | null> }) {
+}: ModelCardProps & { ref?: React.Ref<HTMLDivElement | null> }) {
   const meta = useModelMeta(modelId)
   const [logoError, setLogoError] = useState(false)
 
