@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm --filter @wheel/web build",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "pnpm install",
+  "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "$NEXT_PUBLIC_API_BASE_URL/api/:path*"
+    },
+    {
+      "source": "/v1/:path*",
+      "destination": "$NEXT_PUBLIC_API_BASE_URL/v1/:path*"
+    }
+  ]
+}

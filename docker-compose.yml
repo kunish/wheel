@@ -1,0 +1,33 @@
+volumes:
+  worker-data:
+
+services:
+  worker:
+    image: registry.nexus.kunish.org/wheel-worker
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: always
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      DB_PATH: /app/data/wheel.db
+      PORT: 8787
+    ports:
+      - 8787:8787
+    volumes:
+      - worker-data:/app/data
+
+  web:
+    image: registry.nexus.kunish.org/wheel-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: always
+    environment:
+      API_BASE_URL: http://worker:8787
+    ports:
+      - 3000:3000
+    depends_on:
+      - worker

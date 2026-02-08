@@ -1,0 +1,37 @@
+{
+  "name": "@wheel/worker",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "build:node": "tsc -p tsconfig.node.json",
+    "start:node": "node dist/index.node.js",
+    "dev:node": "tsx --watch src/index.node.ts"
+  },
+  "dependencies": {
+    "@wheel/core": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.11.8"
+  },
+  "optionalDependencies": {
+    "@hono/node-server": "^1.14.1",
+    "@hono/node-ws": "^1.1.1",
+    "better-sqlite3": "^11.9.1",
+    "node-cron": "^3.0.3",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260207.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.14.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/ws": "^8.5.14",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.19.3",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.63.0"
+  }
+}

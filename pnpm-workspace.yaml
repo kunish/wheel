@@ -1,0 +1,8 @@
+shellEmulator: true
+
+trustPolicy: no-downgrade
+
+packages:
+  - "packages/*"
+  - "apps/*"
+neverBuiltDependencies: []
