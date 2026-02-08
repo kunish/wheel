@@ -20,7 +20,8 @@ import {
   MessageSquare,
   TrendingUp,
 } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { LayoutGroup, motion } from "motion/react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Area,
   AreaChart,
@@ -30,6 +31,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { AnimatedNumber } from "@/components/animated-number"
 import { ModelBadge } from "@/components/model-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -74,13 +76,15 @@ function TotalSection({ data }: { data?: StatsMetrics }) {
       items: [
         {
           label: "Requests",
-          ...formatCount((data?.request_success ?? 0) + (data?.request_failed ?? 0)),
+          raw: (data?.request_success ?? 0) + (data?.request_failed ?? 0),
+          format: formatCount,
           icon: MessageSquare,
           bg: "bg-blue-500/10",
         },
         {
           label: "Time Used",
-          ...formatTime(data?.wait_time ?? 0),
+          raw: data?.wait_time ?? 0,
+          format: formatTime,
           icon: Clock,
           bg: "bg-blue-500/10",
         },
@@ -92,13 +96,15 @@ function TotalSection({ data }: { data?: StatsMetrics }) {
       items: [
         {
           label: "Total Tokens",
-          ...formatCount((data?.input_token ?? 0) + (data?.output_token ?? 0)),
+          raw: (data?.input_token ?? 0) + (data?.output_token ?? 0),
+          format: formatCount,
           icon: Bot,
           bg: "bg-emerald-500/10",
         },
         {
           label: "Total Cost",
-          ...formatMoney((data?.input_cost ?? 0) + (data?.output_cost ?? 0)),
+          raw: (data?.input_cost ?? 0) + (data?.output_cost ?? 0),
+          format: formatMoney,
           icon: DollarSign,
           bg: "bg-emerald-500/10",
         },
@@ -110,13 +116,15 @@ function TotalSection({ data }: { data?: StatsMetrics }) {
       items: [
         {
           label: "Input Tokens",
-          ...formatCount(data?.input_token ?? 0),
+          raw: data?.input_token ?? 0,
+          format: formatCount,
           icon: Bot,
           bg: "bg-orange-500/10",
         },
         {
           label: "Input Cost",
-          ...formatMoney(data?.input_cost ?? 0),
+          raw: data?.input_cost ?? 0,
+          format: formatMoney,
           icon: DollarSign,
           bg: "bg-orange-500/10",
         },
@@ -128,13 +136,15 @@ function TotalSection({ data }: { data?: StatsMetrics }) {
       items: [
         {
           label: "Output Tokens",
-          ...formatCount(data?.output_token ?? 0),
+          raw: data?.output_token ?? 0,
+          format: formatCount,
           icon: Bot,
           bg: "bg-violet-500/10",
         },
         {
           label: "Output Cost",
-          ...formatMoney(data?.output_cost ?? 0),
+          raw: data?.output_cost ?? 0,
+          format: formatMoney,
           icon: DollarSign,
           bg: "bg-violet-500/10",
         },
@@ -151,26 +161,31 @@ function TotalSection({ data }: { data?: StatsMetrics }) {
             <span className="text-sm font-bold">{card.title}</span>
           </div>
           <div className="flex flex-col gap-2 px-0">
-            {card.items.map((item) => (
-              <div key={item.label} className="flex items-center gap-2">
-                <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${item.bg}`}
-                >
-                  <item.icon className="text-primary h-3.5 w-3.5" />
+            {card.items.map((item) => {
+              const formatted = item.format(item.raw)
+              return (
+                <div key={item.label} className="flex items-center gap-2">
+                  <div
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${item.bg}`}
+                  >
+                    <item.icon className="text-primary h-3.5 w-3.5" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs leading-tight">
+                      {item.label}
+                    </span>
+                    <span className="text-lg leading-tight font-bold tabular-nums">
+                      <AnimatedNumber value={item.raw} formatter={(n) => item.format(n).value} />
+                      {formatted.unit && (
+                        <span className="text-muted-foreground ml-0.5 text-xs font-medium">
+                          {formatted.unit}
+                        </span>
+                      )}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-muted-foreground text-xs leading-tight">{item.label}</span>
-                  <span className="text-lg leading-tight font-bold tabular-nums">
-                    {item.value}
-                    {item.unit && (
-                      <span className="text-muted-foreground ml-0.5 text-xs font-medium">
-                        {item.unit}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </Card>
       ))}
@@ -228,6 +243,12 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
   const [view, setView] = useState<HeatmapView>("year")
   const [activeDay, setActiveDay] = useState<DayData | null>(null)
 
+  const [today, setToday] = useState<Date | null>(null)
+
+  useEffect(() => {
+    setToday(new Date())
+  }, [])
+
   const { refs, floatingStyles } = useFloating({
     placement: "top",
     open: !!activeDay,
@@ -237,10 +258,9 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 
   const dataMap = useMemo(() => new Map((data ?? []).map((d) => [d.date, d])), [data])
 
-  const today = useMemo(() => new Date(), [])
-
   // ── Year view: 53 weeks × 7 days, column-first grid ──
   const yearDays = useMemo(() => {
+    if (!today) return []
     const todayDay = today.getDay()
     const start = new Date(today)
     start.setDate(start.getDate() - todayDay - 52 * 7)
@@ -255,6 +275,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 
   // ── Month view: current month's days ──
   const monthDays = useMemo(() => {
+    if (!today) return []
     const year = today.getFullYear()
     const month = today.getMonth()
     const firstDay = new Date(year, month, 1)
@@ -271,6 +292,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 
   // ── Week view: current week (Sun–Sat) ──
   const weekDays = useMemo(() => {
+    if (!today) return []
     const todayDay = today.getDay()
     const start = new Date(today)
     start.setDate(start.getDate() - todayDay)
@@ -533,42 +555,42 @@ function ChartSection({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between pb-2">
-        <div className="flex gap-6">
+      <CardHeader className="flex flex-col gap-4 pb-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 flex-wrap gap-x-6 gap-y-2">
           <div>
             <p className="text-muted-foreground text-xs">Total Requests</p>
             <p className="text-xl font-semibold">
-              {formatCount(totals.requests).value}
+              <AnimatedNumber value={totals.requests} formatter={(n) => formatCount(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
                 {formatCount(totals.requests).unit}
               </span>
             </p>
           </div>
-          <div className="bg-border w-px self-stretch" />
+          <div className="bg-border hidden w-px self-stretch sm:block" />
           <div>
             <p className="text-muted-foreground text-xs">Input Tokens</p>
             <p className="text-xl font-semibold">
-              {formatCount(totals.inputTokens).value}
+              <AnimatedNumber value={totals.inputTokens} formatter={(n) => formatCount(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
                 {formatCount(totals.inputTokens).unit}
               </span>
             </p>
           </div>
-          <div className="bg-border w-px self-stretch" />
+          <div className="bg-border hidden w-px self-stretch sm:block" />
           <div>
             <p className="text-muted-foreground text-xs">Output Tokens</p>
             <p className="text-xl font-semibold">
-              {formatCount(totals.outputTokens).value}
+              <AnimatedNumber value={totals.outputTokens} formatter={(n) => formatCount(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
                 {formatCount(totals.outputTokens).unit}
               </span>
             </p>
           </div>
-          <div className="bg-border w-px self-stretch" />
+          <div className="bg-border hidden w-px self-stretch sm:block" />
           <div>
             <p className="text-muted-foreground text-xs">Total Cost</p>
             <p className="text-xl font-semibold">
-              {formatMoney(totals.cost).value}
+              <AnimatedNumber value={totals.cost} formatter={(n) => formatMoney(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
                 {formatMoney(totals.cost).unit}
               </span>
@@ -576,7 +598,7 @@ function ChartSection({
           </div>
         </div>
         <button
-          className="cursor-pointer text-right transition-opacity hover:opacity-80"
+          className="shrink-0 cursor-pointer text-left transition-opacity hover:opacity-80 sm:text-right"
           onClick={handlePeriodClick}
         >
           <p className="text-muted-foreground text-xs">Period</p>
@@ -646,63 +668,67 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
     }
     return (
       <div className="max-h-[300px] space-y-2 overflow-y-auto">
-        {channels.map((ch, index) => {
-          const rank = index + 1
-          const successRate =
-            ch.totalRequests > 0 ? (ch.request_success / ch.totalRequests) * 100 : 0
-          return (
-            <div
-              key={ch.channelId}
-              className="hover:bg-muted/50 flex items-center gap-3 rounded-lg p-3 transition-colors"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg font-bold">
-                {medal(rank)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">
-                  {ch.channelName || `Channel ${ch.channelId}`}
-                </p>
-                <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
-                  {mode === "count" && <span>Success: {successRate.toFixed(1)}%</span>}
-                  <span>
-                    In: {formatCount(ch.input_token).value}
-                    {formatCount(ch.input_token).unit}
-                  </span>
-                  <span>
-                    Out: {formatCount(ch.output_token).value}
-                    {formatCount(ch.output_token).unit}
-                  </span>
+        <LayoutGroup>
+          {channels.map((ch, index) => {
+            const rank = index + 1
+            const successRate =
+              ch.totalRequests > 0 ? (ch.request_success / ch.totalRequests) * 100 : 0
+            return (
+              <motion.div
+                key={ch.channelId}
+                layout
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="hover:bg-muted/50 flex items-center gap-3 rounded-lg p-3 transition-colors"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg font-bold">
+                  {medal(rank)}
                 </div>
-              </div>
-              <div className="shrink-0 text-right">
-                {mode === "count" ? (
-                  <div className="flex items-center gap-1 text-sm font-medium tabular-nums">
-                    <span className="text-green-600 dark:text-green-400">
-                      {formatCount(ch.request_success).value}
-                      <span className="text-muted-foreground text-xs">
-                        {formatCount(ch.request_success).unit}
-                      </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {ch.channelName || `Channel ${ch.channelId}`}
+                  </p>
+                  <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+                    {mode === "count" && <span>Success: {successRate.toFixed(1)}%</span>}
+                    <span>
+                      In: {formatCount(ch.input_token).value}
+                      {formatCount(ch.input_token).unit}
                     </span>
-                    <span className="text-muted-foreground/40">/</span>
-                    <span className="text-red-600 dark:text-red-400">
-                      {formatCount(ch.request_failed).value}
-                      <span className="text-muted-foreground text-xs">
-                        {formatCount(ch.request_failed).unit}
-                      </span>
+                    <span>
+                      Out: {formatCount(ch.output_token).value}
+                      {formatCount(ch.output_token).unit}
                     </span>
                   </div>
-                ) : (
-                  <span className="font-semibold">
-                    {formatMoney(ch.totalCost).value}
-                    <span className="text-muted-foreground ml-0.5 text-xs">
-                      {formatMoney(ch.totalCost).unit}
+                </div>
+                <div className="shrink-0 text-right">
+                  {mode === "count" ? (
+                    <div className="flex items-center gap-1 text-sm font-medium tabular-nums">
+                      <span className="text-green-600 dark:text-green-400">
+                        {formatCount(ch.request_success).value}
+                        <span className="text-muted-foreground text-xs">
+                          {formatCount(ch.request_success).unit}
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground/40">/</span>
+                      <span className="text-red-600 dark:text-red-400">
+                        {formatCount(ch.request_failed).value}
+                        <span className="text-muted-foreground text-xs">
+                          {formatCount(ch.request_failed).unit}
+                        </span>
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="font-semibold">
+                      {formatMoney(ch.totalCost).value}
+                      <span className="text-muted-foreground ml-0.5 text-xs">
+                        {formatMoney(ch.totalCost).unit}
+                      </span>
                     </span>
-                  </span>
-                )}
-              </div>
-            </div>
-          )
-        })}
+                  )}
+                </div>
+              </motion.div>
+            )
+          })}
+        </LayoutGroup>
       </div>
     )
   }
@@ -792,7 +818,7 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
   return (
     <Card>
       <Tabs value={sortBy} onValueChange={(v) => setSortBy(v as ModelSortKey)}>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardHeader className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base">Model Usage</CardTitle>
           <TabsList>
             {sortOptions.map((o) => (
@@ -817,17 +843,17 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
                 >
                   {/* Background bar */}
                   <div
-                    className="absolute inset-y-0 left-0 rounded-md opacity-10"
+                    className="absolute inset-y-0 left-0 rounded-md opacity-10 transition-[width] duration-500 ease-out"
                     style={{
                       width: `${barPercent(item)}%`,
                       backgroundColor: "var(--primary)",
                     }}
                   />
-                  <div className="relative flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
+                  <div className="relative flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                    <div className="min-w-0 flex-1 truncate">
                       <ModelBadge modelId={item.model} />
                     </div>
-                    <div className="flex shrink-0 items-center gap-4 text-xs tabular-nums">
+                    <div className="flex items-center gap-3 text-xs tabular-nums sm:gap-4">
                       <div className="text-right">
                         <span className="text-muted-foreground">Req </span>
                         <span className="font-medium">

@@ -5,6 +5,7 @@ import JsonView from "@uiw/react-json-view"
 import { githubDarkTheme } from "@uiw/react-json-view/githubDark"
 import { githubLightTheme } from "@uiw/react-json-view/githubLight"
 import { ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eye } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
 import { useTheme } from "next-themes"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
@@ -253,7 +254,7 @@ export default function LogsPage() {
 
       {/* New logs notification bar */}
       {pendingCount > 0 && (
-        <Button variant="outline" size="sm" className="w-fit" onClick={handleShowNew}>
+        <Button variant="outline" size="sm" className="w-fit animate-pulse" onClick={handleShowNew}>
           <ArrowUp className="mr-2 h-4 w-4" />
           {pendingCount} new log{pendingCount > 1 ? "s" : ""} available
         </Button>
@@ -280,74 +281,79 @@ export default function LogsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.map((log) => (
-                  <TableRow
-                    key={log.id}
-                    className="cursor-pointer"
-                    onClick={() => setDetailId(log.id)}
-                  >
-                    <TableCell className="font-mono text-xs whitespace-nowrap">
-                      {formatTime(log.time)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <ModelBadge modelId={log.requestModelName} />
-                        {log.actualModelName && log.actualModelName !== log.requestModelName && (
-                          <span className="text-muted-foreground max-w-[150px] truncate text-[10px]">
-                            {log.actualModelName}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div className="flex items-center gap-1">
-                        {log.channelName || "—"}
-                        {log.totalAttempts > 1 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Badge variant="outline" className="px-1 py-0 text-[10px]">
-                                R{log.totalAttempts}
-                              </Badge>
-                            </TooltipTrigger>
-                            <TooltipContent>{log.totalAttempts} attempts</TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      {log.inputTokens.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      {log.outputTokens.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-right font-mono text-xs">
-                      {log.ftut > 0 ? formatDuration(log.ftut) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      {formatDuration(log.useTime)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      {formatCost(log.cost)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={log.error ? "destructive" : "default"}>
-                        {log.error ? "Error" : "OK"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDetailId(log.id)
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                <AnimatePresence initial={false}>
+                  {logs.map((log) => (
+                    <motion.tr
+                      key={log.id}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="hover:bg-muted/50 cursor-pointer border-b"
+                      onClick={() => setDetailId(log.id)}
+                    >
+                      <TableCell className="font-mono text-xs whitespace-nowrap">
+                        {formatTime(log.time)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <ModelBadge modelId={log.requestModelName} />
+                          {log.actualModelName && log.actualModelName !== log.requestModelName && (
+                            <span className="text-muted-foreground max-w-[150px] truncate text-[10px]">
+                              {log.actualModelName}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="flex items-center gap-1">
+                          {log.channelName || "—"}
+                          {log.totalAttempts > 1 && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                                  R{log.totalAttempts}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>{log.totalAttempts} attempts</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {log.inputTokens.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {log.outputTokens.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-right font-mono text-xs">
+                        {log.ftut > 0 ? formatDuration(log.ftut) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatDuration(log.useTime)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatCost(log.cost)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={log.error ? "destructive" : "default"}>
+                          {log.error ? "Error" : "OK"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDetailId(log.id)
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
               </TableBody>
             </Table>
           </TooltipProvider>
@@ -383,7 +389,7 @@ export default function LogsPage() {
 
       {/* Log Detail Dialog */}
       <Dialog open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
-        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Log #{detailId}
@@ -417,7 +423,7 @@ export default function LogsPage() {
               <TabsContent value="overview" className="mt-4">
                 <div className="flex flex-col gap-4 text-sm">
                   {/* Model Flow */}
-                  <div className="flex items-center gap-2 text-sm">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
                     <ModelBadge modelId={detail.requestModelName} />
                     <span className="text-muted-foreground">via</span>
                     <span className="font-medium">{detail.channelName || "—"}</span>
@@ -430,7 +436,7 @@ export default function LogsPage() {
                       )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
                     <Field label="Time">{new Date(detail.time * 1000).toLocaleString()}</Field>
                     <Field label="Channel">
                       {detail.channelName || "—"} (ID: {detail.channelId})
@@ -531,9 +537,9 @@ export default function LogsPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="font-medium">{children}</p>
+      <p className="truncate font-medium">{children}</p>
     </div>
   )
 }

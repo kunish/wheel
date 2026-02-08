@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { useEffect, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { AppLayout } from "@/components/app-layout"
 import { useStatsWebSocket } from "@/hooks/use-stats-ws"
 import { useAuthStore } from "@/lib/store/auth"
@@ -13,15 +13,17 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const queryClient = useQueryClient()
   useStatsWebSocket(queryClient)
 
-  const checked = useMemo(() => isAuthenticated(), [isAuthenticated])
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (!checked) {
+    if (!isAuthenticated()) {
       router.replace("/login")
+    } else {
+      setReady(true)
     }
-  }, [checked, router])
+  }, [isAuthenticated, router])
 
-  if (!checked) return null
+  if (!ready) return null
 
   return <AppLayout>{children}</AppLayout>
 }

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Download, FileUp, Pencil, Plus, Trash2, Upload } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
 import { useCallback, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -423,57 +424,66 @@ function ApiKeysSection() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {apiKeys.map((k) => (
-              <TableRow key={k.id}>
-                <TableCell className="font-medium">{k.name}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <code className="text-xs">{maskKey(k.apiKey)}</code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => {
-                        navigator.clipboard.writeText(k.apiKey)
-                        toast.success("Copied!")
-                      }}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={k.enabled ? "default" : "secondary"}>
-                    {k.enabled ? "Active" : "Disabled"}
-                  </Badge>
-                </TableCell>
-                <TableCell>{formatExpiry(k.expireAt)}</TableCell>
-                <TableCell>
-                  ${k.totalCost.toFixed(4)}
-                  {k.maxCost > 0 && (
-                    <span className="text-muted-foreground"> / ${k.maxCost.toFixed(2)}</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(k)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        if (confirm("Delete this API key?")) {
-                          deleteMutation.mutate(k.id)
-                        }
-                      }}
-                    >
-                      <Trash2 className="text-destructive h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+            <AnimatePresence initial={false}>
+              {apiKeys.map((k) => (
+                <motion.tr
+                  key={k.id}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="border-b"
+                >
+                  <TableCell className="font-medium">{k.name}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <code className="text-xs">{maskKey(k.apiKey)}</code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => {
+                          navigator.clipboard.writeText(k.apiKey)
+                          toast.success("Copied!")
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={k.enabled ? "default" : "secondary"}>
+                      {k.enabled ? "Active" : "Disabled"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{formatExpiry(k.expireAt)}</TableCell>
+                  <TableCell>
+                    ${k.totalCost.toFixed(4)}
+                    {k.maxCost > 0 && (
+                      <span className="text-muted-foreground"> / ${k.maxCost.toFixed(2)}</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(k)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (confirm("Delete this API key?")) {
+                            deleteMutation.mutate(k.id)
+                          }
+                        }}
+                      >
+                        <Trash2 className="text-destructive h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </motion.tr>
+              ))}
+            </AnimatePresence>
           </TableBody>
         </Table>
       )}

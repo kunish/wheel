@@ -23,6 +23,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
@@ -427,19 +428,28 @@ export default function ChannelsAndGroupsPage() {
                 </p>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {channels.map((ch) => (
-                    <DraggableChannel
-                      key={ch.id}
-                      channel={ch}
-                      onEdit={() => openEditChannel(ch)}
-                      onDelete={() => {
-                        if (confirm("Delete this channel?")) {
-                          channelDeleteMut.mutate(ch.id)
-                        }
-                      }}
-                      onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
-                    />
-                  ))}
+                  <AnimatePresence initial={false}>
+                    {channels.map((ch) => (
+                      <motion.div
+                        key={ch.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <DraggableChannel
+                          channel={ch}
+                          onEdit={() => openEditChannel(ch)}
+                          onDelete={() => {
+                            if (confirm("Delete this channel?")) {
+                              channelDeleteMut.mutate(ch.id)
+                            }
+                          }}
+                          onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
               )}
             </ScrollArea>
@@ -463,25 +473,34 @@ export default function ChannelsAndGroupsPage() {
                 </p>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {groups.map((g) => (
-                    <DroppableGroup
-                      key={g.id}
-                      group={g}
-                      channelMap={channelMap}
-                      onEdit={() => openEditGroup(g)}
-                      onDelete={() => {
-                        if (confirm("Delete this group?")) {
-                          groupDeleteMut.mutate(g.id)
-                        }
-                      }}
-                      onClear={() => {
-                        if (confirm("Clear all channels from this group?")) {
-                          groupClearMut.mutate(g)
-                        }
-                      }}
-                      isOver={activeDrag !== null}
-                    />
-                  ))}
+                  <AnimatePresence initial={false}>
+                    {groups.map((g) => (
+                      <motion.div
+                        key={g.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <DroppableGroup
+                          group={g}
+                          channelMap={channelMap}
+                          onEdit={() => openEditGroup(g)}
+                          onDelete={() => {
+                            if (confirm("Delete this group?")) {
+                              groupDeleteMut.mutate(g.id)
+                            }
+                          }}
+                          onClear={() => {
+                            if (confirm("Clear all channels from this group?")) {
+                              groupClearMut.mutate(g)
+                            }
+                          }}
+                          isOver={activeDrag !== null}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
               )}
             </ScrollArea>
@@ -622,27 +641,34 @@ function DraggableChannel({
           </Button>
         </div>
       </CardHeader>
-      {!collapsed && (
-        <CardContent className={cn("p-3 pt-1", !channel.enabled && "opacity-50")}>
-          <div className="mt-1">
-            {modelNames.length === 0 ? (
-              <span className="text-muted-foreground text-xs">No models</span>
-            ) : (
-              <GroupedModelList
-                models={modelNames}
-                renderModel={(m) => (
-                  <DraggableModelTag
-                    key={m}
-                    model={m}
-                    channelId={channel.id}
-                    channelName={channel.name}
-                  />
-                )}
-              />
-            )}
-          </div>
-        </CardContent>
-      )}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-250",
+          collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <CardContent className={cn("p-3 pt-1", !channel.enabled && "opacity-50")}>
+            <div className="mt-1">
+              {modelNames.length === 0 ? (
+                <span className="text-muted-foreground text-xs">No models</span>
+              ) : (
+                <GroupedModelList
+                  models={modelNames}
+                  renderModel={(m) => (
+                    <DraggableModelTag
+                      key={m}
+                      model={m}
+                      channelId={channel.id}
+                      channelName={channel.name}
+                    />
+                  )}
+                />
+              )}
+            </div>
+          </CardContent>
+        </div>
+      </div>
     </Card>
   )
 }
@@ -759,30 +785,37 @@ function DroppableGroup({
           </Button>
         </div>
       </CardHeader>
-      {!collapsed && (
-        <CardContent className="p-3 pt-1">
-          <div className="text-muted-foreground mb-1 text-xs">
-            Timeout: {group.firstTokenTimeOut}s
-          </div>
-          {group.items.length === 0 ? (
-            <div
-              className={cn(
-                "text-muted-foreground rounded-md border border-dashed p-4 text-center text-xs",
-                isOver && "bg-primary/5 border-primary",
-              )}
-            >
-              {dragActive ? "Drop here to add" : "Drag channels or models here"}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-250",
+          collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <CardContent className="p-3 pt-1">
+            <div className="text-muted-foreground mb-1 text-xs">
+              Timeout: {group.firstTokenTimeOut}s
             </div>
-          ) : (
-            <GroupItemList
-              items={group.items}
-              mode={group.mode}
-              channelMap={channelMap}
-              metadataMap={metaData?.data}
-            />
-          )}
-        </CardContent>
-      )}
+            {group.items.length === 0 ? (
+              <div
+                className={cn(
+                  "text-muted-foreground rounded-md border border-dashed p-4 text-center text-xs",
+                  isOver && "bg-primary/5 border-primary",
+                )}
+              >
+                {dragActive ? "Drop here to add" : "Drag channels or models here"}
+              </div>
+            ) : (
+              <GroupItemList
+                items={group.items}
+                mode={group.mode}
+                channelMap={channelMap}
+                metadataMap={metaData?.data}
+              />
+            )}
+          </CardContent>
+        </div>
+      </div>
     </Card>
   )
 }

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
@@ -344,39 +345,48 @@ export default function PricesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell className="font-medium">
-                        <ModelBadge modelId={m.name} />
-                      </TableCell>
-                      <TableCell>{m.inputPrice.toFixed(6)}</TableCell>
-                      <TableCell>{m.outputPrice.toFixed(6)}</TableCell>
-                      <TableCell>
-                        <Badge variant={m.source === "sync" ? "secondary" : "default"}>
-                          {m.source}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{formatDate(m.updatedAt)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(m)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              if (confirm(`Delete price for "${m.name}"?`)) {
-                                deleteMutation.mutate(m.name)
-                              }
-                            }}
-                          >
-                            <Trash2 className="text-destructive h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  <AnimatePresence initial={false}>
+                    {filtered.map((m) => (
+                      <motion.tr
+                        key={m.id}
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="border-b"
+                      >
+                        <TableCell className="font-medium">
+                          <ModelBadge modelId={m.name} />
+                        </TableCell>
+                        <TableCell>{m.inputPrice.toFixed(6)}</TableCell>
+                        <TableCell>{m.outputPrice.toFixed(6)}</TableCell>
+                        <TableCell>
+                          <Badge variant={m.source === "sync" ? "secondary" : "default"}>
+                            {m.source}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{formatDate(m.updatedAt)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(m)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm(`Delete price for "${m.name}"?`)) {
+                                  deleteMutation.mutate(m.name)
+                                }
+                              }}
+                            >
+                              <Trash2 className="text-destructive h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
                 )}
               </TableBody>
             </Table>
