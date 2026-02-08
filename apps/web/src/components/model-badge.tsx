@@ -11,7 +11,7 @@ export function ModelBadge({ modelId }: { modelId: string }) {
   const showLogo = meta && !logoError
 
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex max-w-full items-center gap-1.5">
       {showLogo && (
         <img
           src={meta.logoUrl}
@@ -22,7 +22,7 @@ export function ModelBadge({ modelId }: { modelId: string }) {
           onError={() => setLogoError(true)}
         />
       )}
-      <span>{displayName}</span>
+      <span className="truncate">{displayName}</span>
     </span>
   )
 }

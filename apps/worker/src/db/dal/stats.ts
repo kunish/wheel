@@ -1,5 +1,5 @@
 import type { Database } from "../../runtime/types"
-import { avg, count, desc, sql, sum } from "drizzle-orm"
+import { avg, count, desc, gt, sql, sum } from "drizzle-orm"
 import { apiKeys, channels, groups, relayLogs } from "../schema"
 
 // ---------- helpers ----------
@@ -128,6 +128,7 @@ export async function getChannelStats(db: Database) {
       avgLatency: avg(relayLogs.useTime),
     })
     .from(relayLogs)
+    .where(gt(relayLogs.channelId, 0))
     .groupBy(relayLogs.channelId, relayLogs.channelName)
 
   return rows.map((s) => ({

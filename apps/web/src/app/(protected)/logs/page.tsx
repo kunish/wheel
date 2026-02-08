@@ -389,7 +389,7 @@ export default function LogsPage() {
 
       {/* Log Detail Dialog */}
       <Dialog open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
-        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto p-4 sm:p-6">
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-x-hidden overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Log #{detailId}
