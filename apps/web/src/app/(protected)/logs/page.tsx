@@ -131,7 +131,7 @@ export default function LogsPage() {
 
   // Listen for log-created WebSocket events
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     function connect() {
@@ -178,7 +178,7 @@ export default function LogsPage() {
 
       ws.onclose = () => {
         wsRef.current = null
-        reconnectTimer.current = setTimeout(connect, 3000)
+        reconnectTimerRef.current = setTimeout(connect, 3000)
       }
 
       ws.onerror = () => {
@@ -189,18 +189,22 @@ export default function LogsPage() {
     connect()
 
     return () => {
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       wsRef.current?.close()
       wsRef.current = null
     }
   }, [queryClient, page, model, status, isFirstPage, hasFilters])
 
   // Reset pending count when navigating to page 1 or clearing filters
-  useEffect(() => {
+  const prevFirstPageRef = useRef(isFirstPage)
+  const prevHasFiltersRef = useRef(hasFilters)
+  if (prevFirstPageRef.current !== isFirstPage || prevHasFiltersRef.current !== hasFilters) {
+    prevFirstPageRef.current = isFirstPage
+    prevHasFiltersRef.current = hasFilters
     if (isFirstPage && !hasFilters) {
       setPendingCount(0)
     }
-  }, [isFirstPage, hasFilters])
+  }
 
   const handleShowNew = useCallback(() => {
     setPage(1)
@@ -476,8 +480,8 @@ export default function LogsPage() {
               {detail.attempts && detail.attempts.length > 0 && (
                 <TabsContent value="retry" className="mt-4">
                   <div className="border-border relative flex flex-col gap-3 border-l-2 pl-4">
-                    {detail.attempts.map((attempt, i) => (
-                      <div key={i} className="relative">
+                    {detail.attempts.map((attempt) => (
+                      <div key={`${attempt.round}-${attempt.attemptNum}`} className="relative">
                         <div
                           className={`border-background absolute top-1 -left-[calc(0.5rem+1px)] h-3 w-3 rounded-full border-2 ${
                             attempt.success ? "bg-green-500" : "bg-destructive"

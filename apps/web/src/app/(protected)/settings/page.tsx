@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Download, FileUp, Pencil, Plus, Trash2, Upload } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -77,11 +77,11 @@ function SystemConfigSection() {
 
   const [formData, setFormData] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    if (data?.data?.settings) {
-      setFormData(data.data.settings)
-    }
-  }, [data])
+  const prevSettingsRef = useRef(data?.data?.settings)
+  if (data?.data?.settings && data.data.settings !== prevSettingsRef.current) {
+    prevSettingsRef.current = data.data.settings
+    setFormData(data.data.settings)
+  }
 
   const mutation = useMutation({
     mutationFn: updateSettings,

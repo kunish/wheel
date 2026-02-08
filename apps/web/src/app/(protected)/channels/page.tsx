@@ -1280,8 +1280,12 @@ function GroupDialog({
                 No models added yet. Click Add or drag from the left panel.
               </p>
             )}
+            {/* eslint-disable react/no-array-index-key -- items may have duplicate channelId+modelName */}
             {form.items.map((item, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-md border p-2">
+              <div
+                key={`${item.channelId}-${item.modelName}-${i}`}
+                className="flex items-center gap-2 rounded-md border p-2"
+              >
                 <button
                   type="button"
                   onClick={() => setEditingItemIndex(i)}
@@ -1337,6 +1341,7 @@ function GroupDialog({
                 </Button>
               </div>
             ))}
+            {/* eslint-enable react/no-array-index-key */}
           </div>
 
           <Button className="mt-2" onClick={onSave} disabled={isPending || !form.name}>

@@ -144,15 +144,15 @@ function TotalSection({ data }: { data?: StatsMetrics }) {
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {cards.map((card, i) => (
-        <Card key={i} className="gap-3 p-4">
+      {cards.map((card) => (
+        <Card key={card.title} className="gap-3 p-4">
           <div className="flex items-center gap-2 px-0">
             <card.headerIcon className="text-muted-foreground h-4 w-4 shrink-0" />
             <span className="text-sm font-bold">{card.title}</span>
           </div>
           <div className="flex flex-col gap-2 px-0">
-            {card.items.map((item, j) => (
-              <div key={j} className="flex items-center gap-2">
+            {card.items.map((item) => (
+              <div key={item.label} className="flex items-center gap-2">
                 <div
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${item.bg}`}
                 >
@@ -414,8 +414,8 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       {/* Legend */}
       <div className="text-muted-foreground flex items-center justify-end gap-1 px-4 pb-3 text-xs">
         <span>Less</span>
-        {LEVEL_COLORS.map((c, i) => (
-          <div key={i} className="h-3 w-3 rounded-sm" style={{ backgroundColor: c }} />
+        {LEVEL_COLORS.map((c) => (
+          <div key={c} className="h-3 w-3 rounded-sm" style={{ backgroundColor: c }} />
         ))}
         <span>More</span>
       </div>

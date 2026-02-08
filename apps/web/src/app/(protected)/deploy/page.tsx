@@ -243,8 +243,8 @@ function DeployStep({ target, config }: { target: DeployTarget; config: DeployCo
         <CardDescription>Run these commands in your terminal to deploy.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {commands.map((cmd, i) => (
-          <div key={i} className="bg-muted flex items-center justify-between rounded-md p-3">
+        {commands.map((cmd) => (
+          <div key={cmd} className="bg-muted flex items-center justify-between rounded-md p-3">
             <code className="text-sm">{cmd}</code>
             <Button
               variant="ghost"

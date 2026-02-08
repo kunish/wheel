@@ -12,7 +12,7 @@ const WS_RECONNECT_INTERVAL = 3000
  */
 export function useStatsWebSocket(queryClient: QueryClient) {
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     function connect() {
@@ -35,7 +35,7 @@ export function useStatsWebSocket(queryClient: QueryClient) {
 
       ws.onclose = () => {
         wsRef.current = null
-        reconnectTimer.current = setTimeout(connect, WS_RECONNECT_INTERVAL)
+        reconnectTimerRef.current = setTimeout(connect, WS_RECONNECT_INTERVAL)
       }
 
       ws.onerror = () => {
@@ -46,7 +46,7 @@ export function useStatsWebSocket(queryClient: QueryClient) {
     connect()
 
     return () => {
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       wsRef.current?.close()
       wsRef.current = null
     }
