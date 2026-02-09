@@ -26,7 +26,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   changePassword,
   changeUsername,
@@ -320,11 +319,9 @@ function ApiKeysSection() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground text-sm">
-          Manage API keys for accessing the LLM gateway.
-        </p>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>API Keys</CardTitle>
         <Dialog
           open={showCreate}
           onOpenChange={(open) => {
@@ -382,112 +379,113 @@ function ApiKeysSection() {
             )}
           </DialogContent>
         </Dialog>
-      </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {/* Edit Dialog */}
+        <Dialog
+          open={!!editingKey}
+          onOpenChange={(open) => {
+            if (!open) setEditingKey(null)
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit API Key</DialogTitle>
+            </DialogHeader>
+            <ApiKeyForm
+              form={editForm}
+              onChange={setEditForm}
+              onSubmit={() => {
+                if (editingKey) {
+                  updateMutation.mutate({ id: editingKey.id, form: editForm })
+                }
+              }}
+              isPending={updateMutation.isPending}
+              submitLabel="Save"
+            />
+          </DialogContent>
+        </Dialog>
 
-      {/* Edit Dialog */}
-      <Dialog
-        open={!!editingKey}
-        onOpenChange={(open) => {
-          if (!open) setEditingKey(null)
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit API Key</DialogTitle>
-          </DialogHeader>
-          <ApiKeyForm
-            form={editForm}
-            onChange={setEditForm}
-            onSubmit={() => {
-              if (editingKey) {
-                updateMutation.mutate({ id: editingKey.id, form: editForm })
-              }
-            }}
-            isPending={updateMutation.isPending}
-            submitLabel="Save"
-          />
-        </DialogContent>
-      </Dialog>
-
-      {isLoading ? (
-        <p className="text-muted-foreground">Loading...</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Key</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Expires</TableHead>
-              <TableHead>Cost / Limit</TableHead>
-              <TableHead className="w-24" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <AnimatePresence initial={false}>
-              {apiKeys.map((k) => (
-                <motion.tr
-                  key={k.id}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="border-b"
-                >
-                  <TableCell className="font-medium">{k.name}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <code className="text-xs">{maskKey(k.apiKey)}</code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          navigator.clipboard.writeText(k.apiKey)
-                          toast.success("Copied!")
-                        }}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={k.enabled ? "default" : "secondary"}>
-                      {k.enabled ? "Active" : "Disabled"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{formatExpiry(k.expireAt)}</TableCell>
-                  <TableCell>
-                    ${k.totalCost.toFixed(4)}
-                    {k.maxCost > 0 && (
-                      <span className="text-muted-foreground"> / ${k.maxCost.toFixed(2)}</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(k)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          if (confirm("Delete this API key?")) {
-                            deleteMutation.mutate(k.id)
-                          }
-                        }}
-                      >
-                        <Trash2 className="text-destructive h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </motion.tr>
-              ))}
-            </AnimatePresence>
-          </TableBody>
-        </Table>
-      )}
-    </div>
+        {isLoading ? (
+          <p className="text-muted-foreground">Loading...</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Key</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead>Cost / Limit</TableHead>
+                <TableHead className="w-24" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <AnimatePresence initial={false}>
+                {apiKeys.map((k) => (
+                  <motion.tr
+                    key={k.id}
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="border-b"
+                  >
+                    <TableCell className="font-medium">{k.name}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <code className="text-xs">{maskKey(k.apiKey)}</code>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            navigator.clipboard.writeText(k.apiKey)
+                            toast.success("Copied!")
+                          }}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={k.enabled ? "default" : "secondary"}>
+                        {k.enabled ? "Active" : "Disabled"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{formatExpiry(k.expireAt)}</TableCell>
+                    <TableCell>
+                      ${k.totalCost.toFixed(4)}
+                      {k.maxCost > 0 && (
+                        <span className="text-muted-foreground"> / ${k.maxCost.toFixed(2)}</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(k)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            if (confirm("Delete this API key?")) {
+                              deleteMutation.mutate(k.id)
+                            }
+                          }}
+                        >
+                          <Trash2 className="text-destructive h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -761,31 +759,10 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
-
-      <Tabs defaultValue="apikeys">
-        <TabsList>
-          <TabsTrigger value="apikeys">API Keys</TabsTrigger>
-          <TabsTrigger value="account">Account</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
-          <TabsTrigger value="backup">Backup</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="apikeys" className="mt-4">
-          <ApiKeysSection />
-        </TabsContent>
-
-        <TabsContent value="account" className="mt-4">
-          <AccountSection />
-        </TabsContent>
-
-        <TabsContent value="system" className="mt-4">
-          <SystemConfigSection />
-        </TabsContent>
-
-        <TabsContent value="backup" className="mt-4">
-          <BackupSection />
-        </TabsContent>
-      </Tabs>
+      <ApiKeysSection />
+      <AccountSection />
+      <SystemConfigSection />
+      <BackupSection />
     </div>
   )
 }

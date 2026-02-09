@@ -49,7 +49,7 @@ function formatCount(n: number): { value: string; unit: string; raw: number } {
   if (n >= 1_000_000_000) return { value: (n / 1_000_000_000).toFixed(1), unit: "B", raw: n }
   if (n >= 1_000_000) return { value: (n / 1_000_000).toFixed(1), unit: "M", raw: n }
   if (n >= 1_000) return { value: (n / 1_000).toFixed(1), unit: "K", raw: n }
-  return { value: String(n), unit: "", raw: n }
+  return { value: String(Math.round(n)), unit: "", raw: n }
 }
 
 function formatMoney(n: number): { value: string; unit: string; raw: number } {
@@ -818,8 +818,10 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
   return (
     <Card>
       <Tabs value={sortBy} onValueChange={(v) => setSortBy(v as ModelSortKey)}>
-        <CardHeader className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base">Model Usage</CardTitle>
+        <CardHeader className="flex flex-col gap-2 pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Model Usage</CardTitle>
+          </div>
           <TabsList>
             {sortOptions.map((o) => (
               <TabsTrigger key={o.key} value={o.key}>
@@ -849,37 +851,37 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
                       backgroundColor: "var(--primary)",
                     }}
                   />
-                  <div className="relative flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                    <div className="min-w-0 flex-1 truncate">
+                  <div className="relative flex flex-col gap-1">
+                    <div className="min-w-0 truncate text-sm font-medium">
                       <ModelBadge modelId={item.model} />
                     </div>
-                    <div className="flex items-center gap-3 text-xs tabular-nums sm:gap-4">
-                      <div className="text-right">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums">
+                      <div>
                         <span className="text-muted-foreground">Req </span>
                         <span className="font-medium">
                           {formatCount(item.requestCount).value}
                           {formatCount(item.requestCount).unit}
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div>
                         <span className="text-muted-foreground">In </span>
                         <span className="font-medium">
                           {formatCount(item.inputTokens).value}
                           {formatCount(item.inputTokens).unit}
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div>
                         <span className="text-muted-foreground">Out </span>
                         <span className="font-medium">
                           {formatCount(item.outputTokens).value}
                           {formatCount(item.outputTokens).unit}
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div>
                         <span className="text-muted-foreground">Cost </span>
                         <span className="font-medium">{formatMoney(item.totalCost).value}</span>
                       </div>
-                      <div className="text-right">
+                      <div>
                         <span className="text-muted-foreground">Avg </span>
                         <span className="font-medium">
                           {formatTime(item.avgLatency).value}
