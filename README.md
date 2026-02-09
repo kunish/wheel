@@ -1,35 +1,97 @@
+<div align="center">
+
+<img src="apps/web/src/app/icon.svg" width="80" height="80" alt="Wheel Logo">
+
 # Wheel
 
-LLM API 聚合与负载均衡服务 — 部署到 Cloudflare Workers + Vercel。
+**LLM API Gateway — Aggregate, Balance, Observe.**
+
+统一多家 LLM 提供商接口，智能负载均衡与自动故障转移，完整的用量追踪与成本管理。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**[English](#) · [中文](#)**
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYOUR_USERNAME%2Fwheel&env=NEXT_PUBLIC_API_BASE_URL&envDescription=Your%20Cloudflare%20Worker%20API%20URL&project-name=wheel-web)
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_USERNAME/wheel)
-
-> **Note**: 请将上方按钮链接中的 `YOUR_USERNAME` 替换为你的 GitHub 用户名（fork 后自动生效）。
+</div>
 
 ---
 
 ## Features
 
-- **多 LLM 提供商支持** — OpenAI、Anthropic、Google Gemini、DeepSeek 等，协议自动转换
-- **4 种负载均衡** — RoundRobin、Random、Failover、Weighted
-- **SSE 流式转发** — 首 token 超时检测，自动 failover 到下一通道
-- **API Key 管理** — 模型/通道级别权限控制，用量配额与成本追踪
-- **管理仪表盘** — 通道、分组、API Key、日志、统计、价格、部署配置
-- **模型价格同步** — 自动从 models.dev 同步最新定价
+### Relay Proxy
+
+- **多提供商聚合** — OpenAI、Anthropic、Google Gemini、Volcengine（火山引擎），统一为 OpenAI 兼容接口
+- **协议自动转换** — OpenAI ↔ Anthropic 格式双向转换，包括 tool calling、system prompt、thinking 参数
+- **SSE 流式转发** — 首 token 超时检测（可配置），超时自动 failover 到下一通道
+- **3 轮重试** — 遍历分组内所有通道，自动跳过 429 限速的 key，上一次失败的错误信息会传递给客户端
+- **4 种负载均衡** — Round Robin / Random / Failover（优先级） / Weighted（加权随机）
+- **Embeddings 代理** — 支持 `/v1/embeddings` 端点转发
+- **`/v1/models` 端点** — 自动检测请求格式，返回 OpenAI 或 Anthropic 格式的模型列表
+
+### Channel Management
+
+- **通道管理** — 增删改查，启用/禁用，批量 key 管理
+- **多 Base URL** — 每个通道支持多个端点地址
+- **模型自动发现** — 从上游提供商拉取可用模型列表
+- **模型自动同步** — 定时从上游同步模型变更，自动更新分组
+- **自动分组** — Exact（精确匹配）/ Fuzzy（前缀匹配）两种策略
+- **自定义请求头** — 按通道注入额外 HTTP 头
+- **参数覆盖** — 按通道覆盖请求参数（JSON merge）
+- **通道级代理** — 为特定通道设置 HTTP 代理
+
+### Group Management
+
+- **分组管理** — 增删改查，拖拽排序
+- **通道-模型配对** — 每个分组可包含多个通道的不同模型
+- **优先级/权重** — 为 Failover 和 Weighted 模式配置
+- **首 token 超时** — 每个分组可独立设置超时阈值
+
+### API Key Management
+
+- **API Key 管理** — 增删改查，自动生成密钥
+- **模型白名单** — 限制 key 可访问的模型
+- **用量配额** — 设置最大成本限额
+- **过期时间** — 设置 key 有效期
+- **用量追踪** — 每个 key 的累计成本实时统计
+
+### Cost & Pricing
+
+- **自动定价同步** — 从 [models.dev](https://models.dev) 同步 9 家提供商定价（OpenAI、Anthropic、Google、DeepSeek、xAI、阿里、智谱、Minimax、月之暗面）
+- **手动定价管理** — 增删改查自定义模型价格
+- **缓存 token 计费** — 支持 Anthropic cache_read/cache_write、OpenAI cached_tokens
+- **请求级成本计算** — 每次请求实时计算并累计到 API Key 和通道 Key
+
+### Monitoring & Statistics
+
+- **实时仪表盘** — WebSocket 推送，数据即时更新
+- **活跃度热力图** — 年视图 / 月视图 / 周视图，点击单元格跳转到对应日志
+- **成本趋势图** — 今日（小时）/ 近 7 天 / 近 30 天
+- **通道排行** — 按成本 / 请求量排名，动画切换
+- **模型统计** — 请求量、token 用量、成本、延迟，可排序
+- **多维统计** — 全局 / 每日 / 每小时 / 按通道 / 按模型 / 按 API Key
+
+### Request Logging
+
+- **完整日志记录** — 请求/响应内容（智能截断），token 用量分解
+- **重试时间线** — 每次尝试的通道、模型、耗时、错误信息
+- **高级过滤** — 时间范围、模型、通道、状态、关键词搜索
+- **请求重放** — 一键重新执行历史请求
+- **自动清理** — 可配置日志保留天数
+
+### Data Management
+
+- **JSON 导出** — 完整数据库备份（通道、分组、Key、设置，可选日志）
+- **JSON 导入** — ID 自动重映射，按名称去重，导入结果摘要
+- **部署向导** — 图形化生成 Cloudflare / Docker 配置文件
+
+---
 
 ## Architecture
 
 ```
 apps/
-  worker/     API 后端 (Hono + Drizzle ORM)
+  worker/     API Backend (Hono + Drizzle ORM)
               ├─ Cloudflare Workers (D1 + KV)
               └─ Node.js (better-sqlite3 + in-memory KV)
-  web/        Next.js Dashboard (shadcn/ui)         ← 管理界面
+  web/        Next.js Dashboard (shadcn/ui + Tailwind)
 packages/
   core/       Shared TypeScript types and enums
 ```
@@ -38,92 +100,75 @@ packages/
 
 ## Deploy
 
-### Option 1: 一键部署 (推荐)
+### Option 1: Docker Self-Hosted
 
-最快的上手方式 — 分别部署 Worker（API 后端）和 Web（管理仪表盘）。
+一键部署 Worker + Web，使用 SQLite 存储，无需云服务账号。
 
-#### 1a. 部署 Worker 到 Cloudflare
+需要一个反向代理（如 Caddy、Nginx）处理 HTTPS 和路由分流。
 
-点击上方 **Deploy to Cloudflare Workers** 按钮，按照提示完成部署。
+**docker-compose.yml**：
 
-部署完成后，还需要：
+```yaml
+volumes:
+  worker-data:
 
-```bash
-# 创建 D1 数据库
-npx wrangler d1 create wheel-db
+services:
+  worker:
+    image: ghcr.io/YOUR_USERNAME/wheel-worker
+    restart: always
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      DB_PATH: /app/data/wheel.db
+      PORT: 8787
+    volumes:
+      - worker-data:/app/data
 
-# 创建 KV 命名空间
-npx wrangler kv namespace create wheel-cache
-
-# 更新 wrangler.toml 中的 database_id 和 KV id
-
-# 执行数据库迁移
-npx wrangler d1 migrations apply wheel-db
-
-# 设置 JWT 密钥
-npx wrangler secret put JWT_SECRET
-
-# 重新部署
-npx wrangler deploy
+  web:
+    image: ghcr.io/YOUR_USERNAME/wheel-web
+    restart: always
+    depends_on:
+      - worker
 ```
 
-#### 1b. 部署 Web 到 Vercel
+**Caddyfile**（推荐）：
 
-点击上方 **Deploy with Vercel** 按钮，填写环境变量：
-
-| 变量                       | 值                                                             |
-| -------------------------- | -------------------------------------------------------------- |
-| `NEXT_PUBLIC_API_BASE_URL` | 你的 Worker URL，如 `https://wheel.your-subdomain.workers.dev` |
-
-部署完成后即可访问管理仪表盘。
-
----
-
-### Option 2: Docker 全栈部署 (自托管)
-
-一键部署 Web + Worker，使用 SQLite 存储，无需 Cloudflare 账号。
+```
+your-domain.com {
+    handle /api/* {
+        reverse_proxy worker:8787
+    }
+    handle /v1/* {
+        reverse_proxy worker:8787
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}
+```
 
 ```bash
-# 1. 复制环境变量配置
-cp .env.example .env
-# 编辑 .env，至少设置 JWT_SECRET
+# 设置环境变量
+echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
 
-# 2. 启动全栈服务
+# 启动
 docker compose up -d
 ```
 
-- Worker API: `http://localhost:8787`
-- Web 仪表盘: `http://localhost:3000`
-
-数据持久化在 Docker volume `worker-data` 中。
-
-#### 仅部署 Web 仪表盘 (Worker 在 Cloudflare)
-
-如果 Worker 已经部署到 Cloudflare，可以只用 Docker 运行 Web：
-
-```bash
-docker build -f apps/web/Dockerfile -t wheel-web .
-docker run -p 3000:3000 -e NEXT_PUBLIC_API_BASE_URL=https://your-worker.workers.dev wheel-web
-```
+默认管理员账号：`admin` / `admin`，请登录后立即修改。
 
 ---
 
-### Option 3: 手动部署
+### Option 2: Cloudflare Workers + Vercel
 
-#### 前置条件
+API 后端部署到 Cloudflare Workers（免费额度），仪表盘部署到 Vercel。
 
-- Node.js >= 18
-- pnpm >= 9
-- Cloudflare 账号（Worker、D1、KV）
-- Vercel 账号（可选，用于托管仪表盘）
-
-#### 部署 Worker (API)
+#### 1. 部署 Worker
 
 ```bash
-# 创建 D1 数据库
+# 创建 D1 数据库和 KV
 npx wrangler d1 create wheel-db
-
-# 创建 KV 命名空间
 npx wrangler kv namespace create wheel-cache
 
 # 更新 wrangler.toml 中的 database_id 和 KV id
@@ -138,44 +183,59 @@ npx wrangler secret put JWT_SECRET
 npx wrangler deploy
 ```
 
-#### 部署 Web (仪表盘)
+#### 2. 部署 Web 到 Vercel
 
 ```bash
-# 链接项目
 npx vercel link
-
-# 设置环境变量
 npx vercel env add NEXT_PUBLIC_API_BASE_URL
 # 输入 Worker URL: https://wheel.<subdomain>.workers.dev
-
-# 部署
 npx vercel deploy --prod
 ```
 
-或使用仪表盘内的 **Deploy Wizard**（Settings > Deploy）生成配置文件。
+或使用仪表盘内置的 **Deploy Wizard**（Settings > Deploy）生成配置文件。
+
+---
+
+### Option 3: Manual Build
+
+#### 前置条件
+
+- Node.js >= 22
+- pnpm >= 10
+
+```bash
+pnpm install
+
+# Worker (Node.js 模式)
+pnpm --filter @wheel/worker build:node
+JWT_SECRET=your-secret node apps/worker/dist/index.node.js
+
+# Web
+pnpm --filter @wheel/web build
+node apps/web/.next/standalone/apps/web/server.js
+```
 
 ---
 
 ## Environment Variables
 
-| 变量                       | 组件             | 描述              | 必填 | 默认值                  |
-| -------------------------- | ---------------- | ----------------- | ---- | ----------------------- |
-| `JWT_SECRET`               | Worker           | JWT 签名密钥      | 是   | —                       |
-| `ADMIN_USERNAME`           | Worker           | 管理员用户名      | 否   | `admin`                 |
-| `ADMIN_PASSWORD`           | Worker           | 管理员密码        | 否   | `admin123`              |
-| `DB_PATH`                  | Worker (Node.js) | SQLite 数据库路径 | 否   | `./data/wheel.db`       |
-| `PORT`                     | Worker (Node.js) | HTTP 监听端口     | 否   | `8787`                  |
-| `NEXT_PUBLIC_API_BASE_URL` | Web              | Worker API 地址   | 是   | `http://localhost:8787` |
+| 变量                       | 组件             | 描述              | 必填              | 默认值            |
+| -------------------------- | ---------------- | ----------------- | ----------------- | ----------------- |
+| `JWT_SECRET`               | Worker           | JWT 签名密钥      | Yes               | —                 |
+| `ADMIN_USERNAME`           | Worker           | 管理员用户名      | No                | `admin`           |
+| `ADMIN_PASSWORD`           | Worker           | 管理员密码        | No                | `admin`           |
+| `DB_PATH`                  | Worker (Node.js) | SQLite 数据库路径 | No                | `./data/wheel.db` |
+| `PORT`                     | Worker (Node.js) | HTTP 端口         | No                | `8787`            |
+| `NEXT_PUBLIC_API_BASE_URL` | Web (Vercel)     | Worker API 地址   | Vercel 部署时必填 | —                 |
 
 ---
 
 ## Development
 
 ```bash
-# 安装依赖
 pnpm install
 
-# 同时启动 Worker 和 Web 开发服务器
+# 同时启动 Worker 和 Web
 pnpm dev
 
 # 或分别启动
@@ -183,35 +243,7 @@ pnpm dev:worker    # http://localhost:8787
 pnpm dev:web       # http://localhost:3000
 ```
 
-## Project Structure
-
-```
-apps/worker/src/
-  index.ts              CF Workers 入口
-  index.node.ts         Node.js 自托管入口
-  runtime/              运行时抽象层 (types, cf, node)
-  middleware/            JWT + API Key 认证
-  routes/               管理 API (channel, group, apikey, log, stats, setting, user)
-  relay/                代理核心 (parser, matcher, balancer, adapter, proxy, handler)
-  db/                   Drizzle ORM schema + DAL
-
-apps/web/src/
-  app/
-    login/              登录页
-    (protected)/        需认证的页面
-      dashboard/        使用统计 + 图表
-      channels/         通道管理
-      groups/           分组管理
-      apikeys/          API Key 管理
-      logs/             日志查看器
-      prices/           价格管理
-      settings/         系统设置
-      deploy/           部署向导
-  lib/
-    api.ts              API 客户端
-    store/auth.ts       Zustand 认证状态
-  components/           shadcn/ui + 布局组件
-```
+---
 
 ## License
 
