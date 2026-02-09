@@ -33,13 +33,15 @@ statsRoutes.get("/total", async (c) => {
 
 statsRoutes.get("/today", async (c) => {
   const db = c.env.DB
-  const stats = await getTodayStats(db)
+  const tz = c.req.query("tz")
+  const stats = await getTodayStats(db, tz)
   return c.json({ success: true, data: stats })
 })
 
 statsRoutes.get("/daily", async (c) => {
   const db = c.env.DB
-  const stats = await getDailyStats(db)
+  const tz = c.req.query("tz")
+  const stats = await getDailyStats(db, tz)
   return c.json({ success: true, data: stats })
 })
 
@@ -47,7 +49,8 @@ statsRoutes.get("/hourly", async (c) => {
   const db = c.env.DB
   const start = c.req.query("start")
   const end = c.req.query("end")
-  const stats = await getHourlyStats(db, start, end)
+  const tz = c.req.query("tz")
+  const stats = await getHourlyStats(db, start, end, tz)
   return c.json({ success: true, data: stats })
 })
 

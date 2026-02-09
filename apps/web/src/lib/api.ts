@@ -149,6 +149,13 @@ export function deleteGroup(id: number) {
   })
 }
 
+export function reorderGroups(orderedIds: number[]) {
+  return apiFetch<{ success: boolean }>("/api/v1/group/reorder", {
+    method: "POST",
+    body: { orderedIds },
+  })
+}
+
 export function getModelList() {
   return apiFetch<{ success: boolean; data: { models: string[] } }>("/api/v1/group/model-list")
 }
@@ -242,21 +249,34 @@ export function getTotalStats() {
   return apiFetch<{ success: boolean; data: StatsMetrics }>("/api/v1/stats/total")
 }
 
+function getBrowserTz(): string {
+  const offset = -new Date().getTimezoneOffset()
+  const sign = offset >= 0 ? "+" : "-"
+  const abs = Math.abs(offset)
+  const h = String(Math.floor(abs / 60)).padStart(2, "0")
+  const m = String(abs % 60).padStart(2, "0")
+  return `${sign}${h}:${m}`
+}
+
 export function getTodayStats() {
-  return apiFetch<{ success: boolean; data: StatsDaily }>("/api/v1/stats/today")
+  return apiFetch<{ success: boolean; data: StatsDaily }>(
+    `/api/v1/stats/today?tz=${encodeURIComponent(getBrowserTz())}`,
+  )
 }
 
 export function getDailyStats() {
-  return apiFetch<{ success: boolean; data: StatsDaily[] }>("/api/v1/stats/daily")
+  return apiFetch<{ success: boolean; data: StatsDaily[] }>(
+    `/api/v1/stats/daily?tz=${encodeURIComponent(getBrowserTz())}`,
+  )
 }
 
 export function getHourlyStats(start?: string, end?: string) {
   const params = new URLSearchParams()
   if (start) params.set("start", start)
   if (end) params.set("end", end)
-  const qs = params.toString()
+  params.set("tz", getBrowserTz())
   return apiFetch<{ success: boolean; data: StatsHourly[] }>(
-    `/api/v1/stats/hourly${qs ? `?${qs}` : ""}`,
+    `/api/v1/stats/hourly?${params.toString()}`,
   )
 }
 

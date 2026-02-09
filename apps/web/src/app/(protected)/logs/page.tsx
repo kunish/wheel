@@ -437,7 +437,9 @@ export default function LogsPage() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                    <Field label="Time">{new Date(detail.time * 1000).toLocaleString()}</Field>
+                    <Field label="Time">
+                      {new Date(detail.time * 1000).toLocaleString(undefined, { hour12: false })}
+                    </Field>
                     <Field label="Channel">
                       {detail.channelName || "—"} (ID: {detail.channelId})
                     </Field>

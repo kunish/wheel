@@ -10,6 +10,13 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ChevronDown,
@@ -55,6 +62,7 @@ import {
   getModelList,
   listChannels,
   listGroups,
+  reorderGroups,
   updateChannel,
   updateGroup,
 } from "@/lib/api"
@@ -106,6 +114,7 @@ interface GroupRecord {
   mode: number
   matchRegex: string
   firstTokenTimeOut: number
+  order: number
   items: GroupItemForm[]
 }
 
@@ -145,7 +154,7 @@ const EMPTY_GROUP_FORM: GroupFormData = {
   name: "",
   mode: 1,
   matchRegex: "",
-  firstTokenTimeOut: 30,
+  firstTokenTimeOut: 0,
   items: [],
 }
 
@@ -163,7 +172,12 @@ interface DragDataChannel {
   channel: ChannelRecord
 }
 
-type DragData = DragDataModel | DragDataChannel
+interface DragDataGroup {
+  type: "group"
+  groupId: number
+}
+
+type DragData = DragDataModel | DragDataChannel | DragDataGroup
 
 // ─── Main page ─────────────────────────────────
 
@@ -285,6 +299,12 @@ export default function ChannelsAndGroupsPage() {
     onError: (err: Error) => toast.error(err.message),
   })
 
+  const groupReorderMut = useMutation({
+    mutationFn: reorderGroups,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["groups"] }),
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   // ─── Drag handlers ─────────────────────────────
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -294,15 +314,35 @@ export default function ChannelsAndGroupsPage() {
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    const { over } = event
+    const { active, over } = event
     setActiveDrag(null)
 
     if (!over) return
 
+    const dragData = active.data.current as DragData
+
+    // ─── Group reorder ─────────────────────────
+    if (dragData.type === "group") {
+      const activeId = String(active.id)
+      const overId = String(over.id)
+      if (activeId === overId) return
+
+      // Both must be sortable-group-* ids
+      if (!activeId.startsWith("sortable-group-") || !overId.startsWith("sortable-group-")) return
+
+      const oldIndex = groups.findIndex((g) => `sortable-group-${g.id}` === activeId)
+      const newIndex = groups.findIndex((g) => `sortable-group-${g.id}` === overId)
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+      const reordered = arrayMove(groups, oldIndex, newIndex)
+      groupReorderMut.mutate(reordered.map((g) => g.id))
+      return
+    }
+
+    // ─── Cross-area drop (channel/model → group) ─
     const dropData = over.data.current as { groupId: number } | undefined
     if (!dropData?.groupId) return
 
-    const dragData = event.active.data.current as DragData
     const targetGroup = groups.find((g) => g.id === dropData.groupId)
     if (!targetGroup) return
 
@@ -394,6 +434,7 @@ export default function ChannelsAndGroupsPage() {
   }
 
   const channelMap = new Map(channels.map((ch) => [ch.id, ch]))
+  const groupIds = useMemo(() => groups.map((g) => `sortable-group-${g.id}`), [groups])
 
   // ─── Render ────────────────────────────────────
 
@@ -472,36 +513,38 @@ export default function ChannelsAndGroupsPage() {
                   No groups. Create one, then drag channels or models into it.
                 </p>
               ) : (
-                <div className="flex flex-col gap-3">
-                  <AnimatePresence initial={false}>
-                    {groups.map((g) => (
-                      <motion.div
-                        key={g.id}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <DroppableGroup
-                          group={g}
-                          channelMap={channelMap}
-                          onEdit={() => openEditGroup(g)}
-                          onDelete={() => {
-                            if (confirm("Delete this group?")) {
-                              groupDeleteMut.mutate(g.id)
-                            }
-                          }}
-                          onClear={() => {
-                            if (confirm("Clear all channels from this group?")) {
-                              groupClearMut.mutate(g)
-                            }
-                          }}
-                          isOver={activeDrag !== null}
-                        />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
+                <SortableContext items={groupIds} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col gap-3">
+                    <AnimatePresence initial={false}>
+                      {groups.map((g) => (
+                        <motion.div
+                          key={g.id}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <SortableGroup
+                            group={g}
+                            channelMap={channelMap}
+                            onEdit={() => openEditGroup(g)}
+                            onDelete={() => {
+                              if (confirm("Delete this group?")) {
+                                groupDeleteMut.mutate(g.id)
+                              }
+                            }}
+                            onClear={() => {
+                              if (confirm("Clear all channels from this group?")) {
+                                groupClearMut.mutate(g)
+                              }
+                            }}
+                            isOver={activeDrag !== null}
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </SortableContext>
               )}
             </ScrollArea>
           </div>
@@ -517,6 +560,15 @@ export default function ChannelsAndGroupsPage() {
           <Card className="w-64 cursor-grabbing opacity-90 shadow-lg">
             <CardHeader className="p-3">
               <CardTitle className="text-sm">{activeDrag.channel.name}</CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+        {activeDrag?.type === "group" && (
+          <Card className="w-64 cursor-grabbing opacity-90 shadow-lg">
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm">
+                {groups.find((g) => g.id === activeDrag.groupId)?.name}
+              </CardTitle>
             </CardHeader>
           </Card>
         )}
@@ -700,9 +752,9 @@ function DraggableModelTag({
   )
 }
 
-// ─── Droppable Group Card ──────────────────────
+// ─── Sortable & Droppable Group Card ──────────
 
-function DroppableGroup({
+function SortableGroup({
   group,
   channelMap,
   onEdit,
@@ -717,7 +769,12 @@ function DroppableGroup({
   onClear: () => void
   isOver: boolean
 }) {
-  const { setNodeRef, isOver } = useDroppable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `sortable-group-${group.id}`,
+    data: { type: "group", groupId: group.id } satisfies DragDataGroup,
+  })
+
+  const { setNodeRef: dropRef, isOver } = useDroppable({
     id: `group-${group.id}`,
     data: { groupId: group.id },
   })
@@ -725,46 +782,65 @@ function DroppableGroup({
   const { data: metaData } = useModelMetadataQuery()
   const [collapsed, setCollapsed] = useState(false)
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
   return (
     <Card
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node)
+        dropRef(node)
+      }}
+      style={style}
       className={cn(
         "transition-all",
         isOver && "ring-primary border-primary ring-2",
         dragActive && !isOver && "border-dashed",
+        isDragging && "opacity-50",
       )}
     >
       <CardHeader className="flex flex-row items-start justify-between space-y-0 p-3 pb-1">
-        <button
-          type="button"
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-start gap-1.5 text-left"
-        >
-          <ChevronDown
-            className={cn(
-              "text-muted-foreground mt-0.5 h-4 w-4 shrink-0 transition-transform",
-              collapsed && "-rotate-90",
-            )}
-          />
-          <div>
-            <CardTitle className="text-sm">{group.name}</CardTitle>
-            <div className="mt-1 flex items-center gap-1">
-              <Badge variant="secondary" className="text-xs">
-                {MODE_LABELS[group.mode] ?? "Unknown"}
-              </Badge>
-              {group.matchRegex && (
-                <Badge variant="outline" className="font-mono text-xs">
-                  {group.matchRegex}
+        <div className="flex items-start gap-2">
+          <button
+            {...attributes}
+            {...listeners}
+            className="text-muted-foreground hover:text-foreground mt-1 cursor-grab"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed(!collapsed)}
+            className="flex items-start gap-1.5 text-left"
+          >
+            <ChevronDown
+              className={cn(
+                "text-muted-foreground mt-0.5 h-4 w-4 shrink-0 transition-transform",
+                collapsed && "-rotate-90",
+              )}
+            />
+            <div>
+              <CardTitle className="text-sm">{group.name}</CardTitle>
+              <div className="mt-1 flex items-center gap-1">
+                <Badge variant="secondary" className="text-xs">
+                  {MODE_LABELS[group.mode] ?? "Unknown"}
                 </Badge>
-              )}
-              {collapsed && group.items.length > 0 && (
-                <span className="text-muted-foreground text-xs">
-                  {group.items.length} item{group.items.length !== 1 ? "s" : ""}
-                </span>
-              )}
+                {group.matchRegex && (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {group.matchRegex}
+                  </Badge>
+                )}
+                {collapsed && group.items.length > 0 && (
+                  <span className="text-muted-foreground text-xs">
+                    {group.items.length} item{group.items.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        </button>
+          </button>
+        </div>
         <div className="flex items-center gap-1">
           {group.items.length > 0 && (
             <Button
@@ -1191,6 +1267,90 @@ function FetchModelsButton({
   )
 }
 
+// ─── Sortable Dialog Item ─────────────────────
+
+function SortableDialogItem({
+  id,
+  item,
+  mode,
+  channelOptions,
+  onEdit,
+  onUpdate,
+  onRemove,
+}: {
+  id: string
+  item: GroupItemForm
+  mode: number
+  channelOptions: { id: number; name: string; model: string[] }[]
+  onEdit: () => void
+  onUpdate: (patch: Partial<GroupItemForm>) => void
+  onRemove: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn("flex items-center gap-2 rounded-md border p-2", isDragging && "opacity-50")}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <button type="button" onClick={onEdit} className="shrink-0 cursor-pointer">
+        <ModelCard modelId={item.modelName || "(empty)"} />
+      </button>
+      <Select
+        value={item.channelId ? String(item.channelId) : ""}
+        onValueChange={(v) => onUpdate({ channelId: Number(v) })}
+      >
+        <SelectTrigger className="w-36">
+          <SelectValue placeholder="Channel" />
+        </SelectTrigger>
+        <SelectContent>
+          {channelOptions.map((ch) => (
+            <SelectItem key={ch.id} value={String(ch.id)}>
+              {ch.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {mode === 3 && (
+        <Input
+          className="w-20"
+          type="number"
+          placeholder="Priority"
+          value={item.priority}
+          onChange={(e) => onUpdate({ priority: Number(e.target.value) })}
+        />
+      )}
+      {mode === 4 && (
+        <Input
+          className="w-20"
+          type="number"
+          placeholder="Weight"
+          value={item.weight}
+          onChange={(e) => onUpdate({ weight: Number(e.target.value) })}
+        />
+      )}
+      <Button variant="ghost" size="icon" className="ml-auto shrink-0" onClick={onRemove}>
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
 // ─── Group Dialog ──────────────────────────────
 
 function GroupDialog({
@@ -1213,6 +1373,22 @@ function GroupDialog({
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   // null = closed, -1 = adding new item, >= 0 = editing item at index
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null)
+
+  const dialogSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  )
+  const dialogItemIds = useMemo(() => form.items.map((_, i) => `dialog-item-${i}`), [form.items])
+
+  function handleDialogDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = Number(String(active.id).replace("dialog-item-", ""))
+    const newIndex = Number(String(over.id).replace("dialog-item-", ""))
+    if (oldIndex === newIndex) return
+
+    setForm({ ...form, items: arrayMove(form.items, oldIndex, newIndex) })
+  }
 
   // Build channel→models mapping for the item model picker
   const channelModels = useMemo(() => {
@@ -1314,66 +1490,27 @@ function GroupDialog({
               </p>
             )}
             {/* eslint-disable react/no-array-index-key -- items may have duplicate channelId+modelName */}
-            {form.items.map((item, i) => (
-              <div
-                key={`${item.channelId}-${item.modelName}-${i}`}
-                className="flex items-center gap-2 rounded-md border p-2"
-              >
-                <button
-                  type="button"
-                  onClick={() => setEditingItemIndex(i)}
-                  className="shrink-0 cursor-pointer"
-                >
-                  <ModelCard modelId={item.modelName || "(empty)"} />
-                </button>
-                <Select
-                  value={item.channelId ? String(item.channelId) : ""}
-                  onValueChange={(v) => updateItem(i, { channelId: Number(v) })}
-                >
-                  <SelectTrigger className="w-36">
-                    <SelectValue placeholder="Channel" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {channelOptions.map((ch) => (
-                      <SelectItem key={ch.id} value={String(ch.id)}>
-                        {ch.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {form.mode === 3 && (
-                  <Input
-                    className="w-20"
-                    type="number"
-                    placeholder="Priority"
-                    value={item.priority}
-                    onChange={(e) => updateItem(i, { priority: Number(e.target.value) })}
+            <DndContext sensors={dialogSensors} onDragEnd={handleDialogDragEnd}>
+              <SortableContext items={dialogItemIds} strategy={verticalListSortingStrategy}>
+                {form.items.map((item, i) => (
+                  <SortableDialogItem
+                    key={`${item.channelId}-${item.modelName}-${i}`}
+                    id={`dialog-item-${i}`}
+                    item={item}
+                    mode={form.mode}
+                    channelOptions={channelOptions}
+                    onEdit={() => setEditingItemIndex(i)}
+                    onUpdate={(patch) => updateItem(i, patch)}
+                    onRemove={() =>
+                      setForm({
+                        ...form,
+                        items: form.items.filter((_, j) => j !== i),
+                      })
+                    }
                   />
-                )}
-                {form.mode === 4 && (
-                  <Input
-                    className="w-20"
-                    type="number"
-                    placeholder="Weight"
-                    value={item.weight}
-                    onChange={(e) => updateItem(i, { weight: Number(e.target.value) })}
-                  />
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="ml-auto shrink-0"
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      items: form.items.filter((_, j) => j !== i),
-                    })
-                  }
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+                ))}
+              </SortableContext>
+            </DndContext>
             {/* eslint-enable react/no-array-index-key */}
           </div>
 

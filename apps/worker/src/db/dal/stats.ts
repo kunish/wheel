@@ -22,6 +22,40 @@ function toMetrics(row: Record<string, unknown>) {
   }
 }
 
+/**
+ * Convert a timezone offset string (e.g. "+08:00", "-05:00") to a SQLite
+ * modifier string like "+28800 seconds".
+ * Falls back to "+0 seconds" (UTC) for invalid input.
+ */
+function tzModifier(tz?: string): string {
+  if (!tz) return "+0 seconds"
+  const m = /^([+-])(\d{1,2}):(\d{2})$/.exec(tz)
+  if (!m) return "+0 seconds"
+  const sign = m[1] === "-" ? -1 : 1
+  const secs = sign * (Number(m[2]) * 3600 + Number(m[3]) * 60)
+  return `${secs >= 0 ? "+" : ""}${secs} seconds`
+}
+
+/** Parse "+08:00" to offset in minutes (e.g. 480). */
+function parseTzMinutes(tz?: string): number {
+  if (!tz) return 0
+  const m = /^([+-])(\d{1,2}):(\d{2})$/.exec(tz)
+  if (!m) return 0
+  const sign = m[1] === "-" ? -1 : 1
+  return sign * (Number(m[2]) * 60 + Number(m[3]))
+}
+
+/** Build a local-date string (YYYYMMDD) from a JS Date in the given tz offset. */
+function localDateStr(d: Date, tzOffsetMinutes: number): string {
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000
+  const local = new Date(utc + tzOffsetMinutes * 60000)
+  return (
+    local.getFullYear().toString() +
+    (local.getMonth() + 1).toString().padStart(2, "0") +
+    local.getDate().toString().padStart(2, "0")
+  )
+}
+
 const metricsSelect = {
   inputTokens: sum(relayLogs.inputTokens),
   outputTokens: sum(relayLogs.outputTokens),
@@ -40,21 +74,27 @@ export async function getTotalStats(db: Database) {
 
 // ---------- today ----------
 
-export async function getTodayStats(db: Database) {
-  const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+export async function getTodayStats(db: Database, tz?: string) {
+  const mod = tzModifier(tz)
+  const todayStr = localDateStr(new Date(), parseTzMinutes(tz))
   const [row] = await db
     .select(metricsSelect)
     .from(relayLogs)
-    .where(sql`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch') = ${todayStr}`)
+    .where(
+      sql`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch', ${sql.raw(`'${mod}'`)}) = ${todayStr}`,
+    )
   return { ...toMetrics(row as Record<string, unknown>), date: todayStr }
 }
 
 // ---------- daily (last 1 year) ----------
 
-export async function getDailyStats(db: Database) {
+export async function getDailyStats(db: Database, tz?: string) {
+  const mod = tzModifier(tz)
   const rows = await db
     .select({
-      date: sql<string>`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch')`.as("date"),
+      date: sql<string>`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch', ${sql.raw(`'${mod}'`)})`.as(
+        "date",
+      ),
       ...metricsSelect,
     })
     .from(relayLogs)
@@ -70,18 +110,28 @@ export async function getDailyStats(db: Database) {
 
 // ---------- hourly (today, or date range) ----------
 
-export async function getHourlyStats(db: Database, startDate?: string, endDate?: string) {
-  const start = startDate ?? new Date().toISOString().slice(0, 10).replace(/-/g, "")
+export async function getHourlyStats(
+  db: Database,
+  startDate?: string,
+  endDate?: string,
+  tz?: string,
+) {
+  const mod = tzModifier(tz)
+  const start = startDate ?? localDateStr(new Date(), parseTzMinutes(tz))
   const end = endDate ?? start
   const rows = await db
     .select({
-      hour: sql<number>`cast(strftime('%H', ${relayLogs.time}, 'unixepoch') as integer)`.as("hour"),
-      date: sql<string>`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch')`.as("date"),
+      hour: sql<number>`cast(strftime('%H', ${relayLogs.time}, 'unixepoch', ${sql.raw(`'${mod}'`)}) as integer)`.as(
+        "hour",
+      ),
+      date: sql<string>`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch', ${sql.raw(`'${mod}'`)})`.as(
+        "date",
+      ),
       ...metricsSelect,
     })
     .from(relayLogs)
     .where(
-      sql`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch') >= ${start} AND strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch') <= ${end}`,
+      sql`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch', ${sql.raw(`'${mod}'`)}) >= ${start} AND strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch', ${sql.raw(`'${mod}'`)}) <= ${end}`,
     )
     .groupBy(sql`date`, sql`hour`)
     .orderBy(sql`date`, sql`hour`)

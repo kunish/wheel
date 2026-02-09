@@ -1,5 +1,5 @@
 import type { Database } from "../../runtime/types"
-import { eq } from "drizzle-orm"
+import { asc, eq } from "drizzle-orm"
 import { groupItems, groups } from "../schema"
 
 // D1/SQLite limits ~100 bind variables per statement; group_items has 6 columns
@@ -12,7 +12,7 @@ async function batchInsertItems(db: Database, items: (typeof groupItems.$inferIn
 }
 
 export async function listGroups(db: Database) {
-  const rows = await db.select().from(groups)
+  const rows = await db.select().from(groups).orderBy(asc(groups.order), asc(groups.id))
   const items = await db.select().from(groupItems)
   return rows.map((g) => ({
     ...g,
@@ -68,4 +68,10 @@ export async function deleteGroup(db: Database, id: number) {
 export async function getGroupsMap(db: Database) {
   const allGroups = await listGroups(db)
   return allGroups
+}
+
+export async function reorderGroups(db: Database, orderedIds: number[]) {
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.update(groups).set({ order: i }).where(eq(groups.id, orderedIds[i]))
+  }
 }

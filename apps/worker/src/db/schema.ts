@@ -48,7 +48,8 @@ export const groups = sqliteTable("groups", {
   name: text("name").notNull(),
   mode: integer("mode").notNull().default(1),
   matchRegex: text("match_regex").notNull().default(""),
-  firstTokenTimeOut: integer("first_token_time_out").notNull().default(30),
+  firstTokenTimeOut: integer("first_token_time_out").notNull().default(0),
+  order: integer("order").notNull().default(0),
 })
 
 export const groupItems = sqliteTable("group_items", {

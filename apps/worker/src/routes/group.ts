@@ -1,7 +1,7 @@
 import type { AppEnv } from "../runtime/types"
 import { Hono } from "hono"
 import { listChannels } from "../db/dal/channels"
-import { createGroup, deleteGroup, listGroups, updateGroup } from "../db/dal/groups"
+import { createGroup, deleteGroup, listGroups, reorderGroups, updateGroup } from "../db/dal/groups"
 
 const groupRoutes = new Hono<AppEnv>()
 
@@ -20,7 +20,7 @@ groupRoutes.post("/create", async (c) => {
       name: body.name,
       mode: body.mode,
       matchRegex: body.matchRegex ?? "",
-      firstTokenTimeOut: body.firstTokenTimeOut ?? 30,
+      firstTokenTimeOut: body.firstTokenTimeOut ?? 0,
     },
     body.items ?? [],
   )
@@ -41,6 +41,14 @@ groupRoutes.delete("/delete/:id", async (c) => {
   const id = Number(c.req.param("id"))
   const db = c.env.DB
   await deleteGroup(db, id)
+  await c.env.CACHE.delete("groups")
+  return c.json({ success: true })
+})
+
+groupRoutes.post("/reorder", async (c) => {
+  const body = await c.req.json()
+  const db = c.env.DB
+  await reorderGroups(db, body.orderedIds)
   await c.env.CACHE.delete("groups")
   return c.json({ success: true })
 })
