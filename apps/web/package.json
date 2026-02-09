@@ -34,6 +34,7 @@
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
+    "ws": "^8.19.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
@@ -42,6 +43,7 @@
     "@types/node": "^25.2.1",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.0.18",
     "shadcn": "^3.8.4",
     "tailwindcss": "^4.1.18",

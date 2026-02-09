@@ -5,8 +5,8 @@
  * since Next.js route handlers cannot handle WebSocket upgrades.
  */
 import { createServer } from "node:http"
-import net from "node:net"
 import next from "next"
+import { WebSocket, WebSocketServer } from "ws"
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10)
 const hostname = process.env.HOSTNAME ?? "0.0.0.0"
@@ -21,27 +21,32 @@ app.prepare().then(() => {
     handle(req, res)
   })
 
+  const wss = new WebSocketServer({ noServer: true })
+
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`)
     if (url.pathname === "/api/v1/ws") {
-      const target = new URL(apiBaseUrl)
-      const targetPort = Number.parseInt(target.port) || 8787
-      const wsTarget = `${target.hostname}:${targetPort}`
+      wss.handleUpgrade(req, socket, head, (clientWs) => {
+        const target = new URL(apiBaseUrl)
+        const wsProto = target.protocol === "https:" ? "wss:" : "ws:"
+        const upstreamUrl = `${wsProto}//${target.host}/api/v1/ws`
 
-      const upstream = net.connect({ host: target.hostname, port: targetPort }, () => {
-        const reqLine = `GET /api/v1/ws HTTP/1.1\r\n`
-        const headers = Object.entries(req.headers)
-          .filter(([k]) => k !== "host")
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("\r\n")
-        upstream.write(`${reqLine}Host: ${wsTarget}\r\n${headers}\r\n\r\n`)
-        if (head.length > 0) upstream.write(head)
+        const upstream = new WebSocket(upstreamUrl)
 
-        upstream.pipe(socket)
-        socket.pipe(upstream)
+        upstream.on("open", () => {
+          clientWs.on("message", (data) => {
+            if (upstream.readyState === WebSocket.OPEN) upstream.send(data)
+          })
+          upstream.on("message", (data) => {
+            if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data)
+          })
+        })
+
+        upstream.on("close", () => clientWs.close())
+        upstream.on("error", () => clientWs.close())
+        clientWs.on("close", () => upstream.close())
+        clientWs.on("error", () => upstream.close())
       })
-      upstream.on("error", () => socket.destroy())
-      socket.on("error", () => upstream.destroy())
     }
   })
 
