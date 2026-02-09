@@ -1,7 +1,5 @@
 import { useAuthStore } from "@/lib/store/auth"
 
-const API_BASE_URL = ""
-
 interface ApiOptions {
   method?: string
   body?: unknown
@@ -31,7 +29,7 @@ async function apiFetch<T>(endpoint: string, opts: ApiOptions = {}): Promise<T> 
     reqHeaders.Authorization = `Bearer ${token}`
   }
 
-  const resp = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const resp = await fetch(endpoint, {
     method,
     headers: reqHeaders,
     body: body ? JSON.stringify(body) : undefined,
@@ -211,7 +209,7 @@ export function deleteLog(id: number) {
 
 export function replayLog(id: number): Promise<Response> {
   const token = useAuthStore.getState().token
-  return fetch(`${API_BASE_URL}/api/v1/log/replay/${id}`, {
+  return fetch(`/api/v1/log/replay/${id}`, {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -389,7 +387,7 @@ export function getLastPriceUpdateTime() {
 // Data Export/Import
 export function exportData(includeLogs: boolean = false) {
   const token = useAuthStore.getState().token
-  return fetch(`${API_BASE_URL}/api/v1/setting/export?include_logs=${includeLogs}`, {
+  return fetch(`/api/v1/setting/export?include_logs=${includeLogs}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -400,7 +398,7 @@ export function importData(file: File) {
   const token = useAuthStore.getState().token
   const formData = new FormData()
   formData.append("file", file)
-  return fetch(`${API_BASE_URL}/api/v1/setting/import`, {
+  return fetch(`/api/v1/setting/import`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

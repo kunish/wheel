@@ -17,7 +17,7 @@ function getWsUrl() {
     // Dev: connect directly to worker (Next.js dev server can't proxy WS)
     return `${proto}//${window.location.hostname}:8787/api/v1/ws`
   }
-  // Production: connect through same host (custom server.js proxies WS to worker)
+  // Production: connect through same host (Caddy proxies WS to worker)
   return `${proto}//${window.location.host}/api/v1/ws`
 }
 

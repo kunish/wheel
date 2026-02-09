@@ -25,8 +25,6 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     restart: always
-    environment:
-      API_BASE_URL: http://worker:8787
     ports:
       - 3000:3000
     depends_on:
