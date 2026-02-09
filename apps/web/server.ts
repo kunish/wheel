@@ -1,12 +1,12 @@
 /**
  * Custom server for Next.js with WebSocket proxy.
  *
- * Proxies WebSocket upgrade requests for /api/v1/ws to the worker backend,
- * since Next.js route handlers cannot handle WebSocket upgrades.
+ * Proxies WebSocket upgrade requests for /api/v1/ws to the worker backend.
+ * Uses http-proxy style raw TCP pipe but with proper WebSocket handshake
+ * via the ws library to avoid "Invalid frame header" errors.
  */
-import { createServer } from "node:http"
+import { createServer, request as httpRequest } from "node:http"
 import next from "next"
-import { WebSocket, WebSocketServer } from "ws"
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10)
 const hostname = process.env.HOSTNAME ?? "0.0.0.0"
@@ -21,33 +21,46 @@ app.prepare().then(() => {
     handle(req, res)
   })
 
-  const wss = new WebSocketServer({ noServer: true })
-
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`)
-    if (url.pathname === "/api/v1/ws") {
-      wss.handleUpgrade(req, socket, head, (clientWs) => {
-        const target = new URL(apiBaseUrl)
-        const wsProto = target.protocol === "https:" ? "wss:" : "ws:"
-        const upstreamUrl = `${wsProto}//${target.host}/api/v1/ws`
+    if (url.pathname !== "/api/v1/ws") return
 
-        const upstream = new WebSocket(upstreamUrl)
+    const target = new URL(apiBaseUrl)
 
-        upstream.on("open", () => {
-          clientWs.on("message", (data) => {
-            if (upstream.readyState === WebSocket.OPEN) upstream.send(data)
-          })
-          upstream.on("message", (data) => {
-            if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data)
-          })
-        })
+    const proxyReq = httpRequest({
+      hostname: target.hostname,
+      port: target.port || 8787,
+      path: "/api/v1/ws",
+      method: "GET",
+      headers: {
+        ...req.headers,
+        host: target.host,
+      },
+    })
 
-        upstream.on("close", () => clientWs.close())
-        upstream.on("error", () => clientWs.close())
-        clientWs.on("close", () => upstream.close())
-        clientWs.on("error", () => upstream.close())
-      })
-    }
+    proxyReq.on("upgrade", (proxyRes, proxySocket, proxyHead) => {
+      // Write the HTTP 101 response back to the client
+      let resHeaders = "HTTP/1.1 101 Switching Protocols\r\n"
+      for (const [key, value] of Object.entries(proxyRes.headers)) {
+        if (value) resHeaders += `${key}: ${value}\r\n`
+      }
+      resHeaders += "\r\n"
+      socket.write(resHeaders)
+
+      if (proxyHead.length > 0) socket.write(proxyHead)
+      if (head.length > 0) proxySocket.write(head)
+
+      proxySocket.pipe(socket)
+      socket.pipe(proxySocket)
+
+      proxySocket.on("error", () => socket.destroy())
+      socket.on("error", () => proxySocket.destroy())
+      proxySocket.on("close", () => socket.destroy())
+      socket.on("close", () => proxySocket.destroy())
+    })
+
+    proxyReq.on("error", () => socket.destroy())
+    proxyReq.end()
   })
 
   server.listen(port, hostname, () => {
