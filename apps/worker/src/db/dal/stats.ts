@@ -68,24 +68,28 @@ export async function getDailyStats(db: Database) {
   }))
 }
 
-// ---------- hourly (today) ----------
+// ---------- hourly (today, or date range) ----------
 
-export async function getHourlyStats(db: Database) {
-  const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+export async function getHourlyStats(db: Database, startDate?: string, endDate?: string) {
+  const start = startDate ?? new Date().toISOString().slice(0, 10).replace(/-/g, "")
+  const end = endDate ?? start
   const rows = await db
     .select({
       hour: sql<number>`cast(strftime('%H', ${relayLogs.time}, 'unixepoch') as integer)`.as("hour"),
+      date: sql<string>`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch')`.as("date"),
       ...metricsSelect,
     })
     .from(relayLogs)
-    .where(sql`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch') = ${todayStr}`)
-    .groupBy(sql`hour`)
-    .orderBy(sql`hour`)
+    .where(
+      sql`strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch') >= ${start} AND strftime('%Y%m%d', ${relayLogs.time}, 'unixepoch') <= ${end}`,
+    )
+    .groupBy(sql`date`, sql`hour`)
+    .orderBy(sql`date`, sql`hour`)
 
   return rows.map((r) => ({
     ...toMetrics(r as unknown as Record<string, unknown>),
     hour: r.hour,
-    date: todayStr,
+    date: r.date,
   }))
 }
 

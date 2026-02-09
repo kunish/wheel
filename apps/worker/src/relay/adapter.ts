@@ -76,6 +76,17 @@ function ensureThinkingParams(body: Record<string, unknown>, model: string): voi
   }
 }
 
+/**
+ * Ensure max_tokens is at least 1 for Anthropic API.
+ * Some clients send max_tokens=0 or omit it; Anthropic requires min 1.
+ */
+function ensureMaxTokens(body: Record<string, unknown>): void {
+  const maxTokens = body.max_tokens as number | undefined
+  if (maxTokens === undefined || maxTokens < 1) {
+    body.max_tokens = 8192
+  }
+}
+
 // ── Request Builders ───────────────────────────────────────────────
 
 /**
@@ -148,6 +159,7 @@ function buildAnthropicPassthroughRequest(
 
   ensureThinkingParams(outBody, model)
   applyParamOverrides(outBody, channel.paramOverride)
+  ensureMaxTokens(outBody)
 
   return { url: `${baseUrl}/v1/messages`, headers, body: JSON.stringify(outBody) }
 }
@@ -207,6 +219,7 @@ function buildAnthropicRequest(
   }
 
   applyParamOverrides(anthropicBody, channel.paramOverride)
+  ensureMaxTokens(anthropicBody)
 
   return { url: `${baseUrl}/v1/messages`, headers, body: JSON.stringify(anthropicBody) }
 }

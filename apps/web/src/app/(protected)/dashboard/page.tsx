@@ -202,6 +202,11 @@ interface DayData {
   daily: StatsDaily | null
 }
 
+interface HeatmapTooltip {
+  label: string
+  metrics: StatsMetrics | null
+}
+
 const ACTIVITY_LEVELS = [
   { min: 100, level: 4 },
   { min: 30, level: 3 },
@@ -239,9 +244,15 @@ function buildDayData(d: Date, map: Map<string, StatsDaily>, today: Date): DayDa
   }
 }
 
-function ActivitySection({ data }: { data?: StatsDaily[] }) {
-  const [view, setView] = useState<HeatmapView>("year")
-  const [activeDay, setActiveDay] = useState<DayData | null>(null)
+function ActivitySection({
+  data,
+  hourlyData,
+}: {
+  data?: StatsDaily[]
+  hourlyData?: StatsHourly[]
+}) {
+  const [view, setView] = useState<HeatmapView>("week")
+  const [activeTooltip, setActiveTooltip] = useState<HeatmapTooltip | null>(null)
 
   const [today, setToday] = useState<Date | null>(null)
 
@@ -251,7 +262,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 
   const { refs, floatingStyles } = useFloating({
     placement: "top",
-    open: !!activeDay,
+    open: !!activeTooltip,
     middleware: [offset(8), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   })
@@ -305,16 +316,83 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
     return result
   }, [dataMap, today])
 
+  // ── Week view: hourly data grouped by day (7 days × 24 hours) ──
+  const weekHourlyMap = useMemo(() => {
+    if (!today || !hourlyData) return new Map<string, Map<number, StatsHourly>>()
+    const todayDay = today.getDay()
+    const start = new Date(today)
+    start.setDate(start.getDate() - todayDay)
+    const map = new Map<string, Map<number, StatsHourly>>()
+    for (const s of hourlyData) {
+      const sDate = new Date(
+        Number.parseInt(s.date.slice(0, 4)),
+        Number.parseInt(s.date.slice(4, 6)) - 1,
+        Number.parseInt(s.date.slice(6, 8)),
+      )
+      if (sDate >= start && sDate <= today) {
+        let hourMap = map.get(s.date)
+        if (!hourMap) {
+          hourMap = new Map<number, StatsHourly>()
+          map.set(s.date, hourMap)
+        }
+        hourMap.set(s.hour, s)
+      }
+    }
+    return map
+  }, [hourlyData, today])
+
+  // ── Month view: date range for hourly query ──
+  const monthRange = useMemo(() => {
+    if (!today) return { start: "", end: "" }
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    const firstDay = new Date(year, month, 1)
+    const startStr =
+      firstDay.getFullYear().toString() +
+      (firstDay.getMonth() + 1).toString().padStart(2, "0") +
+      firstDay.getDate().toString().padStart(2, "0")
+    const todayStr =
+      today.getFullYear().toString() +
+      (today.getMonth() + 1).toString().padStart(2, "0") +
+      today.getDate().toString().padStart(2, "0")
+    return { start: startStr, end: todayStr }
+  }, [today])
+
+  const { data: monthHourlyData } = useQuery({
+    queryKey: ["stats", "hourly", monthRange.start, monthRange.end],
+    queryFn: () => getHourlyStats(monthRange.start, monthRange.end),
+    enabled: view === "month" && !!monthRange.start,
+    refetchInterval: 10000,
+  })
+
+  const monthHourlyMap = useMemo(() => {
+    const raw = monthHourlyData?.data
+    if (!raw) return new Map<string, Map<number, StatsHourly>>()
+    const map = new Map<string, Map<number, StatsHourly>>()
+    for (const s of raw) {
+      let hourMap = map.get(s.date)
+      if (!hourMap) {
+        hourMap = new Map<number, StatsHourly>()
+        map.set(s.date, hourMap)
+      }
+      hourMap.set(s.hour, s)
+    }
+    return map
+  }, [monthHourlyData])
+
+  // ── Month view: selected day for hourly breakdown ──
+  const [selectedMonthDay, setSelectedMonthDay] = useState<DayData | null>(null)
+
   const handleMouseEnter = useCallback(
-    (e: React.MouseEvent, day: DayData) => {
+    (e: React.MouseEvent, tooltip: HeatmapTooltip) => {
       refs.setReference(e.currentTarget)
-      setActiveDay(day)
+      setActiveTooltip(tooltip)
     },
     [refs],
   )
 
   const handleMouseLeave = useCallback(() => {
-    setActiveDay(null)
+    setActiveTooltip(null)
   }, [])
 
   function renderCell(day: DayData | null, key: string) {
@@ -330,7 +408,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
         key={key}
         className="aspect-square cursor-pointer rounded-sm transition-transform hover:scale-125"
         style={{ backgroundColor: LEVEL_COLORS[level] }}
-        onMouseEnter={(e) => handleMouseEnter(e, day)}
+        onMouseEnter={(e) => handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })}
         onMouseLeave={handleMouseLeave}
       />
     )
@@ -384,51 +462,164 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
               ))}
             </div>
             <div className="grid grid-cols-7 gap-[3px]">
-              {monthDays.map((day, i) => renderCell(day, day?.dateStr ?? `pad-${i}`))}
+              {monthDays.map((day, i) => {
+                if (!day) return <div key={`pad-${i}`} />
+                if (day.isFuture)
+                  return (
+                    <div
+                      key={day.dateStr}
+                      className="border-border/30 aspect-square rounded-sm border border-dashed"
+                    />
+                  )
+                const count = (day.daily?.request_success ?? 0) + (day.daily?.request_failed ?? 0)
+                const level = getActivityLevel(count)
+                const isSelected = selectedMonthDay?.dateStr === day.dateStr
+                return (
+                  <div
+                    key={day.dateStr}
+                    className={`aspect-square cursor-pointer rounded-sm transition-transform hover:scale-125 ${isSelected ? "ring-foreground ring-2 ring-offset-1" : ""}`}
+                    style={{ backgroundColor: LEVEL_COLORS[level] }}
+                    onClick={() => setSelectedMonthDay(isSelected ? null : day)}
+                    onMouseEnter={(e) =>
+                      handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })
+                    }
+                    onMouseLeave={handleMouseLeave}
+                  />
+                )
+              })}
             </div>
+            {selectedMonthDay && !selectedMonthDay.isFuture && (
+              <div className="mt-3 flex gap-1">
+                <div className="flex flex-col gap-[3px]">
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <div
+                      key={h}
+                      className="text-muted-foreground flex h-[14px] items-center text-[10px] leading-none tabular-nums"
+                    >
+                      {h % 3 === 0 ? `${h.toString().padStart(2, "0")}` : ""}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex-1">
+                  <div className="text-muted-foreground mb-0.5 text-[10px] font-medium">
+                    {selectedMonthDay.displayDate}
+                  </div>
+                  <div className="flex flex-col gap-[3px]">
+                    {Array.from({ length: 24 }, (_, h) => {
+                      const now = new Date()
+                      const todayStr = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, "0")}${now.getDate().toString().padStart(2, "0")}`
+                      const isFutureHour =
+                        selectedMonthDay.dateStr === todayStr && h > now.getHours()
+                      if (isFutureHour) {
+                        return (
+                          <div
+                            key={h}
+                            className="border-border/30 h-[14px] rounded-sm border border-dashed"
+                          />
+                        )
+                      }
+                      const hourly = monthHourlyMap.get(selectedMonthDay.dateStr)?.get(h)
+                      const hCount = (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+                      const hLevel = getActivityLevel(hCount)
+                      return (
+                        <div
+                          key={h}
+                          className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-110"
+                          style={{ backgroundColor: LEVEL_COLORS[hLevel] }}
+                          onMouseEnter={(e) =>
+                            handleMouseEnter(e, {
+                              label: `${selectedMonthDay.displayDate} ${h.toString().padStart(2, "0")}:00`,
+                              metrics: hourly ?? null,
+                            })
+                          }
+                          onMouseLeave={handleMouseLeave}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {view === "week" && (
-          <div className="grid grid-cols-7 gap-2">
-            {weekDays.map((day) => (
-              <div key={day.dateStr} className="flex flex-col items-center gap-1">
-                <span className="text-muted-foreground text-xs font-medium">
-                  {
-                    WEEKDAY_LABELS[
-                      new Date(
-                        Number.parseInt(day.dateStr.slice(0, 4)),
-                        Number.parseInt(day.dateStr.slice(4, 6)) - 1,
-                        Number.parseInt(day.dateStr.slice(6, 8)),
-                      ).getDay()
-                    ]
-                  }
-                </span>
+          <div className="flex gap-1">
+            {/* Hour labels */}
+            <div className="flex flex-col gap-[3px] pt-[18px]">
+              {Array.from({ length: 24 }, (_, h) => (
                 <div
-                  className={`aspect-square w-full cursor-pointer rounded-md transition-transform hover:scale-110 ${
-                    day.isFuture ? "border-border/30 border border-dashed" : ""
-                  }`}
-                  style={
-                    !day.isFuture
-                      ? {
-                          backgroundColor:
-                            LEVEL_COLORS[
-                              getActivityLevel(
-                                (day.daily?.request_success ?? 0) +
-                                  (day.daily?.request_failed ?? 0),
-                              )
-                            ],
-                        }
-                      : undefined
-                  }
-                  onMouseEnter={(e) => handleMouseEnter(e, day)}
-                  onMouseLeave={handleMouseLeave}
-                />
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {day.dateStr.slice(6)}
-                </span>
+                  key={h}
+                  className="text-muted-foreground flex h-[14px] items-center text-[10px] leading-none tabular-nums"
+                >
+                  {h % 3 === 0 ? `${h.toString().padStart(2, "0")}` : ""}
+                </div>
+              ))}
+            </div>
+            {/* Grid */}
+            <div className="flex-1">
+              <div className="mb-0.5 grid grid-cols-7 gap-[3px]">
+                {weekDays.map((day) => (
+                  <div
+                    key={day.dateStr}
+                    className="text-muted-foreground text-center text-[10px] font-medium"
+                  >
+                    {
+                      WEEKDAY_LABELS[
+                        new Date(
+                          Number.parseInt(day.dateStr.slice(0, 4)),
+                          Number.parseInt(day.dateStr.slice(4, 6)) - 1,
+                          Number.parseInt(day.dateStr.slice(6, 8)),
+                        ).getDay()
+                      ]
+                    }
+                  </div>
+                ))}
               </div>
-            ))}
+              <div
+                className="grid gap-[3px]"
+                style={{
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  gridTemplateRows: "repeat(24, 1fr)",
+                }}
+              >
+                {Array.from({ length: 24 }, (_, h) =>
+                  weekDays.map((day) => {
+                    const now = new Date()
+                    const isFutureHour =
+                      day.isFuture ||
+                      (day.dateStr ===
+                        `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, "0")}${now.getDate().toString().padStart(2, "0")}` &&
+                        h > now.getHours())
+                    if (isFutureHour) {
+                      return (
+                        <div
+                          key={`${day.dateStr}-${h}`}
+                          className="border-border/30 h-[14px] rounded-sm border border-dashed"
+                        />
+                      )
+                    }
+                    const hourly = weekHourlyMap.get(day.dateStr)?.get(h)
+                    const count = (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+                    const level = getActivityLevel(count)
+                    return (
+                      <div
+                        key={`${day.dateStr}-${h}`}
+                        className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-125"
+                        style={{ backgroundColor: LEVEL_COLORS[level] }}
+                        onMouseEnter={(e) =>
+                          handleMouseEnter(e, {
+                            label: `${day.displayDate} ${h.toString().padStart(2, "0")}:00`,
+                            metrics: hourly ?? null,
+                          })
+                        }
+                        onMouseLeave={handleMouseLeave}
+                      />
+                    )
+                  }),
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -443,40 +634,46 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       </div>
 
       {/* Floating tooltip */}
-      {activeDay && (
+      {activeTooltip && (
         <FloatingPortal>
           <div
             ref={refs.setFloating}
             style={floatingStyles}
             className="bg-popover text-popover-foreground border-border pointer-events-none z-50 w-fit min-w-max rounded-md border-2 p-3 text-sm shadow-[2px_2px_0_var(--nb-shadow)]"
           >
-            <p className="mb-1 font-bold">{activeDay.displayDate}</p>
-            {activeDay.daily ? (
+            <p className="mb-1 font-bold">{activeTooltip.label}</p>
+            {activeTooltip.metrics ? (
               <div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                 <span>Requests</span>
                 <span className="text-foreground text-right font-medium">
                   {
-                    formatCount(activeDay.daily.request_success + activeDay.daily.request_failed)
-                      .value
+                    formatCount(
+                      activeTooltip.metrics.request_success + activeTooltip.metrics.request_failed,
+                    ).value
                   }
                   {
-                    formatCount(activeDay.daily.request_success + activeDay.daily.request_failed)
-                      .unit
+                    formatCount(
+                      activeTooltip.metrics.request_success + activeTooltip.metrics.request_failed,
+                    ).unit
                   }
                 </span>
                 <span>Input Tokens</span>
                 <span className="text-foreground text-right font-medium">
-                  {formatCount(activeDay.daily.input_token).value}
-                  {formatCount(activeDay.daily.input_token).unit}
+                  {formatCount(activeTooltip.metrics.input_token).value}
+                  {formatCount(activeTooltip.metrics.input_token).unit}
                 </span>
                 <span>Output Tokens</span>
                 <span className="text-foreground text-right font-medium">
-                  {formatCount(activeDay.daily.output_token).value}
-                  {formatCount(activeDay.daily.output_token).unit}
+                  {formatCount(activeTooltip.metrics.output_token).value}
+                  {formatCount(activeTooltip.metrics.output_token).unit}
                 </span>
                 <span>Cost</span>
                 <span className="text-foreground text-right font-medium">
-                  {formatMoney(activeDay.daily.input_cost + activeDay.daily.output_cost).value}
+                  {
+                    formatMoney(
+                      activeTooltip.metrics.input_cost + activeTooltip.metrics.output_cost,
+                    ).value
+                  }
                 </span>
               </div>
             ) : (
@@ -917,7 +1114,7 @@ export default function DashboardPage() {
 
   const { data: hourlyData } = useQuery({
     queryKey: ["stats", "hourly"],
-    queryFn: getHourlyStats,
+    queryFn: () => getHourlyStats(),
     refetchInterval: 10000,
   })
 
@@ -936,7 +1133,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <TotalSection data={totalData?.data} />
-      <ActivitySection data={dailyData?.data} />
+      <ActivitySection data={dailyData?.data} hourlyData={hourlyData?.data} />
       <ChartSection dailyData={dailyData?.data} hourlyData={hourlyData?.data} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ModelStatsSection data={modelData?.data} />

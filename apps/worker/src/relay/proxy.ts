@@ -160,7 +160,7 @@ export async function proxyNonStreaming(
   if (!resp.ok) {
     const errorText = await resp.text()
     throw new ProxyError(
-      `Upstream error ${statusCode}: ${errorText.slice(0, 500)}`,
+      `Upstream error ${statusCode}: ${errorText}`,
       statusCode,
       parseRetryDelay(resp, errorText),
     )
@@ -275,7 +275,7 @@ export function proxyStreaming(
       if (!resp.ok) {
         const errorText = await resp.text()
         const err = new ProxyError(
-          `Upstream error ${statusCode}: ${errorText.slice(0, 500)}`,
+          `Upstream error ${statusCode}: ${errorText}`,
           statusCode,
           parseRetryDelay(resp, errorText),
         )

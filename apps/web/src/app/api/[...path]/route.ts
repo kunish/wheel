@@ -18,10 +18,16 @@ async function handler(request: Request) {
     duplex: "half",
   })
 
+  const respHeaders = new Headers(resp.headers)
+  // Node.js fetch auto-decompresses the body, so these headers
+  // no longer match the actual body and will cause decoding errors.
+  respHeaders.delete("content-encoding")
+  respHeaders.delete("content-length")
+
   return new Response(resp.body, {
     status: resp.status,
     statusText: resp.statusText,
-    headers: resp.headers,
+    headers: respHeaders,
   })
 }
 

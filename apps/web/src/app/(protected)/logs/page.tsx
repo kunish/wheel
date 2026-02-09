@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { getWsUrl } from "@/hooks/use-stats-ws"
 import { getLog, listLogs } from "@/lib/api"
 
 interface LogEntry {
@@ -136,8 +137,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     function connect() {
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-      const wsUrl = `${proto}//${window.location.host}/api/v1/ws`
+      const wsUrl = getWsUrl()
 
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
@@ -389,7 +389,7 @@ export default function LogsPage() {
 
       {/* Log Detail Dialog */}
       <Dialog open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
-        <DialogContent className="max-h-[85vh] max-w-3xl overflow-x-hidden overflow-y-auto">
+        <DialogContent className="max-h-[85vh] overflow-x-hidden overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Log #{detailId}
@@ -401,7 +401,7 @@ export default function LogsPage() {
             </DialogTitle>
           </DialogHeader>
           {detail ? (
-            <Tabs defaultValue="overview" className="w-full">
+            <Tabs defaultValue="overview" className="min-w-0">
               <TabsList className="w-full">
                 <TabsTrigger value="overview" className="flex-1">
                   Overview
@@ -599,7 +599,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-w-0 flex-col gap-2">
       <div className="flex items-center justify-between">
         <p className="text-muted-foreground text-xs font-medium">{label}</p>
         <Button variant="ghost" size="sm" className="h-7 gap-1" onClick={handleCopy}>
@@ -614,7 +614,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
               Content was truncated and partially recovered.
             </p>
           )}
-          <div className="bg-muted/30 max-h-[50vh] overflow-auto rounded-md border p-3">
+          <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-md border p-3">
             <JsonView
               value={parsed.data}
               style={{

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- Neobrutalism: black bg + bold border + offset shadow -->
+  <rect x="0" y="0" width="30" height="30" rx="6" fill="#1a1a1a" stroke="#1a1a1a" stroke-width="2"/>
+  <rect x="2" y="2" width="30" height="30" rx="6" fill="#c8f547" stroke="#1a1a1a" stroke-width="2"/>
+  <!-- Wheel icon -->
+  <g fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round">
+    <circle cx="17" cy="17" r="8"/>
+    <circle cx="17" cy="17" r="2.5"/>
+    <line x1="17" y1="9" x2="17" y2="14.5"/>
+    <line x1="17" y1="19.5" x2="17" y2="25"/>
+    <line x1="9" y1="17" x2="14.5" y2="17"/>
+    <line x1="19.5" y1="17" x2="25" y2="17"/>
+    <line x1="11.34" y1="11.34" x2="15.23" y2="15.23"/>
+    <line x1="18.77" y1="18.77" x2="22.66" y2="22.66"/>
+    <line x1="22.66" y1="11.34" x2="18.77" y2="15.23"/>
+    <line x1="15.23" y1="18.77" x2="11.34" y2="22.66"/>
+  </g>
+</svg>

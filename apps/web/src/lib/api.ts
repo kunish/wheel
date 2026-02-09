@@ -250,8 +250,14 @@ export function getDailyStats() {
   return apiFetch<{ success: boolean; data: StatsDaily[] }>("/api/v1/stats/daily")
 }
 
-export function getHourlyStats() {
-  return apiFetch<{ success: boolean; data: StatsHourly[] }>("/api/v1/stats/hourly")
+export function getHourlyStats(start?: string, end?: string) {
+  const params = new URLSearchParams()
+  if (start) params.set("start", start)
+  if (end) params.set("end", end)
+  const qs = params.toString()
+  return apiFetch<{ success: boolean; data: StatsHourly[] }>(
+    `/api/v1/stats/hourly${qs ? `?${qs}` : ""}`,
+  )
 }
 
 export interface ModelStatsItem {

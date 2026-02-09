@@ -5,19 +5,31 @@ import { useEffect, useRef } from "react"
 
 const WS_RECONNECT_INTERVAL = 3000
 
+function getWsUrl() {
+  const wsBase = process.env.NEXT_PUBLIC_API_BASE_URL
+  if (wsBase) {
+    const url = new URL(wsBase)
+    const proto = url.protocol === "https:" ? "wss:" : "ws:"
+    return `${proto}//${url.host}/api/v1/ws`
+  }
+  // Dev fallback: connect directly to worker
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+  return `${proto}//${window.location.hostname}:8787/api/v1/ws`
+}
+
 /**
  * Connects to the worker WebSocket endpoint and invalidates
  * all stats-related TanStack Query caches on "stats-updated" events.
  * Auto-reconnects on disconnect.
  */
+export { getWsUrl }
 export function useStatsWebSocket(queryClient: QueryClient) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     function connect() {
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-      const wsUrl = `${proto}//${window.location.host}/api/v1/ws`
+      const wsUrl = getWsUrl()
 
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws

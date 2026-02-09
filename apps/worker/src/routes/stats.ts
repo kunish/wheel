@@ -45,7 +45,9 @@ statsRoutes.get("/daily", async (c) => {
 
 statsRoutes.get("/hourly", async (c) => {
   const db = c.env.DB
-  const stats = await getHourlyStats(db)
+  const start = c.req.query("start")
+  const end = c.req.query("end")
+  const stats = await getHourlyStats(db, start, end)
   return c.json({ success: true, data: stats })
 })
 
