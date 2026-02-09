@@ -186,7 +186,7 @@ export function deleteApiKey(id: number) {
 }
 
 // Logs
-export function listLogs(params: Record<string, string | number>) {
+export function listLogs(params: Record<string, string | number | undefined>) {
   const searchParams = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") {
@@ -206,6 +206,16 @@ export function getLog(id: number) {
 export function deleteLog(id: number) {
   return apiFetch<{ success: boolean }>(`/api/v1/log/delete/${id}`, {
     method: "DELETE",
+  })
+}
+
+export function replayLog(id: number): Promise<Response> {
+  const token = useAuthStore.getState().token
+  return fetch(`${API_BASE_URL}/api/v1/log/replay/${id}`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   })
 }
 

@@ -12,9 +12,13 @@ function getWsUrl() {
     const proto = url.protocol === "https:" ? "wss:" : "ws:"
     return `${proto}//${url.host}/api/v1/ws`
   }
-  // Dev fallback: connect directly to worker
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-  return `${proto}//${window.location.hostname}:8787/api/v1/ws`
+  if (process.env.NODE_ENV === "development") {
+    // Dev: connect directly to worker (Next.js dev server can't proxy WS)
+    return `${proto}//${window.location.hostname}:8787/api/v1/ws`
+  }
+  // Production: connect through same host (custom server.js proxies WS to worker)
+  return `${proto}//${window.location.host}/api/v1/ws`
 }
 
 /**

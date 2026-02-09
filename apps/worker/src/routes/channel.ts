@@ -36,7 +36,6 @@ channelRoutes.post("/create", async (c) => {
       autoGroup: body.autoGroup ?? 0,
       customHeader: body.customHeader ?? [],
       paramOverride: body.paramOverride ?? null,
-      matchRegex: body.matchRegex ?? null,
     },
     body.keys ?? [],
   )
@@ -133,7 +132,6 @@ channelRoutes.post("/fetch-model-preview", async (c) => {
     autoGroup: 0,
     customHeader: [],
     paramOverride: null,
-    matchRegex: null,
     createdAt: "",
     updatedAt: "",
   }

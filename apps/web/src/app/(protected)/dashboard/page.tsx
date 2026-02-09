@@ -21,6 +21,8 @@ import {
   TrendingUp,
 } from "lucide-react"
 import { LayoutGroup, motion } from "motion/react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Area,
@@ -253,6 +255,7 @@ function ActivitySection({
 }) {
   const [view, setView] = useState<HeatmapView>("week")
   const [activeTooltip, setActiveTooltip] = useState<HeatmapTooltip | null>(null)
+  const router = useRouter()
 
   const [today, setToday] = useState<Date | null>(null)
 
@@ -395,6 +398,32 @@ function ActivitySection({
     setActiveTooltip(null)
   }, [])
 
+  /** Navigate to logs filtered by a day's time range */
+  const navigateToDay = useCallback(
+    (dateStr: string) => {
+      const y = Number.parseInt(dateStr.slice(0, 4))
+      const m = Number.parseInt(dateStr.slice(4, 6)) - 1
+      const d = Number.parseInt(dateStr.slice(6, 8))
+      const from = Math.floor(new Date(y, m, d).getTime() / 1000)
+      const to = from + 86400 - 1
+      router.push(`/logs?from=${from}&to=${to}`)
+    },
+    [router],
+  )
+
+  /** Navigate to logs filtered by an hour's time range */
+  const navigateToHour = useCallback(
+    (dateStr: string, hour: number) => {
+      const y = Number.parseInt(dateStr.slice(0, 4))
+      const m = Number.parseInt(dateStr.slice(4, 6)) - 1
+      const d = Number.parseInt(dateStr.slice(6, 8))
+      const from = Math.floor(new Date(y, m, d, hour).getTime() / 1000)
+      const to = from + 3600 - 1
+      router.push(`/logs?from=${from}&to=${to}`)
+    },
+    [router],
+  )
+
   function renderCell(day: DayData | null, key: string) {
     if (!day) return <div key={key} />
     if (day.isFuture)
@@ -408,6 +437,7 @@ function ActivitySection({
         key={key}
         className="aspect-square cursor-pointer rounded-sm transition-transform hover:scale-125"
         style={{ backgroundColor: LEVEL_COLORS[level] }}
+        onClick={() => navigateToDay(day.dateStr)}
         onMouseEnter={(e) => handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })}
         onMouseLeave={handleMouseLeave}
       />
@@ -526,6 +556,7 @@ function ActivitySection({
                           key={h}
                           className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-110"
                           style={{ backgroundColor: LEVEL_COLORS[hLevel] }}
+                          onClick={() => navigateToHour(selectedMonthDay.dateStr, h)}
                           onMouseEnter={(e) =>
                             handleMouseEnter(e, {
                               label: `${selectedMonthDay.displayDate} ${h.toString().padStart(2, "0")}:00`,
@@ -607,6 +638,7 @@ function ActivitySection({
                         key={`${day.dateStr}-${h}`}
                         className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-125"
                         style={{ backgroundColor: LEVEL_COLORS[level] }}
+                        onClick={() => navigateToHour(day.dateStr, h)}
                         onMouseEnter={(e) =>
                           handleMouseEnter(e, {
                             label: `${day.displayDate} ${h.toString().padStart(2, "0")}:00`,
@@ -881,9 +913,12 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
                   {medal(rank)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
+                  <Link
+                    href={`/logs?channel=${ch.channelId}`}
+                    className="block truncate text-sm font-medium hover:underline"
+                  >
                     {ch.channelName || `Channel ${ch.channelId}`}
-                  </p>
+                  </Link>
                   <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
                     {mode === "count" && <span>Success: {successRate.toFixed(1)}%</span>}
                     <span>
@@ -1036,9 +1071,10 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
           ) : (
             <div className="max-h-[400px] space-y-1.5 overflow-y-auto">
               {sorted.map((item) => (
-                <div
+                <Link
                   key={item.model}
-                  className="hover:bg-muted/50 relative rounded-md px-3 py-2 transition-colors"
+                  href={`/logs?model=${encodeURIComponent(item.model)}`}
+                  className="hover:bg-muted/50 relative block rounded-md px-3 py-2 transition-colors"
                 >
                   {/* Background bar */}
                   <div
@@ -1087,7 +1123,7 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
                       </div>
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

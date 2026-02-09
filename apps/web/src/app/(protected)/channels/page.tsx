@@ -112,7 +112,6 @@ interface GroupRecord {
   id: number
   name: string
   mode: number
-  matchRegex: string
   firstTokenTimeOut: number
   order: number
   items: GroupItemForm[]
@@ -134,7 +133,6 @@ interface GroupFormData {
   id?: number
   name: string
   mode: number
-  matchRegex: string
   firstTokenTimeOut: number
   items: GroupItemForm[]
 }
@@ -153,7 +151,6 @@ const EMPTY_CHANNEL_FORM: ChannelFormData = {
 const EMPTY_GROUP_FORM: GroupFormData = {
   name: "",
   mode: 1,
-  matchRegex: "",
   firstTokenTimeOut: 0,
   items: [],
 }
@@ -270,7 +267,6 @@ export default function ChannelsAndGroupsPage() {
         id: data.group.id,
         name: data.group.name,
         mode: data.group.mode,
-        matchRegex: data.group.matchRegex,
         firstTokenTimeOut: data.group.firstTokenTimeOut,
         items: merged,
       })
@@ -288,7 +284,6 @@ export default function ChannelsAndGroupsPage() {
         id: group.id,
         name: group.name,
         mode: group.mode,
-        matchRegex: group.matchRegex,
         firstTokenTimeOut: group.firstTokenTimeOut,
         items: [],
       }),
@@ -426,7 +421,6 @@ export default function ChannelsAndGroupsPage() {
       id: g.id,
       name: g.name,
       mode: g.mode,
-      matchRegex: g.matchRegex ?? "",
       firstTokenTimeOut: g.firstTokenTimeOut,
       items: g.items ?? [],
     })
@@ -827,11 +821,6 @@ function SortableGroup({
                 <Badge variant="secondary" className="text-xs">
                   {MODE_LABELS[group.mode] ?? "Unknown"}
                 </Badge>
-                {group.matchRegex && (
-                  <Badge variant="outline" className="font-mono text-xs">
-                    {group.matchRegex}
-                  </Badge>
-                )}
                 {collapsed && group.items.length > 0 && (
                   <span className="text-muted-foreground text-xs">
                     {group.items.length} item{group.items.length !== 1 ? "s" : ""}
@@ -1451,15 +1440,6 @@ function GroupDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Model Match Regex</Label>
-            <Input
-              value={form.matchRegex}
-              onChange={(e) => setForm({ ...form, matchRegex: e.target.value })}
-              placeholder="^gpt-4.*"
-            />
           </div>
 
           <div className="flex flex-col gap-2">

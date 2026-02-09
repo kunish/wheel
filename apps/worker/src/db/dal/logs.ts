@@ -1,5 +1,5 @@
 import type { Database } from "../../runtime/types"
-import { and, count, desc, eq, gte, like, lte, sql } from "drizzle-orm"
+import { and, count, desc, eq, gte, like, lte, or, sql } from "drizzle-orm"
 import { relayLogs } from "../schema"
 
 export async function createLog(db: Database, data: typeof relayLogs.$inferInsert) {
@@ -22,6 +22,7 @@ export async function listLogs(
     hasError?: boolean
     startTime?: number
     endTime?: number
+    keyword?: string
   },
 ) {
   const page = opts.page ?? 1
@@ -47,6 +48,18 @@ export async function listLogs(
   }
   if (opts.endTime) {
     conditions.push(lte(relayLogs.time, opts.endTime))
+  }
+  if (opts.keyword) {
+    const pattern = `%${opts.keyword}%`
+    conditions.push(
+      or(
+        like(relayLogs.requestModelName, pattern),
+        like(relayLogs.channelName, pattern),
+        like(relayLogs.error, pattern),
+        like(relayLogs.requestContent, pattern),
+        like(relayLogs.responseContent, pattern),
+      ),
+    )
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined

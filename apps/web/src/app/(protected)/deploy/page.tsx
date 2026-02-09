@@ -357,8 +357,7 @@ CREATE TABLE IF NOT EXISTS channels (
   auto_group INTEGER NOT NULL DEFAULT 0,
   custom_header TEXT NOT NULL DEFAULT '[]',
   param_override TEXT,
-  channel_proxy TEXT,
-  match_regex TEXT
+  channel_proxy TEXT
 );
 
 CREATE TABLE IF NOT EXISTS channel_keys (
@@ -376,7 +375,6 @@ CREATE TABLE IF NOT EXISTS groups (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   mode INTEGER NOT NULL DEFAULT 1,
-  match_regex TEXT NOT NULL DEFAULT '',
   first_token_time_out INTEGER NOT NULL DEFAULT 30
 );
 

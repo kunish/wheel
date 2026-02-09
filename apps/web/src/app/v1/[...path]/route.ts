@@ -18,12 +18,17 @@ async function handler(request: Request) {
     duplex: "half",
   })
 
-  // Return response immediately with streaming body.
-  // Must use plain Response (not NextResponse) to avoid buffering.
+  // Next.js 16 route handlers add Content-Encoding: gzip to proxied responses
+  // without actually compressing the body, causing ZlibError in clients (e.g.
+  // OpenCode/Bun) that auto-decompress based on the header. Force identity
+  // encoding on all proxied responses to prevent this mismatch.
+  const resHeaders = new Headers(resp.headers)
+  resHeaders.set("Content-Encoding", "identity")
+
   return new Response(resp.body, {
     status: resp.status,
     statusText: resp.statusText,
-    headers: resp.headers,
+    headers: resHeaders,
   })
 }
 

@@ -50,7 +50,6 @@ export interface Channel {
   customHeader: CustomHeader[]
   paramOverride: string | null
   channelProxy: string | null
-  matchRegex: string | null
 }
 
 export interface GroupItem {
@@ -66,7 +65,6 @@ export interface Group {
   id: number
   name: string
   mode: GroupMode
-  matchRegex: string
   firstTokenTimeOut: number
   items: GroupItem[]
 }

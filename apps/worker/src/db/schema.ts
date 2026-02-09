@@ -27,7 +27,6 @@ export const channels = sqliteTable("channels", {
     .$type<{ key: string; value: string }[]>(),
   paramOverride: text("param_override"),
   channelProxy: text("channel_proxy"),
-  matchRegex: text("match_regex"),
 })
 
 export const channelKeys = sqliteTable("channel_keys", {
@@ -47,7 +46,6 @@ export const groups = sqliteTable("groups", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   mode: integer("mode").notNull().default(1),
-  matchRegex: text("match_regex").notNull().default(""),
   firstTokenTimeOut: integer("first_token_time_out").notNull().default(0),
   order: integer("order").notNull().default(0),
 })

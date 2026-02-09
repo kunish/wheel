@@ -40,7 +40,6 @@ export interface ChannelCreateRequest {
   autoGroup?: number
   customHeader?: { key: string; value: string }[]
   paramOverride?: string
-  matchRegex?: string
 }
 
 export interface ChannelUpdateRequest extends Partial<ChannelCreateRequest> {
@@ -60,7 +59,6 @@ export interface ChannelListResponse {
 export interface GroupCreateRequest {
   name: string
   mode: number
-  matchRegex: string
   firstTokenTimeOut?: number
   items: {
     channelId: number

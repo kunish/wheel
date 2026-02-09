@@ -19,7 +19,6 @@ groupRoutes.post("/create", async (c) => {
     {
       name: body.name,
       mode: body.mode,
-      matchRegex: body.matchRegex ?? "",
       firstTokenTimeOut: body.firstTokenTimeOut ?? 0,
     },
     body.items ?? [],

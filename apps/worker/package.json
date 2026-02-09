@@ -7,6 +7,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build:node": "tsc -p tsconfig.node.json",
     "start:node": "node dist/index.node.js",
     "dev:node": "tsx --watch src/index.node.ts"
@@ -32,6 +34,7 @@
     "drizzle-kit": "^0.31.8",
     "tsx": "^4.19.3",
     "typescript": "^5.9.3",
+    "vitest": "^4.0.18",
     "wrangler": "^4.63.0"
   }
 }

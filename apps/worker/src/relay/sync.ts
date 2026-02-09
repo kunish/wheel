@@ -188,21 +188,6 @@ async function autoGroupChannel(
         targetGroupName = fuzzyMatchGroup(modelName, allGroups)
         if (!targetGroupName) targetGroupName = modelName
         break
-      case AutoGroupType.Regex:
-        if (channel.matchRegex) {
-          try {
-            const re = new RegExp(channel.matchRegex)
-            const match = re.exec(modelName)
-            if (match) {
-              targetGroupName = match[1] ?? modelName
-            }
-          } catch {
-            targetGroupName = modelName
-          }
-        } else {
-          targetGroupName = modelName
-        }
-        break
     }
 
     if (!targetGroupName) continue

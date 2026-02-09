@@ -18,5 +18,4 @@ export enum AutoGroupType {
   None = 0,
   Fuzzy = 1,
   Exact = 2,
-  Regex = 3,
 }
