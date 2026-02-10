@@ -36,6 +36,7 @@ import {
 import { AnimatedNumber } from "@/components/animated-number"
 import { ModelBadge } from "@/components/model-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   getChannelStats,
@@ -70,7 +71,7 @@ function formatTime(ms: number): { value: string; unit: string; raw: number } {
 
 // ───────────── Total (4 stat cards) ─────────────
 
-function TotalSection({ data }: { data?: StatsMetrics }) {
+function TotalSection({ data, isLoading }: { data?: StatsMetrics; isLoading?: boolean }) {
   const cards = [
     {
       title: "Request Stats",
@@ -176,14 +177,18 @@ function TotalSection({ data }: { data?: StatsMetrics }) {
                     <span className="text-muted-foreground text-xs leading-tight">
                       {item.label}
                     </span>
-                    <span className="text-lg leading-tight font-bold tabular-nums">
-                      <AnimatedNumber value={item.raw} formatter={(n) => item.format(n).value} />
-                      {formatted.unit && (
-                        <span className="text-muted-foreground ml-0.5 text-xs font-medium">
-                          {formatted.unit}
-                        </span>
-                      )}
-                    </span>
+                    {isLoading ? (
+                      <Skeleton className="mt-1 h-5 w-16" />
+                    ) : (
+                      <span className="text-lg leading-tight font-bold tabular-nums">
+                        <AnimatedNumber value={item.raw} formatter={(n) => item.format(n).value} />
+                        {formatted.unit && (
+                          <span className="text-muted-foreground ml-0.5 text-xs font-medium">
+                            {formatted.unit}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </div>
                 </div>
               )

@@ -5,6 +5,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -38,6 +39,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -210,6 +221,11 @@ export default function ChannelsAndGroupsPage() {
   // Drag state
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null)
 
+  // Delete confirmation state
+  const [deleteChannelConfirm, setDeleteChannelConfirm] = useState<ChannelRecord | null>(null)
+  const [deleteGroupConfirm, setDeleteGroupConfirm] = useState<GroupRecord | null>(null)
+  const [clearGroupConfirm, setClearGroupConfirm] = useState<GroupRecord | null>(null)
+
   // Queries
   const { data: channelData, isLoading: channelsLoading } = useQuery({
     queryKey: ["channels"],
@@ -354,7 +370,10 @@ export default function ChannelsAndGroupsPage() {
 
   // ─── Drag handlers ─────────────────────────────
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  )
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDrag(event.active.data.current as DragData)
@@ -507,7 +526,7 @@ export default function ChannelsAndGroupsPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="h-9 w-9"
                     onClick={() => setChannelsCollapsed((v) => !v)}
                     title={channelsCollapsed ? "Expand all" : "Collapse all"}
                   >
@@ -547,12 +566,9 @@ export default function ChannelsAndGroupsPage() {
                           highlighted={highlightedId === ch.id}
                           refCallback={(el) => setChannelRef(ch.id, el)}
                           onEdit={() => openEditChannel(ch)}
-                          onDelete={() => {
-                            if (confirm("Delete this channel?")) {
-                              channelDeleteMut.mutate(ch.id)
-                            }
-                          }}
+                          onDelete={() => setDeleteChannelConfirm(ch)}
                           onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
+                          enablePending={channelEnableMut.isPending}
                           forceCollapsed={channelsCollapsed}
                         />
                       </motion.div>
@@ -572,7 +588,7 @@ export default function ChannelsAndGroupsPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="h-9 w-9"
                     onClick={() => setGroupsCollapsed((v) => !v)}
                     title={groupsCollapsed ? "Expand all" : "Collapse all"}
                   >
@@ -612,16 +628,8 @@ export default function ChannelsAndGroupsPage() {
                             group={g}
                             channelMap={channelMap}
                             onEdit={() => openEditGroup(g)}
-                            onDelete={() => {
-                              if (confirm("Delete this group?")) {
-                                groupDeleteMut.mutate(g.id)
-                              }
-                            }}
-                            onClear={() => {
-                              if (confirm("Clear all channels from this group?")) {
-                                groupClearMut.mutate(g)
-                              }
-                            }}
+                            onDelete={() => setDeleteGroupConfirm(g)}
+                            onClear={() => setClearGroupConfirm(g)}
                             isOver={activeDrag !== null}
                             forceCollapsed={groupsCollapsed}
                           />
@@ -659,10 +667,100 @@ export default function ChannelsAndGroupsPage() {
         )}
       </DragOverlay>
 
+      {/* ─── Delete Confirmations ────────────────── */}
+      <AlertDialog
+        open={!!deleteChannelConfirm}
+        onOpenChange={(open) => !open && setDeleteChannelConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete channel &ldquo;{deleteChannelConfirm?.name}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The channel and its configuration will be permanently
+              removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deleteChannelConfirm) channelDeleteMut.mutate(deleteChannelConfirm.id)
+                setDeleteChannelConfirm(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deleteGroupConfirm}
+        onOpenChange={(open) => !open && setDeleteGroupConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete group &ldquo;{deleteGroupConfirm?.name}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The group and all its routing rules will be permanently
+              removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deleteGroupConfirm) groupDeleteMut.mutate(deleteGroupConfirm.id)
+                setDeleteGroupConfirm(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!clearGroupConfirm}
+        onOpenChange={(open) => !open && setClearGroupConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Clear all items from &ldquo;{clearGroupConfirm?.name}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              All channels and models will be removed from this group. The group itself will remain.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (clearGroupConfirm) groupClearMut.mutate(clearGroupConfirm)
+                setClearGroupConfirm(null)
+              }}
+            >
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ─── Channel Dialog ───────────────────── */}
       <ChannelDialog
         open={channelDialogOpen}
-        onOpenChange={setChannelDialogOpen}
+        onOpenChange={(open) => {
+          setChannelDialogOpen(open)
+          if (!open) setChannelForm(EMPTY_CHANNEL_FORM)
+        }}
         form={channelForm}
         setForm={setChannelForm}
         onSave={() => channelSaveMut.mutate(channelForm)}
@@ -672,7 +770,10 @@ export default function ChannelsAndGroupsPage() {
       {/* ─── Group Dialog ─────────────────────── */}
       <GroupDialog
         open={groupDialogOpen}
-        onOpenChange={setGroupDialogOpen}
+        onOpenChange={(open) => {
+          setGroupDialogOpen(open)
+          if (!open) setGroupForm(EMPTY_GROUP_FORM)
+        }}
         form={groupForm}
         setForm={setGroupForm}
         channelOptions={channels}
@@ -719,6 +820,7 @@ function DraggableChannel({
   onEdit,
   onDelete,
   onToggle,
+  enablePending,
   forceCollapsed,
 }: {
   channel: ChannelRecord
@@ -727,6 +829,7 @@ function DraggableChannel({
   onEdit: () => void
   onDelete: () => void
   onToggle: (enabled: boolean) => void
+  enablePending?: boolean
   forceCollapsed?: boolean
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -796,11 +899,11 @@ function DraggableChannel({
           </button>
         </div>
         <div className="flex items-center gap-1">
-          <Switch checked={channel.enabled} onCheckedChange={onToggle} />
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
+          <Switch checked={channel.enabled} onCheckedChange={onToggle} disabled={enablePending} />
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onEdit}>
             <Pencil className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDelete}>
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onDelete}>
             <Trash2 className="text-destructive h-3 w-3" />
           </Button>
         </div>
@@ -960,17 +1063,17 @@ function SortableGroup({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-9 w-9"
               onClick={onClear}
               title="Clear all"
             >
               <X className="h-3 w-3" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onEdit}>
             <Pencil className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDelete}>
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onDelete}>
             <Trash2 className="text-destructive h-3 w-3" />
           </Button>
         </div>
@@ -1191,7 +1294,7 @@ function ChannelDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[85vh] w-full max-w-2xl max-w-[95vw] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{form.id ? "Edit Channel" : "Create Channel"}</DialogTitle>
         </DialogHeader>
@@ -1553,7 +1656,7 @@ function GroupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[85vh] w-full max-w-2xl max-w-[95vw] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{form.id ? "Edit Group" : "Create Group"}</DialogTitle>
         </DialogHeader>

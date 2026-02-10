@@ -3,9 +3,9 @@
 import { Check, ChevronDown, Search } from "lucide-react"
 import { useMemo, useState } from "react"
 import { ModelBadge } from "@/components/model-badge"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 
 interface ModelComboboxProps {
   models: string[]
@@ -38,7 +38,12 @@ export function ModelCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={`w-44 justify-between font-normal ${className ?? ""}`}>
+        <button
+          className={cn(
+            "border-border data-[placeholder]:text-muted-foreground bg-background focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-44 items-center justify-between gap-2 rounded-md border-2 px-3 py-2 text-sm font-bold whitespace-nowrap shadow-[2px_2px_0_var(--nb-shadow)] transition-all outline-none focus-visible:shadow-[4px_4px_0_var(--nb-shadow)] focus-visible:ring-[3px]",
+            className,
+          )}
+        >
           {value ? (
             <span className="truncate">
               <ModelBadge modelId={value} />
@@ -47,7 +52,7 @@ export function ModelCombobox({
             <span className="text-muted-foreground">{placeholder}</span>
           )}
           <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-0" align="start">
         <div className="border-b p-2">

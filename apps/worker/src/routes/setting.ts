@@ -16,8 +16,13 @@ const settingRoutes = new Hono<AppEnv>()
 settingRoutes.get("/", async (c) => {
   const db = c.env.DB
   const settings = await getAllSettings(db)
-  // Merge defaults for keys that don't exist yet
-  const merged = { ...DEFAULT_SETTINGS, ...settings }
+  // Merge defaults for keys that don't exist yet, only return configurable keys
+  const merged = { ...DEFAULT_SETTINGS }
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    if (key in settings) {
+      merged[key] = settings[key]
+    }
+  }
   return c.json({ success: true, data: { settings: merged } })
 })
 

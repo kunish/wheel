@@ -14,6 +14,17 @@ import {
 import { useTheme } from "next-themes"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useState } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
@@ -109,13 +120,19 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
 function TopBar() {
   const { theme, setTheme } = useTheme()
   const logout = useAuthStore((s) => s.logout)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   return (
     <header className="border-border bg-background flex h-14 items-center gap-3 border-b-2 px-4 lg:px-6">
       {/* Mobile menu */}
       <Sheet>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="lg:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            aria-label="Open navigation menu"
+          >
             <Menu className="size-5" />
           </Button>
         </SheetTrigger>
@@ -134,6 +151,7 @@ function TopBar() {
       <Button
         variant="ghost"
         size="icon-sm"
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       >
         <Sun className="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
@@ -143,13 +161,33 @@ function TopBar() {
       <Button
         variant="ghost"
         size="icon-sm"
-        onClick={() => {
-          logout()
-          window.location.href = "/login"
-        }}
+        aria-label="Logout"
+        onClick={() => setShowLogoutConfirm(true)}
       >
         <LogOut className="size-4" />
       </Button>
+
+      <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to logout?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will need to sign in again to access the dashboard.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                logout()
+                window.location.href = "/login"
+              }}
+            >
+              Logout
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   )
 }

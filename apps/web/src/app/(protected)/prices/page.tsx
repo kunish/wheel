@@ -6,6 +6,16 @@ import { AnimatePresence, motion } from "motion/react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -135,6 +145,7 @@ export default function PricesPage() {
   const [createForm, setCreateForm] = useState<PriceFormData>(EMPTY_FORM)
   const [editingPrice, setEditingPrice] = useState<ModelPrice | null>(null)
   const [editForm, setEditForm] = useState<PriceFormData>(EMPTY_FORM)
+  const [deleteConfirm, setDeleteConfirm] = useState<ModelPrice | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ["model-prices"],
@@ -246,7 +257,11 @@ export default function PricesPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative max-w-sm flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <label htmlFor="price-search" className="sr-only">
+            Search models
+          </label>
           <Input
+            id="price-search"
             placeholder="Search models..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -320,76 +335,107 @@ export default function PricesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete price for &ldquo;{deleteConfirm?.name}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the pricing data for this model. Historical cost calculations that
+              used this price will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deleteConfirm) deleteMutation.mutate(deleteConfirm.name)
+                setDeleteConfirm(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Table */}
       {isLoading ? (
         <p className="text-muted-foreground">Loading...</p>
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Model Name</TableHead>
-                  <TableHead>Input ($/M tokens)</TableHead>
-                  <TableHead>Output ($/M tokens)</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead className="w-24" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-muted-foreground text-center">
-                      No models found.
-                    </TableCell>
+                    <TableHead>Model Name</TableHead>
+                    <TableHead>Input ($/M tokens)</TableHead>
+                    <TableHead>Output ($/M tokens)</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Updated</TableHead>
+                    <TableHead className="w-24" />
                   </TableRow>
-                ) : (
-                  <AnimatePresence initial={false}>
-                    {filtered.map((m) => (
-                      <motion.tr
-                        key={m.id}
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="border-b"
-                      >
-                        <TableCell className="font-medium">
-                          <ModelBadge modelId={m.name} />
-                        </TableCell>
-                        <TableCell>{m.inputPrice.toFixed(6)}</TableCell>
-                        <TableCell>{m.outputPrice.toFixed(6)}</TableCell>
-                        <TableCell>
-                          <Badge variant={m.source === "sync" ? "secondary" : "default"}>
-                            {m.source}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{formatDate(m.updatedAt)}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openEdit(m)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                if (confirm(`Delete price for "${m.name}"?`)) {
-                                  deleteMutation.mutate(m.name)
-                                }
-                              }}
-                            >
-                              <Trash2 className="text-destructive h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </motion.tr>
-                    ))}
-                  </AnimatePresence>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filtered.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-muted-foreground text-center">
+                        No models found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    <AnimatePresence initial={false}>
+                      {filtered.map((m) => (
+                        <motion.tr
+                          key={m.id}
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="border-b"
+                        >
+                          <TableCell className="font-medium">
+                            <ModelBadge modelId={m.name} />
+                          </TableCell>
+                          <TableCell>{m.inputPrice.toFixed(6)}</TableCell>
+                          <TableCell>{m.outputPrice.toFixed(6)}</TableCell>
+                          <TableCell>
+                            <Badge variant={m.source === "sync" ? "secondary" : "default"}>
+                              {m.source}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{formatDate(m.updatedAt)}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Edit price for ${m.name}`}
+                                onClick={() => openEdit(m)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Delete price for ${m.name}`}
+                                onClick={() => setDeleteConfirm(m)}
+                              >
+                                <Trash2 className="text-destructive h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </motion.tr>
+                      ))}
+                    </AnimatePresence>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}

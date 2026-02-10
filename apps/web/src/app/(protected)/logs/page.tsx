@@ -21,7 +21,6 @@ import {
   Search,
   X,
 } from "lucide-react"
-import { AnimatePresence, motion } from "motion/react"
 import { useTheme } from "next-themes"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -532,62 +531,59 @@ export default function LogsPage() {
         <div
           className={`transition-opacity duration-150 ${isFetching ? "pointer-events-none opacity-50" : ""}`}
         >
-          <TooltipProvider delayDuration={300}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Channel</TableHead>
-                  <SortableHead
-                    field="inputTokens"
-                    sortField={sortField}
-                    sortDir={sortDir}
-                    onToggle={toggleSort}
-                    className="text-right"
-                  >
-                    Input
-                  </SortableHead>
-                  <SortableHead
-                    field="outputTokens"
-                    sortField={sortField}
-                    sortDir={sortDir}
-                    onToggle={toggleSort}
-                    className="text-right"
-                  >
-                    Output
-                  </SortableHead>
-                  <TableHead className="text-right">TTFT</TableHead>
-                  <SortableHead
-                    field="useTime"
-                    sortField={sortField}
-                    sortDir={sortDir}
-                    onToggle={toggleSort}
-                    className="text-right"
-                  >
-                    Latency
-                  </SortableHead>
-                  <SortableHead
-                    field="cost"
-                    sortField={sortField}
-                    sortDir={sortDir}
-                    onToggle={toggleSort}
-                    className="text-right"
-                  >
-                    Cost
-                  </SortableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <AnimatePresence initial={false}>
+          <div className="overflow-x-auto">
+            <TooltipProvider delayDuration={300}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Model</TableHead>
+                    <TableHead>Channel</TableHead>
+                    <SortableHead
+                      field="inputTokens"
+                      sortField={sortField}
+                      sortDir={sortDir}
+                      onToggle={toggleSort}
+                      className="text-right"
+                    >
+                      Input
+                    </SortableHead>
+                    <SortableHead
+                      field="outputTokens"
+                      sortField={sortField}
+                      sortDir={sortDir}
+                      onToggle={toggleSort}
+                      className="text-right"
+                    >
+                      Output
+                    </SortableHead>
+                    <TableHead className="text-right">TTFT</TableHead>
+                    <SortableHead
+                      field="useTime"
+                      sortField={sortField}
+                      sortDir={sortDir}
+                      onToggle={toggleSort}
+                      className="text-right"
+                    >
+                      Latency
+                    </SortableHead>
+                    <SortableHead
+                      field="cost"
+                      sortField={sortField}
+                      sortDir={sortDir}
+                      onToggle={toggleSort}
+                      className="text-right"
+                    >
+                      Cost
+                    </SortableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-10" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {sortedLogs.map((log) => (
-                    <motion.tr
+                    <tr
                       key={log.id}
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25 }}
                       className={`hover:bg-muted/50 cursor-pointer border-b ${
                         log.error ? "border-l-destructive bg-destructive/5 border-l-2" : ""
                       }`}
@@ -693,32 +689,32 @@ export default function LogsPage() {
                           <Eye className="h-4 w-4" />
                         </Button>
                       </TableCell>
-                    </motion.tr>
+                    </tr>
                   ))}
-                </AnimatePresence>
-                {logs.length === 0 && !isLoading && (
-                  <TableRow>
-                    <TableCell colSpan={10} className="py-12 text-center">
-                      <p className="text-muted-foreground">No logs match your filters</p>
-                      {hasFilters && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3"
-                          onClick={() => {
-                            router.replace(pathname, { scroll: false })
-                            setKeywordInput("")
-                          }}
-                        >
-                          Clear all filters
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TooltipProvider>
+                  {logs.length === 0 && !isLoading && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="py-12 text-center">
+                        <p className="text-muted-foreground">No logs match your filters</p>
+                        {hasFilters && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            onClick={() => {
+                              router.replace(pathname, { scroll: false })
+                              setKeywordInput("")
+                            }}
+                          >
+                            Clear all filters
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TooltipProvider>
+          </div>
         </div>
       )}
 

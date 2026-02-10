@@ -3,8 +3,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Download, FileUp, Pencil, Plus, Trash2, Upload } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -96,11 +106,14 @@ function SystemConfigSection() {
 
   const [formData, setFormData] = useState<Record<string, string>>({})
 
-  const prevSettingsRef = useRef(data?.data?.settings)
-  if (data?.data?.settings && data.data.settings !== prevSettingsRef.current) {
-    prevSettingsRef.current = data.data.settings
-    setFormData(data.data.settings)
-  }
+  useEffect(() => {
+    if (data?.data?.settings) {
+      const filtered = Object.fromEntries(
+        Object.entries(data.data.settings).filter(([key]) => key in SETTING_LABELS),
+      )
+      setFormData(filtered)
+    }
+  }, [data])
 
   const mutation = useMutation({
     mutationFn: updateSettings,
@@ -137,6 +150,8 @@ function SystemConfigSection() {
                 <p className="text-muted-foreground text-xs">{SETTING_LABELS[key].description}</p>
               )}
               <Input
+                type="number"
+                min="0"
                 value={value}
                 onChange={(e) => setFormData((prev) => ({ ...prev, [key]: e.target.value }))}
               />
@@ -219,6 +234,10 @@ function AccountSection() {
           <form
             onSubmit={(e) => {
               e.preventDefault()
+              if (newPassword.length < 8) {
+                toast.error("Password must be at least 8 characters")
+                return
+              }
               if (newPassword !== confirmPassword) {
                 toast.error("Passwords do not match")
                 return
@@ -264,9 +283,11 @@ function ApiKeysSection() {
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
+  const [keyCopied, setKeyCopied] = useState(false)
   const [createForm, setCreateForm] = useState<ApiKeyFormData>(EMPTY_FORM)
   const [editingKey, setEditingKey] = useState<ApiKeyRecord | null>(null)
   const [editForm, setEditForm] = useState<ApiKeyFormData>(EMPTY_FORM)
+  const [deleteConfirm, setDeleteConfirm] = useState<ApiKeyRecord | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ["apikeys"],
@@ -347,9 +368,14 @@ function ApiKeysSection() {
         <Dialog
           open={showCreate}
           onOpenChange={(open) => {
+            if (!open && createdKey && !keyCopied) {
+              toast.error("Please copy the key before closing")
+              return
+            }
             setShowCreate(open)
             if (!open) {
               setCreatedKey(null)
+              setKeyCopied(false)
               setCreateForm(EMPTY_FORM)
             }
           }}
@@ -375,6 +401,7 @@ function ApiKeysSection() {
                     size="icon"
                     onClick={() => {
                       navigator.clipboard.writeText(createdKey)
+                      setKeyCopied(true)
                       toast.success("Copied!")
                     }}
                   >
@@ -428,83 +455,108 @@ function ApiKeysSection() {
           </DialogContent>
         </Dialog>
 
+        {/* Delete Confirmation */}
+        <AlertDialog
+          open={!!deleteConfirm}
+          onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Delete API Key &ldquo;{deleteConfirm?.name}&rdquo;?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. Any applications using this key will lose access
+                immediately.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  if (deleteConfirm) deleteMutation.mutate(deleteConfirm.id)
+                  setDeleteConfirm(null)
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {isLoading ? (
           <p className="text-muted-foreground">Loading...</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Key</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>Cost / Limit</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <AnimatePresence initial={false}>
-                {apiKeys.map((k) => (
-                  <motion.tr
-                    key={k.id}
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="border-b"
-                  >
-                    <TableCell className="font-medium">{k.name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <code className="text-xs">{maskKey(k.apiKey)}</code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => {
-                            navigator.clipboard.writeText(k.apiKey)
-                            toast.success("Copied!")
-                          }}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={k.enabled ? "default" : "secondary"}>
-                        {k.enabled ? "Active" : "Disabled"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatExpiry(k.expireAt)}</TableCell>
-                    <TableCell>
-                      ${k.totalCost.toFixed(4)}
-                      {k.maxCost > 0 && (
-                        <span className="text-muted-foreground"> / ${k.maxCost.toFixed(2)}</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(k)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (confirm("Delete this API key?")) {
-                              deleteMutation.mutate(k.id)
-                            }
-                          }}
-                        >
-                          <Trash2 className="text-destructive h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </motion.tr>
-                ))}
-              </AnimatePresence>
-            </TableBody>
-          </Table>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Key</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead>Cost / Limit</TableHead>
+                  <TableHead className="w-24" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <AnimatePresence initial={false}>
+                  {apiKeys.map((k) => (
+                    <motion.tr
+                      key={k.id}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="border-b"
+                    >
+                      <TableCell className="font-medium">{k.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <code className="text-xs">{maskKey(k.apiKey)}</code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            aria-label={`Copy API key ${k.name}`}
+                            onClick={() => {
+                              navigator.clipboard.writeText(k.apiKey)
+                              toast.success("Copied!")
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={k.enabled ? "default" : "secondary"}>
+                          {k.enabled ? "Active" : "Disabled"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatExpiry(k.expireAt)}</TableCell>
+                      <TableCell>
+                        ${k.totalCost.toFixed(4)}
+                        {k.maxCost > 0 && (
+                          <span className="text-muted-foreground"> / ${k.maxCost.toFixed(2)}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(k)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(k)}>
+                            <Trash2 className="text-destructive h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
+              </TableBody>
+            </Table>
+          </div>
         )}
       </CardContent>
     </Card>
