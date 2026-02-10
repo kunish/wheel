@@ -80,7 +80,29 @@ export function computeTimePresetFrom(presetSeconds: number, now?: number): numb
   return currentTime - presetSeconds
 }
 
-/** Build URL search params string from filter updates, omitting default/empty values */
+/** Sort an array of log entries by a numeric field */
+export function sortLogs<T>(logs: T[], field: (keyof T & string) | null, dir: "asc" | "desc"): T[] {
+  if (!field) return logs
+  return [...logs].sort((a, b) => {
+    const av = (a[field] as number) ?? 0
+    const bv = (b[field] as number) ?? 0
+    return dir === "asc" ? av - bv : bv - av
+  })
+}
+
+/** Count case-insensitive occurrences of needle in text */
+export function countMatches(text: string, needle: string): number {
+  if (!needle || !text) return 0
+  const lower = text.toLowerCase()
+  const n = needle.toLowerCase()
+  let count = 0
+  let idx = lower.indexOf(n)
+  while (idx !== -1) {
+    count++
+    idx = lower.indexOf(n, idx + n.length)
+  }
+  return count
+}
 export function buildFilterSearchParams(
   current: URLSearchParams,
   updates: Record<string, string | number | undefined | null>,

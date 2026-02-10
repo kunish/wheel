@@ -31,6 +31,12 @@ const listeners = new Set<WsListener>()
 function ensureConnection() {
   if (globalWs && globalWs.readyState <= WebSocket.OPEN) return
 
+  // Clear any pending reconnect to avoid duplicate connections
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+
   const ws = new WebSocket(getWsUrl())
   globalWs = ws
 
@@ -44,9 +50,12 @@ function ensureConnection() {
   }
 
   ws.onclose = () => {
-    globalWs = null
-    if (refCount > 0) {
-      reconnectTimer = setTimeout(ensureConnection, WS_RECONNECT_INTERVAL)
+    // Only nullify if this is still the current connection
+    if (globalWs === ws) {
+      globalWs = null
+      if (refCount > 0) {
+        reconnectTimer = setTimeout(ensureConnection, WS_RECONNECT_INTERVAL)
+      }
     }
   }
 

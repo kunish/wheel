@@ -1,4 +1,7 @@
 import type { Database, IKVStore, RunBackground } from "./types"
+import BetterSqlite3 from "better-sqlite3"
+import { drizzle } from "drizzle-orm/better-sqlite3"
+import * as schema from "../db/schema"
 
 /** In-memory KV store with TTL expiration */
 export class MemoryKV implements IKVStore {
@@ -31,12 +34,6 @@ export const nodeRunBackground: RunBackground = (promise) => {
 
 /** Create a Drizzle database instance from a better-sqlite3 file */
 export function createNodeDb(filepath: string): Database {
-  const BetterSqlite3 = require("better-sqlite3")
-
-  const { drizzle } = require("drizzle-orm/better-sqlite3")
-
-  const schema = require("../db/schema")
-
   const sqlite = new BetterSqlite3(filepath)
   sqlite.pragma("journal_mode = WAL")
   return drizzle(sqlite, { schema }) as Database

@@ -324,6 +324,11 @@ relayRoutes.post("/*", async (c) => {
           isAnthropicInbound && (channel.type as OutboundType) === OutboundType.Anthropic,
         )
 
+        // Capture upstream body for logging (only if it differs from original)
+        const originalBody = JSON.stringify(body)
+        const upstreamBodyForLog =
+          upstream.body !== originalBody ? upstream.body.slice(0, MAX_LOG_JSON) : null
+
         if (stream) {
           // 6.8 Streaming path
           let streamInfo: StreamCompleteInfo | null = null
@@ -401,6 +406,7 @@ relayRoutes.post("/*", async (c) => {
 
           // 6.11 Async logging + cost accumulation
           const logBody = truncateForLog(body)
+          const logUpstream = upstreamBodyForLog
           const channelKeyId = key.id
           const finalAttempts = [...attempts]
           c.get("runBackground")(
@@ -427,6 +433,7 @@ relayRoutes.post("/*", async (c) => {
                   useTime: Date.now() - startTime,
                   cost,
                   requestContent: logBody,
+                  upstreamContent: logUpstream,
                   responseContent: streamInfo?.responseContent || "[streaming]",
                   error: "",
                   attempts: finalAttempts,
@@ -510,6 +517,7 @@ relayRoutes.post("/*", async (c) => {
 
           // Async log + cost accumulation
           const logBody = truncateForLog(body)
+          const logUpstream = upstreamBodyForLog
           const respContent = JSON.stringify(result.response).slice(0, MAX_LOG_JSON)
           const channelKeyId = key.id
           const finalAttempts = [...attempts]
@@ -529,6 +537,7 @@ relayRoutes.post("/*", async (c) => {
                 useTime: Date.now() - startTime,
                 cost,
                 requestContent: logBody,
+                upstreamContent: logUpstream,
                 responseContent: respContent,
                 error: "",
                 attempts: finalAttempts,
@@ -621,6 +630,7 @@ relayRoutes.post("/*", async (c) => {
       useTime: Date.now() - startTime,
       cost: 0,
       requestContent: logBody,
+      upstreamContent: null,
       responseContent: "",
       error: lastError,
       attempts,
@@ -695,6 +705,7 @@ async function writeLog(
     useTime: number
     cost: number
     requestContent: string
+    upstreamContent: string | null
     responseContent: string
     error: string
     attempts: Array<{
@@ -722,6 +733,7 @@ async function writeLog(
     useTime: data.useTime,
     cost: data.cost,
     requestContent: data.requestContent,
+    upstreamContent: data.upstreamContent,
     responseContent: data.responseContent,
     error: data.error,
     attempts: data.attempts,

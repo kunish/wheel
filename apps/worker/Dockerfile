@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 node:22-alpine AS base
+FROM node:22-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
@@ -24,7 +24,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 appgroup && adduser --system --uid 1001 appuser
 
-# Copy built output and migrations
+# Copy built output, package.json, and migrations
+COPY --from=builder /app/apps/worker/package.json ./package.json
 COPY --from=builder /app/apps/worker/dist ./dist
 COPY --from=builder /app/apps/worker/drizzle ./drizzle
 

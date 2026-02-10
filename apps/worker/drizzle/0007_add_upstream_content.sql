@@ -1,0 +1,1 @@
+ALTER TABLE `relay_logs` ADD `upstream_content` text;

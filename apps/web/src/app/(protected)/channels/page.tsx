@@ -31,7 +31,8 @@ import {
   X,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
@@ -183,6 +184,15 @@ type DragData = DragDataModel | DragDataChannel | DragDataGroup
 
 export default function ChannelsAndGroupsPage() {
   const queryClient = useQueryClient()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Highlight support: read ?highlight=<channelId> from URL
+  const highlightChannelId = searchParams.get("highlight")
+    ? Number(searchParams.get("highlight"))
+    : null
+  const [highlightedId, setHighlightedId] = useState<number | null>(null)
+  const channelRefsRef = useRef<Map<number, HTMLDivElement>>(new Map())
 
   // Channel state
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
@@ -213,9 +223,43 @@ export default function ChannelsAndGroupsPage() {
     enabled: modelListOpen,
   })
 
-  const channels = (channelData?.data?.channels ?? []) as ChannelRecord[]
-  const groups = (groupData?.data?.groups ?? []) as GroupRecord[]
+  const channels = useMemo(
+    () => (channelData?.data?.channels ?? []) as ChannelRecord[],
+    [channelData],
+  )
+  const groups = useMemo(() => (groupData?.data?.groups ?? []) as GroupRecord[], [groupData])
   const models = (modelData?.data?.models ?? []) as string[]
+
+  // ─── Highlight scroll logic ───────────────────
+  const setChannelRef = useCallback((id: number, el: HTMLDivElement | null) => {
+    if (el) channelRefsRef.current.set(id, el)
+    else channelRefsRef.current.delete(id)
+  }, [])
+
+  useEffect(() => {
+    if (!highlightChannelId || channelsLoading || channels.length === 0) return
+    // Verify channel exists
+    if (!channels.some((ch) => ch.id === highlightChannelId)) return
+
+    // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- responding to URL param change
+    setHighlightedId(highlightChannelId)
+    requestAnimationFrame(() => {
+      const el = channelRefsRef.current.get(highlightChannelId)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+    })
+
+    // Clear highlight after 3s and remove query param
+    const timer = setTimeout(() => {
+      setHighlightedId(null)
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete("highlight")
+      const query = params.toString()
+      router.replace(query ? `?${query}` : window.location.pathname, { scroll: false })
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [highlightChannelId, channelsLoading, channels, searchParams, router])
 
   // ─── Channel mutations ─────────────────────────
 
@@ -479,6 +523,8 @@ export default function ChannelsAndGroupsPage() {
                       >
                         <DraggableChannel
                           channel={ch}
+                          highlighted={highlightedId === ch.id}
+                          refCallback={(el) => setChannelRef(ch.id, el)}
                           onEdit={() => openEditChannel(ch)}
                           onDelete={() => {
                             if (confirm("Delete this channel?")) {
@@ -628,11 +674,15 @@ function parseModels(model: string[]): string[] {
 
 function DraggableChannel({
   channel,
+  highlighted,
+  refCallback,
   onEdit,
   onDelete,
   onToggle,
 }: {
   channel: ChannelRecord
+  highlighted?: boolean
+  refCallback?: (el: HTMLDivElement | null) => void
   onEdit: () => void
   onDelete: () => void
   onToggle: (enabled: boolean) => void
@@ -645,8 +695,24 @@ function DraggableChannel({
   const modelNames = parseModels(channel.model)
   const [collapsed, setCollapsed] = useState(false)
 
+  // Auto-expand if highlighted while collapsed
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- auto-expand on highlight
+    if (highlighted && collapsed) setCollapsed(false)
+  }, [highlighted, collapsed])
+
   return (
-    <Card ref={setNodeRef} className={cn("transition-opacity", isDragging && "opacity-40")}>
+    <Card
+      ref={(node) => {
+        setNodeRef(node)
+        refCallback?.(node)
+      }}
+      className={cn(
+        "transition-all",
+        isDragging && "opacity-40",
+        highlighted && "ring-primary animate-pulse ring-2",
+      )}
+    >
       <CardHeader className="flex flex-row items-start justify-between space-y-0 p-3 pb-1">
         <div className="flex items-start gap-2">
           <button

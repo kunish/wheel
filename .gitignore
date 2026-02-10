@@ -6,3 +6,7 @@ dist
 .env
 .env.local
 .dev.vars
+data/
+*.db
+*.db-shm
+*.db-wal

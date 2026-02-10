@@ -365,7 +365,6 @@ function ActivitySection({
     queryKey: ["stats", "hourly", monthRange.start, monthRange.end],
     queryFn: () => getHourlyStats(monthRange.start, monthRange.end),
     enabled: view === "month" && !!monthRange.start,
-    refetchInterval: 10000,
   })
 
   const monthHourlyMap = useMemo(() => {
@@ -1139,31 +1138,26 @@ export default function DashboardPage() {
   const { data: totalData } = useQuery({
     queryKey: ["stats", "total"],
     queryFn: getTotalStats,
-    refetchInterval: 10000,
   })
 
   const { data: dailyData } = useQuery({
     queryKey: ["stats", "daily"],
     queryFn: getDailyStats,
-    refetchInterval: 3600000,
   })
 
   const { data: hourlyData } = useQuery({
     queryKey: ["stats", "hourly"],
     queryFn: () => getHourlyStats(),
-    refetchInterval: 10000,
   })
 
   const { data: channelData } = useQuery({
     queryKey: ["stats", "channel"],
     queryFn: getChannelStats,
-    refetchInterval: 30000,
   })
 
   const { data: modelData } = useQuery({
     queryKey: ["stats", "model"],
     queryFn: getModelStats,
-    refetchInterval: 30000,
   })
 
   return (

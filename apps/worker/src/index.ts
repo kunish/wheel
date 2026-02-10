@@ -4,6 +4,7 @@ import * as path from "node:path"
 import process from "node:process"
 import { serve } from "@hono/node-server"
 import { createNodeWebSocket } from "@hono/node-ws"
+import BetterSqlite3 from "better-sqlite3"
 /** Wheel API server — Hono + better-sqlite3 + in-memory KV */
 import { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -122,11 +123,10 @@ cron.schedule("0 */6 * * *", async () => {
 
 // ─── Migration helper ──────────────────────────
 function applyMigrations(dbPath: string) {
-  // eslint-disable-next-line ts/no-require-imports
-  const BetterSqlite3 = require("better-sqlite3")
   const sqlite = new BetterSqlite3(dbPath)
   sqlite.pragma("journal_mode = WAL")
 
+  // Support both ESM (tsx dev) and CommonJS (tsc build)
   const migrationsDir = path.resolve(__dirname, "../drizzle")
   if (!fs.existsSync(migrationsDir)) {
     console.warn("[migration] No migrations directory found, skipping")

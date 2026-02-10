@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest"
 import {
   buildFilterSearchParams,
   computeTimePresetFrom,
+  countMatches,
   getActiveFilterChips,
   hasActiveFilters,
   parseLogFilters,
+  sortLogs,
   TIME_PRESETS,
 } from "./log-filters"
 
@@ -383,5 +385,126 @@ describe("buildFilterSearchParams", () => {
     expect(result.has("model")).toBe(false)
     expect(result.get("status")).toBe("success")
     expect(result.get("q")).toBe("hello")
+  })
+})
+
+// ── 9.3: Client-side Column Sorting ─────────────────────────────
+
+describe("sortLogs", () => {
+  const logs = [
+    { id: 1, cost: 0.05, useTime: 300, inputTokens: 100, outputTokens: 50 },
+    { id: 2, cost: 0.01, useTime: 150, inputTokens: 500, outputTokens: 200 },
+    { id: 3, cost: 0.1, useTime: 500, inputTokens: 50, outputTokens: 10 },
+  ]
+
+  it("returns original array when field is null", () => {
+    const result = sortLogs(logs, null, "desc")
+    expect(result).toBe(logs)
+  })
+
+  it("sorts by cost descending", () => {
+    const result = sortLogs(logs, "cost", "desc")
+    expect(result.map((l) => l.id)).toEqual([3, 1, 2])
+  })
+
+  it("sorts by cost ascending", () => {
+    const result = sortLogs(logs, "cost", "asc")
+    expect(result.map((l) => l.id)).toEqual([2, 1, 3])
+  })
+
+  it("sorts by useTime descending", () => {
+    const result = sortLogs(logs, "useTime", "desc")
+    expect(result.map((l) => l.id)).toEqual([3, 1, 2])
+  })
+
+  it("sorts by useTime ascending", () => {
+    const result = sortLogs(logs, "useTime", "asc")
+    expect(result.map((l) => l.id)).toEqual([2, 1, 3])
+  })
+
+  it("sorts by inputTokens descending", () => {
+    const result = sortLogs(logs, "inputTokens", "desc")
+    expect(result.map((l) => l.id)).toEqual([2, 1, 3])
+  })
+
+  it("sorts by outputTokens ascending", () => {
+    const result = sortLogs(logs, "outputTokens", "asc")
+    expect(result.map((l) => l.id)).toEqual([3, 1, 2])
+  })
+
+  it("does not mutate the original array", () => {
+    const original = [...logs]
+    sortLogs(logs, "cost", "asc")
+    expect(logs).toEqual(original)
+  })
+
+  it("handles empty array", () => {
+    expect(sortLogs([], "cost", "desc")).toEqual([])
+  })
+
+  it("handles single element", () => {
+    const single = [{ id: 1, cost: 0.05 }]
+    expect(sortLogs(single, "cost", "desc")).toEqual([{ id: 1, cost: 0.05 }])
+  })
+
+  it("handles equal values with stable-ish sort", () => {
+    const equalLogs = [
+      { id: 1, cost: 0.05 },
+      { id: 2, cost: 0.05 },
+      { id: 3, cost: 0.05 },
+    ]
+    const result = sortLogs(equalLogs, "cost", "desc")
+    expect(result).toHaveLength(3)
+    expect(result.every((l) => l.cost === 0.05)).toBe(true)
+  })
+})
+
+// ── 9.6: In-content Search / Match Counting ─────────────────────
+
+describe("countMatches", () => {
+  it("counts single match", () => {
+    expect(countMatches("hello world", "world")).toBe(1)
+  })
+
+  it("counts multiple matches", () => {
+    expect(countMatches("the cat sat on the mat", "the")).toBe(2)
+  })
+
+  it("is case insensitive", () => {
+    expect(countMatches("Hello HELLO hello", "hello")).toBe(3)
+  })
+
+  it("returns 0 for no matches", () => {
+    expect(countMatches("hello world", "xyz")).toBe(0)
+  })
+
+  it("returns 0 for empty needle", () => {
+    expect(countMatches("hello world", "")).toBe(0)
+  })
+
+  it("returns 0 for empty text", () => {
+    expect(countMatches("", "hello")).toBe(0)
+  })
+
+  it("returns 0 for both empty", () => {
+    expect(countMatches("", "")).toBe(0)
+  })
+
+  it("handles overlapping patterns without double-counting", () => {
+    expect(countMatches("aaa", "aa")).toBe(1)
+  })
+
+  it("counts matches in JSON-like content", () => {
+    const json = '{"model":"gpt-4o","content":"Hello gpt-4o user"}'
+    expect(countMatches(json, "gpt-4o")).toBe(2)
+  })
+
+  it("handles special regex characters as literal text", () => {
+    expect(countMatches("price is $10.00 or $20.00", "$10.00")).toBe(1)
+  })
+
+  it("handles multiline content", () => {
+    const text = "line1 error\nline2 ok\nline3 error"
+    expect(countMatches(text, "error")).toBe(2)
   })
 })

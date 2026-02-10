@@ -89,6 +89,7 @@ export const relayLogs = sqliteTable("relay_logs", {
   useTime: integer("use_time").notNull().default(0),
   cost: real("cost").notNull().default(0),
   requestContent: text("request_content").notNull().default(""),
+  upstreamContent: text("upstream_content"),
   responseContent: text("response_content").notNull().default(""),
   error: text("error").notNull().default(""),
   attempts: text("attempts", { mode: "json" }).notNull().default("[]").$type<

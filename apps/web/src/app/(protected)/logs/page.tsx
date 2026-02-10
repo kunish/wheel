@@ -1,11 +1,14 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import JsonView from "@uiw/react-json-view"
 import { githubDarkTheme } from "@uiw/react-json-view/githubDark"
 import { githubLightTheme } from "@uiw/react-json-view/githubLight"
 import {
+  ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -20,6 +23,7 @@ import {
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { useTheme } from "next-themes"
+import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useCallback, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
@@ -48,9 +52,10 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useModelMeta } from "@/hooks/use-model-meta"
 import { useWsEvent } from "@/hooks/use-stats-ws"
 import { listChannels as apiListChannels, getLog, listLogs, replayLog } from "@/lib/api"
-import { buildFilterSearchParams, parseLogFilters } from "./log-filters"
+import { buildFilterSearchParams, countMatches, parseLogFilters, sortLogs } from "./log-filters"
 
 interface LogEntry {
   id: number
@@ -81,6 +86,7 @@ interface LogDetail {
   ftut: number
   useTime: number
   requestContent: string
+  upstreamContent: string | null
   responseContent: string
   error: string
   attempts: Array<{
@@ -96,6 +102,9 @@ interface LogDetail {
   }>
   totalAttempts: number
 }
+
+type SortField = "inputTokens" | "outputTokens" | "useTime" | "cost"
+type SortDir = "asc" | "desc"
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
@@ -134,14 +143,14 @@ export default function LogsPage() {
   const [keywordInput, setKeywordInput] = useState(keyword)
 
   // Sync local input state when URL changes externally (e.g., deep links from dashboard)
-  const prevModel = useRef(model)
-  const prevKeyword = useRef(keyword)
-  if (prevModel.current !== model) {
-    prevModel.current = model
+  const prevModelRef = useRef(model)
+  const prevKeywordRef = useRef(keyword)
+  if (prevModelRef.current !== model) {
+    prevModelRef.current = model
     setModelInput(model)
   }
-  if (prevKeyword.current !== keyword) {
-    prevKeyword.current = keyword
+  if (prevKeywordRef.current !== keyword) {
+    prevKeywordRef.current = keyword
     setKeywordInput(keyword)
   }
 
@@ -169,6 +178,8 @@ export default function LogsPage() {
 
   const [detailId, setDetailId] = useState<number | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>("desc")
 
   const hasFilters =
     model !== "" ||
@@ -290,10 +301,23 @@ export default function LogsPage() {
     queryClient.invalidateQueries({ queryKey: ["logs"] })
   }, [queryClient, router, pathname])
 
-  const logs = (data?.data?.logs ?? []) as LogEntry[]
+  const logs = useMemo(() => (data?.data?.logs ?? []) as LogEntry[], [data])
   const total = data?.data?.total ?? 0
   const totalPages = Math.ceil(total / pageSize)
   const detail = (detailData?.data ?? null) as LogDetail | null
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortField(field)
+      setSortDir("desc")
+    }
+  }
+
+  const sortedLogs = useMemo(() => {
+    return sortLogs(logs, sortField, sortDir)
+  }, [logs, sortField, sortDir])
 
   // Pagination controls (reused top and bottom)
   const paginationControls = (
@@ -512,18 +536,50 @@ export default function LogsPage() {
                   <TableHead>Time</TableHead>
                   <TableHead>Model</TableHead>
                   <TableHead>Channel</TableHead>
-                  <TableHead className="text-right">Input</TableHead>
-                  <TableHead className="text-right">Output</TableHead>
+                  <SortableHead
+                    field="inputTokens"
+                    sortField={sortField}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    className="text-right"
+                  >
+                    Input
+                  </SortableHead>
+                  <SortableHead
+                    field="outputTokens"
+                    sortField={sortField}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    className="text-right"
+                  >
+                    Output
+                  </SortableHead>
                   <TableHead className="text-right">TTFT</TableHead>
-                  <TableHead className="text-right">Latency</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
+                  <SortableHead
+                    field="useTime"
+                    sortField={sortField}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    className="text-right"
+                  >
+                    Latency
+                  </SortableHead>
+                  <SortableHead
+                    field="cost"
+                    sortField={sortField}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    className="text-right"
+                  >
+                    Cost
+                  </SortableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <AnimatePresence initial={false}>
-                  {logs.map((log) => (
+                  {sortedLogs.map((log) => (
                     <motion.tr
                       key={log.id}
                       initial={{ opacity: 0, y: -10 }}
@@ -539,7 +595,24 @@ export default function LogsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
-                          <ModelBadge modelId={log.requestModelName} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              {log.channelId ? (
+                                <Link
+                                  href={`/channels?highlight=${log.channelId}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="hover:underline"
+                                >
+                                  <ModelBadge modelId={log.requestModelName} />
+                                </Link>
+                              ) : (
+                                <ModelBadge modelId={log.requestModelName} />
+                              )}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="font-mono text-xs">{log.requestModelName}</p>
+                            </TooltipContent>
+                          </Tooltip>
                           {log.actualModelName && log.actualModelName !== log.requestModelName && (
                             <span className="text-muted-foreground max-w-[150px] truncate text-[10px]">
                               {log.actualModelName}
@@ -549,7 +622,17 @@ export default function LogsPage() {
                       </TableCell>
                       <TableCell className="text-xs">
                         <div className="flex items-center gap-1">
-                          {log.channelName || "—"}
+                          {log.channelId ? (
+                            <Link
+                              href={`/channels?highlight=${log.channelId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="hover:underline"
+                            >
+                              {log.channelName || "—"}
+                            </Link>
+                          ) : (
+                            <span>{log.channelName || "—"}</span>
+                          )}
                           {log.totalAttempts > 1 && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -655,10 +738,10 @@ export default function LogsPage() {
                   variant="outline"
                   size="icon"
                   className="h-7 w-7"
-                  disabled={!detailId || logs.findIndex((l) => l.id === detailId) <= 0}
+                  disabled={!detailId || sortedLogs.findIndex((l) => l.id === detailId) <= 0}
                   onClick={() => {
-                    const idx = logs.findIndex((l) => l.id === detailId)
-                    if (idx > 0) setDetailId(logs[idx - 1].id)
+                    const idx = sortedLogs.findIndex((l) => l.id === detailId)
+                    if (idx > 0) setDetailId(sortedLogs[idx - 1].id)
                   }}
                 >
                   <ChevronUp className="h-4 w-4" />
@@ -668,11 +751,12 @@ export default function LogsPage() {
                   size="icon"
                   className="h-7 w-7"
                   disabled={
-                    !detailId || logs.findIndex((l) => l.id === detailId) >= logs.length - 1
+                    !detailId ||
+                    sortedLogs.findIndex((l) => l.id === detailId) >= sortedLogs.length - 1
                   }
                   onClick={() => {
-                    const idx = logs.findIndex((l) => l.id === detailId)
-                    if (idx >= 0 && idx < logs.length - 1) setDetailId(logs[idx + 1].id)
+                    const idx = sortedLogs.findIndex((l) => l.id === detailId)
+                    if (idx >= 0 && idx < sortedLogs.length - 1) setDetailId(sortedLogs[idx + 1].id)
                   }}
                 >
                   <ChevronDown className="h-4 w-4" />
@@ -688,6 +772,42 @@ export default function LogsPage() {
         </SheetContent>
       </Sheet>
     </div>
+  )
+}
+
+function SortableHead({
+  field,
+  sortField,
+  sortDir,
+  onToggle,
+  children,
+  className,
+}: {
+  field: SortField
+  sortField: SortField | null
+  sortDir: SortDir
+  onToggle: (field: SortField) => void
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <TableHead
+      className={`cursor-pointer select-none ${className ?? ""}`}
+      onClick={() => onToggle(field)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {sortField === field ? (
+          sortDir === "asc" ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          )
+        ) : (
+          <ArrowUpDown className="text-muted-foreground/50 h-3 w-3" />
+        )}
+      </span>
+    </TableHead>
   )
 }
 
@@ -780,11 +900,8 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
         <TabsTrigger value="overview" className="flex-1">
           Overview
         </TabsTrigger>
-        <TabsTrigger value="request" className="flex-1">
-          Request
-        </TabsTrigger>
-        <TabsTrigger value="response" className="flex-1">
-          Response
+        <TabsTrigger value="messages" className="flex-1">
+          Messages
         </TabsTrigger>
         {detail.attempts && detail.attempts.length > 0 && (
           <TabsTrigger value="retry" className="flex-1">
@@ -802,16 +919,27 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
       <TabsContent value="overview" className="mt-4">
         <div className="flex flex-col gap-4 text-sm">
           {/* Model Flow */}
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <ModelBadge modelId={detail.requestModelName} />
-            <span className="text-muted-foreground">via</span>
-            <span className="font-medium">{detail.channelName || "—"}</span>
-            {detail.actualModelName && detail.actualModelName !== detail.requestModelName && (
-              <>
-                <span className="text-muted-foreground">&rarr;</span>
-                <ModelBadge modelId={detail.actualModelName} />
-              </>
-            )}
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <ModelFlowNode modelId={detail.requestModelName} channelId={detail.channelId} />
+              <span className="text-muted-foreground">via</span>
+              {detail.channelId ? (
+                <Link
+                  href={`/channels?highlight=${detail.channelId}`}
+                  className="font-medium hover:underline"
+                >
+                  {detail.channelName || "—"}
+                </Link>
+              ) : (
+                <span className="font-medium">{detail.channelName || "—"}</span>
+              )}
+              {detail.actualModelName && detail.actualModelName !== detail.requestModelName && (
+                <>
+                  <span className="text-muted-foreground">&rarr;</span>
+                  <ModelFlowNode modelId={detail.actualModelName} channelId={detail.channelId} />
+                </>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
@@ -893,22 +1021,34 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
         </div>
       </TabsContent>
 
-      {/* Request Tab */}
-      <TabsContent value="request" className="mt-4">
-        <CodeBlock label="Request Content" content={detail.requestContent} />
-      </TabsContent>
-
-      {/* Response Tab */}
-      <TabsContent value="response" className="mt-4">
-        <CodeBlock label="Response Content" content={detail.responseContent} />
+      {/* Messages Tab (merged Request + Response) */}
+      <TabsContent value="messages" className="mt-4">
+        <div className="flex flex-col gap-4">
+          <CollapsibleCodeBlock
+            label="Request (Original)"
+            content={detail.requestContent}
+            defaultOpen
+          />
+          {detail.upstreamContent && (
+            <CollapsibleCodeBlock
+              label="Request (Upstream)"
+              content={detail.upstreamContent}
+              defaultOpen={false}
+            />
+          )}
+          <CollapsibleCodeBlock label="Response" content={detail.responseContent} defaultOpen />
+        </div>
       </TabsContent>
 
       {/* Retry Timeline Tab */}
       {detail.attempts && detail.attempts.length > 0 && (
         <TabsContent value="retry" className="mt-4">
           <div className="border-border relative flex flex-col gap-3 border-l-2 pl-4">
-            {detail.attempts.map((attempt, i) => (
-              <div key={`${i}-${attempt.attemptNum}`} className="relative">
+            {detail.attempts.map((attempt) => (
+              <div
+                key={`${attempt.channelId}-${attempt.modelName}-${attempt.attemptNum}`}
+                className="relative"
+              >
                 <div
                   className={`border-background absolute top-1 -left-[calc(0.5rem+1px)] h-3 w-3 rounded-full border-2 ${
                     attempt.status === "success"
@@ -973,8 +1113,92 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
   )
 }
 
+function ModelFlowNode({ modelId, channelId }: { modelId: string; channelId: number }) {
+  const meta = useModelMeta(modelId)
+  const displayName = meta?.name ?? modelId
+  const showActualId = displayName !== modelId
+
+  return (
+    <div className="flex flex-col">
+      {channelId ? (
+        <Link href={`/channels?highlight=${channelId}`} className="hover:underline">
+          <ModelBadge modelId={modelId} />
+        </Link>
+      ) : (
+        <ModelBadge modelId={modelId} />
+      )}
+      {showActualId && (
+        <button
+          className="text-muted-foreground hover:text-foreground max-w-[200px] truncate text-left font-mono text-xs transition-colors"
+          onClick={() => {
+            navigator.clipboard.writeText(modelId)
+            toast.success("Copied!")
+          }}
+          title={modelId}
+        >
+          {modelId}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function CollapsibleCodeBlock({
+  label,
+  content,
+  defaultOpen = true,
+}: {
+  label: string
+  content: string
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="rounded-md border">
+      <button
+        type="button"
+        className="bg-muted/50 flex w-full items-center justify-between px-3 py-2"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="text-xs font-medium">{label}</span>
+        <ChevronDown
+          className={`text-muted-foreground h-4 w-4 transition-transform ${open ? "" : "-rotate-90"}`}
+        />
+      </button>
+      {open && (
+        <div className="p-3 pt-2">
+          <CodeBlock label="" content={content} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HighlightedText({ text, search }: { text: string; search: string }) {
+  if (!search) return <>{text}</>
+  const parts: React.ReactNode[] = []
+  const lower = text.toLowerCase()
+  const needle = search.toLowerCase()
+  let last = 0
+  let idx = lower.indexOf(needle, last)
+  while (idx !== -1) {
+    if (idx > last) parts.push(text.slice(last, idx))
+    parts.push(
+      <mark key={idx} className="rounded-sm bg-yellow-300/80 px-0.5 dark:bg-yellow-500/40">
+        {text.slice(idx, idx + needle.length)}
+      </mark>,
+    )
+    last = idx + needle.length
+    idx = lower.indexOf(needle, last)
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return <>{parts}</>
+}
+
 function CodeBlock({ label, content }: { label: string; content: string }) {
   const [copied, setCopied] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
   const { resolvedTheme } = useTheme()
 
   const displayContent = content?.trim() || ""
@@ -1011,6 +1235,15 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
     }
   }, [displayContent])
 
+  const plainText = useMemo(() => {
+    if (!displayContent) return ""
+    return parsed.isJson ? JSON.stringify(parsed.data, null, 2) : displayContent
+  }, [displayContent, parsed])
+
+  const matchCount = useMemo(() => {
+    return countMatches(plainText, searchTerm)
+  }, [plainText, searchTerm])
+
   if (!displayContent) {
     return (
       <div className="flex flex-col gap-2">
@@ -1020,8 +1253,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
   }
 
   const handleCopy = () => {
-    const text = parsed.isJson ? JSON.stringify(parsed.data, null, 2) : displayContent
-    navigator.clipboard.writeText(text)
+    navigator.clipboard.writeText(plainText)
     setCopied(true)
     toast.success("Copied!")
     setTimeout(() => setCopied(false), 2000)
@@ -1036,7 +1268,37 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
           <span className="text-xs">{copied ? "Copied" : "Copy"}</span>
         </Button>
       </div>
-      {parsed.isJson ? (
+      <div className="relative">
+        <Search className="text-muted-foreground absolute top-2 left-2.5 h-3.5 w-3.5" />
+        <Input
+          placeholder="Search in content..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="h-8 pr-16 pl-8 text-xs"
+        />
+        {searchTerm && (
+          <div className="absolute top-1.5 right-2 flex items-center gap-1">
+            <span className="text-muted-foreground text-xs">
+              {matchCount} {matchCount === 1 ? "match" : "matches"}
+            </span>
+            <button onClick={() => setSearchTerm("")}>
+              <X className="text-muted-foreground h-3 w-3" />
+            </button>
+          </div>
+        )}
+      </div>
+      {searchTerm ? (
+        <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-md border p-3">
+          <pre
+            className="text-xs break-words whitespace-pre-wrap"
+            style={{
+              fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+            }}
+          >
+            <HighlightedText text={plainText} search={searchTerm} />
+          </pre>
+        </div>
+      ) : parsed.isJson ? (
         <div className="flex flex-col gap-2">
           {parsed.truncated && (
             <p className="text-muted-foreground text-xs italic">

@@ -50,6 +50,13 @@
       "when": 1770662569999,
       "tag": "0006_great_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1770748800000,
+      "tag": "0007_add_upstream_content",
+      "breakpoints": true
     }
   ]
 }
