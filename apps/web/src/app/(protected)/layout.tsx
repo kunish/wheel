@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { AppLayout } from "@/components/app-layout"
 import { useStatsWebSocket } from "@/hooks/use-stats-ws"
 import { useAuthStore } from "@/lib/store/auth"
@@ -14,15 +14,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const queryClient = useQueryClient()
   useStatsWebSocket(queryClient)
 
-  const [ready, setReady] = useState(false)
+  const ready = isAuthenticated()
 
   useEffect(() => {
-    if (!isAuthenticated()) {
+    if (!ready) {
       router.replace("/login")
-    } else {
-      setReady(true)
     }
-  }, [isAuthenticated, router])
+  }, [ready, router])
 
   if (!ready)
     return (

@@ -262,9 +262,11 @@ function ActivitySection({
   const [activeTooltip, setActiveTooltip] = useState<HeatmapTooltip | null>(null)
   const router = useRouter()
 
+  // Client-only: avoid SSR hydration mismatch by computing Date in useSyncExternalStore-like pattern
   const [today, setToday] = useState<Date | null>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- intentional: `new Date()` must run client-side only to avoid SSR hydration mismatch
     setToday(new Date())
   }, [])
 
@@ -497,6 +499,7 @@ function ActivitySection({
             </div>
             <div className="grid grid-cols-7 gap-[3px]">
               {monthDays.map((day, i) => {
+                // eslint-disable-next-line react/no-array-index-key -- padding cells for calendar alignment have no stable identity
                 if (!day) return <div key={`pad-${i}`} />
                 if (day.isFuture)
                   return (

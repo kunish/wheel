@@ -51,7 +51,7 @@ const app = new Hono<AppEnv>()
 // WebSocket setup for Node.js
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
 
-// CORS
+// TODO: For production, configure specific origins: cors({ origin: 'https://your-domain.com' })
 app.use("/*", cors())
 
 // Inject platform-agnostic bindings
