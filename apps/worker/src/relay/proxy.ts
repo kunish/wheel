@@ -406,8 +406,21 @@ function processAnthropicPassthrough(line: string, state: StreamingState, startT
     }
 
     if (ev.type === "message_delta") {
-      const usage = ev.usage as { input_tokens?: number; output_tokens?: number } | undefined
-      if (usage) {
+      const usage = ev.usage as
+        | {
+            input_tokens?: number
+            output_tokens?: number
+            cache_read_input_tokens?: number
+            cache_creation_input_tokens?: number
+          }
+        | undefined
+      if (
+        usage &&
+        ((usage.input_tokens ?? 0) > 0 ||
+          (usage.output_tokens ?? 0) > 0 ||
+          (usage.cache_read_input_tokens ?? 0) > 0 ||
+          (usage.cache_creation_input_tokens ?? 0) > 0)
+      ) {
         state.inputTokens = usage.input_tokens ?? state.inputTokens
         state.outputTokens = usage.output_tokens ?? state.outputTokens
       }
@@ -639,9 +652,25 @@ function createAnthropicSSEConverter() {
 
         case "message_delta": {
           const delta = event.delta as { stop_reason?: string }
-          const usage = event.usage as { input_tokens?: number; output_tokens?: number }
+          const usage = event.usage as
+            | {
+                input_tokens?: number
+                output_tokens?: number
+                cache_read_input_tokens?: number
+                cache_creation_input_tokens?: number
+              }
+            | undefined
           const stopReason = delta?.stop_reason
           const finishReason = stopReason === "tool_use" ? "tool_calls" : mapStopReason(stopReason)
+          // Only forward usage if at least one token count is non-zero (stricter validation)
+          const validUsage =
+            usage &&
+            ((usage.input_tokens ?? 0) > 0 ||
+              (usage.output_tokens ?? 0) > 0 ||
+              (usage.cache_read_input_tokens ?? 0) > 0 ||
+              (usage.cache_creation_input_tokens ?? 0) > 0)
+              ? usage
+              : undefined
           return {
             done: false,
             data: {
@@ -651,7 +680,7 @@ function createAnthropicSSEConverter() {
               model: msgModel,
               choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
             },
-            usage,
+            usage: validUsage,
           }
         }
 

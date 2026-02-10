@@ -20,6 +20,7 @@ groupRoutes.post("/create", async (c) => {
       name: body.name,
       mode: body.mode,
       firstTokenTimeOut: body.firstTokenTimeOut ?? 0,
+      sessionKeepTime: body.sessionKeepTime ?? 0,
     },
     body.items ?? [],
   )

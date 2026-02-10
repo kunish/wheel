@@ -4,12 +4,21 @@ import { Hono } from "hono"
 import { getAllSettings, updateSettings } from "../db/dal/settings"
 import * as schema from "../db/schema"
 
+const DEFAULT_SETTINGS: Record<string, string> = {
+  log_retention_days: "30",
+  circuit_breaker_threshold: "5",
+  circuit_breaker_cooldown: "60",
+  circuit_breaker_max_cooldown: "600",
+}
+
 const settingRoutes = new Hono<AppEnv>()
 
 settingRoutes.get("/", async (c) => {
   const db = c.env.DB
   const settings = await getAllSettings(db)
-  return c.json({ success: true, data: { settings } })
+  // Merge defaults for keys that don't exist yet
+  const merged = { ...DEFAULT_SETTINGS, ...settings }
+  return c.json({ success: true, data: { settings: merged } })
 })
 
 settingRoutes.post("/update", async (c) => {

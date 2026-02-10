@@ -1,55 +1,23 @@
 /**
  * In-memory WebSocket connection hub.
  *
- * In Cloudflare Workers (workerd), WebSocket.send() only works within the
- * request context that created the WebSocket — calling ws.send() from a
- * different HTTP request handler silently fails. To work around this, we
- * use a message queue: broadcast() pushes to the queue, and each WebSocket
- * connection drains the queue via setInterval in its own context.
- *
- * Note: This is per-isolate. For production with multiple isolates,
- * consider Durable Objects.
+ * Broadcasts messages directly to all connected clients. No setInterval
+ * polling — workerd treats active intervals as "pending work" which
+ * prevents the request context from completing, causing "code had hung".
  */
 
-const messageQueue: string[] = []
-let messageSeq = 0
-
-interface ClientState {
-  ws: WebSocket
-  lastSeq: number
-  interval: ReturnType<typeof setInterval>
-}
-
-const clients = new Map<WebSocket, ClientState>()
-
-const POLL_INTERVAL = 200 // ms
+const clients = new Set<WebSocket>()
 
 export function addClient(ws: WebSocket) {
-  const state: ClientState = {
-    ws,
-    lastSeq: messageSeq,
-    interval: setInterval(() => {
-      // Drain any pending messages
-      while (state.lastSeq < messageSeq) {
-        const idx = state.lastSeq - (messageSeq - messageQueue.length)
-        if (idx >= 0 && idx < messageQueue.length) {
-          try {
-            ws.send(messageQueue[idx])
-          } catch {
-            cleanup()
-            return
-          }
-        }
-        state.lastSeq++
-      }
-    }, POLL_INTERVAL),
-  }
-
-  clients.set(ws, state)
+  clients.add(ws)
 
   function cleanup() {
-    clearInterval(state.interval)
     clients.delete(ws)
+    try {
+      ws.close()
+    } catch {
+      // already closed
+    }
   }
 
   ws.addEventListener("close", cleanup)
@@ -57,19 +25,18 @@ export function addClient(ws: WebSocket) {
 }
 
 export function broadcast(event: string, data?: Record<string, unknown>) {
+  if (clients.size === 0) return
   const message = JSON.stringify({ event, data, ts: Date.now() })
-  messageQueue.push(message)
-  messageSeq++
-
-  // Keep queue bounded — trim old messages that all clients have consumed
-  if (messageQueue.length > 1000) {
-    let minConsumed = messageSeq
-    for (const state of clients.values()) {
-      if (state.lastSeq < minConsumed) minConsumed = state.lastSeq
-    }
-    const trimCount = minConsumed - (messageSeq - messageQueue.length)
-    if (trimCount > 0) {
-      messageQueue.splice(0, trimCount)
+  for (const ws of clients) {
+    try {
+      ws.send(message)
+    } catch {
+      clients.delete(ws)
+      try {
+        ws.close()
+      } catch {
+        // already closed
+      }
     }
   }
 }

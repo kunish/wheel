@@ -43,6 +43,13 @@
       "when": 1770618573521,
       "tag": "0005_left_korath",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1770662569999,
+      "tag": "0006_great_synch",
+      "breakpoints": true
     }
   ]
 }

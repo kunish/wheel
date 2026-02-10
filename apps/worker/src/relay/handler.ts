@@ -1,4 +1,4 @@
-import type { AnthropicModel, GroupMode, OpenAIModel } from "@wheel/core"
+import type { AnthropicModel, AttemptStatus, GroupMode, OpenAIModel } from "@wheel/core"
 import type { AppBindings, Database, IKVStore, RunBackground } from "../runtime/types"
 import type { StreamCompleteInfo } from "./proxy"
 import { OutboundType } from "@wheel/core"
@@ -12,11 +12,13 @@ import { apiKeyAuth, checkModelAccess } from "../middleware/apikey"
 import { broadcast } from "../ws/hub"
 import { buildUpstreamRequest, convertToAnthropicResponse } from "./adapter"
 import { selectChannelOrder } from "./balancer"
+import { getCooldownConfig, isTripped, recordFailure, recordSuccess } from "./circuit"
 import { selectKey } from "./key-selector"
 import { matchGroup } from "./matcher"
 import { detectRequestType, extractModel } from "./parser"
 import { calculateCost } from "./pricing"
 import { ProxyError, proxyNonStreaming, proxyStreaming } from "./proxy"
+import { getSticky, setSticky } from "./session"
 
 interface Env {
   Bindings: AppBindings
@@ -201,53 +203,110 @@ relayRoutes.post("/*", async (c) => {
   const channelMap = new Map(allChannels.map((ch) => [ch.id, ch]))
 
   // Attempt tracking
-  const attempts: Array<{
+  interface AttemptRecord {
     channelId: number
+    channelKeyId?: number
     channelName: string
     modelName: string
-    round: number
     attemptNum: number
-    success: boolean
-    error: string
+    status: AttemptStatus
     duration: number
-  }> = []
+    sticky?: boolean
+    msg?: string
+  }
+  const attempts: AttemptRecord[] = []
+  let attemptCount = 0
 
   let lastError = ""
   let _lastStatusCode = 0
-  let successChannelId = 0
-  let successChannelName = ""
-  let successRound = 0
   let lastRetryAfterMs = 0
   let rateLimited = false
 
   // First token timeout: 0 means disabled (aligned with Go upstream)
   const firstTokenTimeout = group.firstTokenTimeOut
 
+  // Session stickiness: reorder candidates if sticky channel exists
+  const sessionKeepTime = group.sessionKeepTime ?? 0
+  const apiKeyId = c.get("apiKeyId")
+
+  if (sessionKeepTime > 0) {
+    const sticky = getSticky(apiKeyId, model, sessionKeepTime)
+    if (sticky) {
+      const stickyIdx = orderedItems.findIndex((it) => it.channelId === sticky.channelId)
+      if (stickyIdx > 0) {
+        const [stickyItem] = orderedItems.splice(stickyIdx, 1)
+        orderedItems.unshift(stickyItem)
+      }
+    }
+  }
+
+  // Circuit breaker config (read once per request)
+  const cbConfig = await getCooldownConfig(db)
+
   // 6.10 Retry logic: MAX_RETRY_ROUNDS rounds × N channels
   for (let round = 1; round <= MAX_RETRY_ROUNDS; round++) {
     for (let idx = 0; idx < orderedItems.length; idx++) {
       const item = orderedItems[idx]
       const channel = channelMap.get(item.channelId)
-      if (!channel || !channel.enabled) continue
+      if (!channel || !channel.enabled) {
+        attemptCount++
+        attempts.push({
+          channelId: item.channelId,
+          channelName: channel?.name ?? "unknown",
+          modelName: item.modelName || model,
+          attemptNum: attemptCount,
+          status: "skipped",
+          duration: 0,
+          msg: !channel ? "channel not found" : "channel disabled",
+        })
+        continue
+      }
 
       // 6.4 Select key
       const key = selectKey(channel.keys)
-      if (!key) continue
+      if (!key) {
+        attemptCount++
+        attempts.push({
+          channelId: channel.id,
+          channelName: channel.name,
+          modelName: item.modelName || model,
+          attemptNum: attemptCount,
+          status: "skipped",
+          duration: 0,
+          msg: "no available key",
+        })
+        continue
+      }
 
       // Determine the actual model name
       const targetModel = item.modelName || model
+      const isSticky =
+        sessionKeepTime > 0 && idx === 0 && getSticky(apiKeyId, model, sessionKeepTime) !== null
+
+      // Check circuit breaker
+      const cb = isTripped(channel.id, key.id, targetModel, cbConfig.baseSec, cbConfig.maxSec)
+      if (cb.tripped) {
+        attemptCount++
+        attempts.push({
+          channelId: channel.id,
+          channelKeyId: key.id,
+          channelName: channel.name,
+          modelName: targetModel,
+          attemptNum: attemptCount,
+          status: "circuit_break",
+          duration: 0,
+          sticky: isSticky,
+          msg:
+            cb.remainingMs > 0
+              ? `circuit breaker tripped, remaining cooldown: ${Math.ceil(cb.remainingMs / 1000)}s`
+              : "circuit breaker tripped",
+        })
+        continue
+      }
 
       const attemptStart = Date.now()
-      const attemptRecord = {
-        channelId: channel.id,
-        channelName: channel.name,
-        modelName: targetModel,
-        round,
-        attemptNum: idx + 1,
-        success: false,
-        error: "",
-        duration: 0,
-      }
+      attemptCount++
+      const currentAttemptNum = attemptCount
 
       try {
         // 6.5 Build upstream request
@@ -269,8 +328,6 @@ relayRoutes.post("/*", async (c) => {
           // 6.8 Streaming path
           let streamInfo: StreamCompleteInfo | null = null
 
-          // When inbound is Anthropic-native and channel is also Anthropic,
-          // use passthrough mode to avoid unnecessary double conversion
           const isAnthropicPassthrough =
             isAnthropicInbound && (channel.type as OutboundType) === OutboundType.Anthropic
 
@@ -290,13 +347,25 @@ relayRoutes.post("/*", async (c) => {
           try {
             await firstChunkPromise
           } catch (firstChunkErr) {
-            // Stream failed before first token — retry with next channel
             const errMsg =
               firstChunkErr instanceof Error ? firstChunkErr.message : String(firstChunkErr)
-            attemptRecord.error = errMsg
-            attemptRecord.duration = Date.now() - attemptStart
-            attempts.push(attemptRecord)
+            attempts.push({
+              channelId: channel.id,
+              channelKeyId: key.id,
+              channelName: channel.name,
+              modelName: targetModel,
+              attemptNum: currentAttemptNum,
+              status: "failed",
+              duration: Date.now() - attemptStart,
+              sticky: isSticky,
+              msg: errMsg,
+            })
             lastError = errMsg
+
+            // Record circuit breaker failure
+            c.get("runBackground")(
+              recordFailure(channel.id, key.id, targetModel, db).catch(() => {}),
+            )
 
             if (firstChunkErr instanceof ProxyError && firstChunkErr.statusCode === 429) {
               _lastStatusCode = 429
@@ -308,12 +377,22 @@ relayRoutes.post("/*", async (c) => {
           }
 
           // First token received — commit response to client
-          attemptRecord.success = true
-          attemptRecord.duration = Date.now() - attemptStart
-          attempts.push(attemptRecord)
-          successChannelId = channel.id
-          successChannelName = channel.name
-          successRound = round
+          attempts.push({
+            channelId: channel.id,
+            channelKeyId: key.id,
+            channelName: channel.name,
+            modelName: targetModel,
+            attemptNum: currentAttemptNum,
+            status: "success",
+            duration: Date.now() - attemptStart,
+            sticky: isSticky,
+          })
+
+          // Record circuit breaker success + session stickiness
+          recordSuccess(channel.id, key.id, targetModel)
+          if (sessionKeepTime > 0) {
+            setSticky(apiKeyId, model, channel.id, key.id)
+          }
 
           // Clear 429 status on success
           if (key.statusCode === 429) {
@@ -322,8 +401,8 @@ relayRoutes.post("/*", async (c) => {
 
           // 6.11 Async logging + cost accumulation
           const logBody = truncateForLog(body)
-          const apiKeyId = c.get("apiKeyId")
           const channelKeyId = key.id
+          const finalAttempts = [...attempts]
           c.get("runBackground")(
             fetchPromise
               .then(async () => {
@@ -350,8 +429,7 @@ relayRoutes.post("/*", async (c) => {
                   requestContent: logBody,
                   responseContent: streamInfo?.responseContent || "[streaming]",
                   error: "",
-                  attempts,
-                  successRound: round,
+                  attempts: finalAttempts,
                 })
                 if (cost > 0) {
                   await Promise.all([
@@ -382,10 +460,6 @@ relayRoutes.post("/*", async (c) => {
               .catch(() => {}),
           )
 
-          // Return streaming response, converting format if needed
-          // - Anthropic passthrough: already in Anthropic SSE format, no conversion needed
-          // - Anthropic inbound + non-Anthropic channel: convert OpenAI SSE → Anthropic SSE
-          // - Non-Anthropic inbound: return OpenAI SSE as-is
           const outputStream = isAnthropicPassthrough
             ? readable
             : isAnthropicInbound
@@ -412,12 +486,22 @@ relayRoutes.post("/*", async (c) => {
             isAnthropicPassthrough,
           )
 
-          attemptRecord.success = true
-          attemptRecord.duration = Date.now() - attemptStart
-          attempts.push(attemptRecord)
-          successChannelId = channel.id
-          successChannelName = channel.name
-          successRound = round
+          attempts.push({
+            channelId: channel.id,
+            channelKeyId: key.id,
+            channelName: channel.name,
+            modelName: targetModel,
+            attemptNum: currentAttemptNum,
+            status: "success",
+            duration: Date.now() - attemptStart,
+            sticky: isSticky,
+          })
+
+          // Record circuit breaker success + session stickiness
+          recordSuccess(channel.id, key.id, targetModel)
+          if (sessionKeepTime > 0) {
+            setSticky(apiKeyId, model, channel.id, key.id)
+          }
 
           // Clear 429 status on success
           if (key.statusCode === 429) {
@@ -427,8 +511,8 @@ relayRoutes.post("/*", async (c) => {
           // Async log + cost accumulation
           const logBody = truncateForLog(body)
           const respContent = JSON.stringify(result.response).slice(0, MAX_LOG_JSON)
-          const apiKeyId = c.get("apiKeyId")
           const channelKeyId = key.id
+          const finalAttempts = [...attempts]
           c.get("runBackground")(
             calculateCost(targetModel, result.inputTokens, result.outputTokens, db, {
               cacheReadTokens: result.cacheReadTokens,
@@ -447,8 +531,7 @@ relayRoutes.post("/*", async (c) => {
                 requestContent: logBody,
                 responseContent: respContent,
                 error: "",
-                attempts,
-                successRound: round,
+                attempts: finalAttempts,
               })
               if (cost > 0) {
                 await Promise.all([
@@ -479,7 +562,6 @@ relayRoutes.post("/*", async (c) => {
           )
 
           if (isAnthropicPassthrough) {
-            // Already in Anthropic format, return as-is
             return c.json(result.response)
           }
           if (isAnthropicInbound) {
@@ -489,10 +571,21 @@ relayRoutes.post("/*", async (c) => {
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
-        attemptRecord.error = errMsg
-        attemptRecord.duration = Date.now() - attemptStart
-        attempts.push(attemptRecord)
+        attempts.push({
+          channelId: channel.id,
+          channelKeyId: key.id,
+          channelName: channel.name,
+          modelName: targetModel,
+          attemptNum: currentAttemptNum,
+          status: "failed",
+          duration: Date.now() - attemptStart,
+          sticky: isSticky,
+          msg: errMsg,
+        })
         lastError = errMsg
+
+        // Record circuit breaker failure
+        c.get("runBackground")(recordFailure(channel.id, key.id, targetModel, db).catch(() => {}))
 
         if (err instanceof ProxyError) {
           _lastStatusCode = err.statusCode
@@ -508,17 +601,20 @@ relayRoutes.post("/*", async (c) => {
     }
   }
 
-  // All retries exhausted — determine appropriate status code
+  // All retries exhausted
   const exhaustedStatus = rateLimited ? 429 : 502
   const retryAfterSecs = rateLimited ? Math.ceil(lastRetryAfterMs / 1000) || 1 : 0
+
+  // Determine channel from last attempt
+  const lastAttempt = attempts.findLast((a) => a.status === "failed")
 
   const logBody = truncateForLog(body)
   c.get("runBackground")(
     writeLog(db, {
       model,
       actualModel: model,
-      channelId: successChannelId,
-      channelName: successChannelName,
+      channelId: lastAttempt?.channelId ?? 0,
+      channelName: lastAttempt?.channelName ?? "",
       inputTokens: 0,
       outputTokens: 0,
       ftut: 0,
@@ -528,7 +624,6 @@ relayRoutes.post("/*", async (c) => {
       responseContent: "",
       error: lastError,
       attempts,
-      successRound,
     }).then(async (logRow) => {
       broadcast("stats-updated")
       broadcast("log-created", {
@@ -604,15 +699,15 @@ async function writeLog(
     error: string
     attempts: Array<{
       channelId: number
+      channelKeyId?: number
       channelName: string
       modelName: string
-      round: number
       attemptNum: number
-      success: boolean
-      error: string
+      status: AttemptStatus
       duration: number
+      sticky?: boolean
+      msg?: string
     }>
-    successRound: number
   },
 ) {
   return createLog(db, {
@@ -631,7 +726,6 @@ async function writeLog(
     error: data.error,
     attempts: data.attempts,
     totalAttempts: data.attempts.length,
-    successfulRound: data.successRound,
   })
 }
 

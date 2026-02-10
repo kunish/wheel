@@ -1,3 +1,4 @@
+import type { AttemptStatus } from "@wheel/core"
 import { sql } from "drizzle-orm"
 import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
 
@@ -47,6 +48,7 @@ export const groups = sqliteTable("groups", {
   name: text("name").notNull(),
   mode: integer("mode").notNull().default(1),
   firstTokenTimeOut: integer("first_token_time_out").notNull().default(0),
+  sessionKeepTime: integer("session_keep_time").notNull().default(0),
   order: integer("order").notNull().default(0),
 })
 
@@ -92,17 +94,17 @@ export const relayLogs = sqliteTable("relay_logs", {
   attempts: text("attempts", { mode: "json" }).notNull().default("[]").$type<
     {
       channelId: number
+      channelKeyId?: number
       channelName: string
       modelName: string
-      round: number
       attemptNum: number
-      success: boolean
-      error: string
+      status: AttemptStatus
       duration: number
+      sticky?: boolean
+      msg?: string
     }[]
   >(),
   totalAttempts: integer("total_attempts").notNull().default(0),
-  successfulRound: integer("successful_round").notNull().default(0),
 })
 
 export const settings = sqliteTable("settings", {

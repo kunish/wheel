@@ -113,6 +113,7 @@ interface GroupRecord {
   name: string
   mode: number
   firstTokenTimeOut: number
+  sessionKeepTime: number
   order: number
   items: GroupItemForm[]
 }
@@ -134,6 +135,7 @@ interface GroupFormData {
   name: string
   mode: number
   firstTokenTimeOut: number
+  sessionKeepTime: number
   items: GroupItemForm[]
 }
 
@@ -152,6 +154,7 @@ const EMPTY_GROUP_FORM: GroupFormData = {
   name: "",
   mode: 1,
   firstTokenTimeOut: 0,
+  sessionKeepTime: 0,
   items: [],
 }
 
@@ -268,6 +271,7 @@ export default function ChannelsAndGroupsPage() {
         name: data.group.name,
         mode: data.group.mode,
         firstTokenTimeOut: data.group.firstTokenTimeOut,
+        sessionKeepTime: data.group.sessionKeepTime ?? 0,
         items: merged,
       })
     },
@@ -422,6 +426,7 @@ export default function ChannelsAndGroupsPage() {
       name: g.name,
       mode: g.mode,
       firstTokenTimeOut: g.firstTokenTimeOut,
+      sessionKeepTime: g.sessionKeepTime ?? 0,
       items: g.items ?? [],
     })
     setGroupDialogOpen(true)
@@ -1453,6 +1458,21 @@ function GroupDialog({
                   firstTokenTimeOut: Number(e.target.value),
                 })
               }
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label>Session Keep Time (seconds)</Label>
+            <Input
+              type="number"
+              value={form.sessionKeepTime}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  sessionKeepTime: Number(e.target.value),
+                })
+              }
+              placeholder="0 = disabled"
             />
           </div>
 

@@ -8,6 +8,7 @@ interface GroupWithItems {
   name: string
   mode: number
   firstTokenTimeOut: number
+  sessionKeepTime: number
   items: {
     id: number
     groupId: number

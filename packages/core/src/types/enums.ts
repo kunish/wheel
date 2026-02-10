@@ -19,3 +19,5 @@ export enum AutoGroupType {
   Fuzzy = 1,
   Exact = 2,
 }
+
+export type AttemptStatus = "success" | "failed" | "circuit_break" | "skipped"

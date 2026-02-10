@@ -1,4 +1,4 @@
-import type { AutoGroupType, GroupMode, OutboundType } from "./enums.js"
+import type { AttemptStatus, AutoGroupType, GroupMode, OutboundType } from "./enums.js"
 
 export interface OpenAIModel {
   id: string
@@ -66,6 +66,7 @@ export interface Group {
   name: string
   mode: GroupMode
   firstTokenTimeOut: number
+  sessionKeepTime: number
   items: GroupItem[]
 }
 
@@ -81,13 +82,14 @@ export interface APIKey {
 
 export interface ChannelAttempt {
   channelId: number
+  channelKeyId?: number
   channelName: string
   modelName: string
-  round: number
   attemptNum: number
-  success: boolean
-  error: string
+  status: AttemptStatus
   duration: number
+  sticky?: boolean
+  msg?: string
 }
 
 export interface RelayLog {
@@ -107,7 +109,6 @@ export interface RelayLog {
   error: string
   attempts: ChannelAttempt[]
   totalAttempts: number
-  successfulRound: number
 }
 
 export interface User {

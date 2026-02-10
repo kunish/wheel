@@ -68,6 +68,25 @@ const EMPTY_FORM: ApiKeyFormData = {
 
 // ───────────── System Config Section ─────────────
 
+const SETTING_LABELS: Record<string, { label: string; description?: string }> = {
+  log_retention_days: {
+    label: "Log Retention Days",
+    description: "Days to keep relay logs (0 = unlimited)",
+  },
+  circuit_breaker_threshold: {
+    label: "Circuit Breaker Threshold",
+    description: "Consecutive failures before tripping (default: 5)",
+  },
+  circuit_breaker_cooldown: {
+    label: "Circuit Breaker Cooldown (s)",
+    description: "Base cooldown in seconds (default: 60)",
+  },
+  circuit_breaker_max_cooldown: {
+    label: "Circuit Breaker Max Cooldown (s)",
+    description: "Maximum cooldown in seconds after exponential backoff (default: 600)",
+  },
+}
+
 function SystemConfigSection() {
   const queryClient = useQueryClient()
   const { data, isLoading } = useQuery({
@@ -113,7 +132,10 @@ function SystemConfigSection() {
         >
           {Object.entries(formData).map(([key, value]) => (
             <div key={key} className="flex flex-col gap-2">
-              <Label>{key}</Label>
+              <Label>{SETTING_LABELS[key]?.label ?? key}</Label>
+              {SETTING_LABELS[key]?.description && (
+                <p className="text-muted-foreground text-xs">{SETTING_LABELS[key].description}</p>
+              )}
               <Input
                 value={value}
                 onChange={(e) => setFormData((prev) => ({ ...prev, [key]: e.target.value }))}

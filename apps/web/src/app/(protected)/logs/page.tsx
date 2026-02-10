@@ -21,7 +21,7 @@ import {
 import { AnimatePresence, motion } from "motion/react"
 import { useTheme } from "next-themes"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { toast } from "sonner"
@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { getWsUrl } from "@/hooks/use-stats-ws"
+import { useWsEvent } from "@/hooks/use-stats-ws"
 import { listChannels as apiListChannels, getLog, listLogs, replayLog } from "@/lib/api"
 import { buildFilterSearchParams, parseLogFilters } from "./log-filters"
 
@@ -85,16 +85,16 @@ interface LogDetail {
   error: string
   attempts: Array<{
     channelId: number
+    channelKeyId?: number
     channelName: string
     modelName: string
-    round: number
     attemptNum: number
-    success: boolean
-    error: string
+    status: "success" | "failed" | "circuit_break" | "skipped"
     duration: number
+    sticky?: boolean
+    msg?: string
   }>
   totalAttempts: number
-  successfulRound: number
 }
 
 function formatDuration(ms: number): string {
@@ -206,71 +206,8 @@ export default function LogsPage() {
   })
   const channels = (channelsData?.data?.channels ?? []) as Array<{ id: number; name: string }>
 
-  // Listen for log-created WebSocket events
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    function connect() {
-      const wsUrl = getWsUrl()
-
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
-
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data)
-          if (msg.event === "log-created" && msg.data?.log) {
-            if (isFirstPage && !hasFilters) {
-              // Prepend new log to cache
-              queryClient.setQueryData(
-                ["logs", page, pageSize, model, status, channelId, keyword, startTime, endTime],
-                (
-                  old:
-                    | { data?: { logs: LogEntry[]; total: number; page: number; pageSize: number } }
-                    | undefined,
-                ) => {
-                  if (!old?.data) return old
-                  const newLogs = [msg.data.log as LogEntry, ...old.data.logs].slice(0, pageSize)
-                  return {
-                    ...old,
-                    data: {
-                      ...old.data,
-                      logs: newLogs,
-                      total: old.data.total + 1,
-                    },
-                  }
-                },
-              )
-            } else {
-              // Show "new logs available" indicator
-              setPendingCount((c) => c + 1)
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      ws.onclose = () => {
-        wsRef.current = null
-        reconnectTimerRef.current = setTimeout(connect, 3000)
-      }
-
-      ws.onerror = () => {
-        ws.close()
-      }
-    }
-
-    connect()
-
-    return () => {
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-      wsRef.current?.close()
-      wsRef.current = null
-    }
-  }, [
-    queryClient,
+  // Listen for log-created WebSocket events (reuses global WS connection)
+  const filtersRef = useRef({
     page,
     pageSize,
     model,
@@ -281,7 +218,57 @@ export default function LogsPage() {
     endTime,
     isFirstPage,
     hasFilters,
-  ])
+  })
+  filtersRef.current = {
+    page,
+    pageSize,
+    model,
+    status,
+    channelId,
+    keyword,
+    startTime,
+    endTime,
+    isFirstPage,
+    hasFilters,
+  }
+
+  useWsEvent("log-created", (data) => {
+    if (!data?.log) return
+    const f = filtersRef.current
+    if (f.isFirstPage && !f.hasFilters) {
+      queryClient.setQueryData(
+        [
+          "logs",
+          f.page,
+          f.pageSize,
+          f.model,
+          f.status,
+          f.channelId,
+          f.keyword,
+          f.startTime,
+          f.endTime,
+        ],
+        (
+          old:
+            | { data?: { logs: LogEntry[]; total: number; page: number; pageSize: number } }
+            | undefined,
+        ) => {
+          if (!old?.data) return old
+          const newLogs = [data.log as LogEntry, ...old.data.logs].slice(0, f.pageSize)
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              logs: newLogs,
+              total: old.data.total + 1,
+            },
+          }
+        },
+      )
+    } else {
+      setPendingCount((c) => c + 1)
+    }
+  })
 
   // Reset pending count when navigating to page 1 or clearing filters
   const prevFirstPageRef = useRef(isFirstPage)
@@ -857,10 +844,7 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
               }
             />
             {detail.totalAttempts > 1 && (
-              <CopyableField
-                label="Attempts"
-                value={`${detail.totalAttempts} (round ${detail.successfulRound})`}
-              />
+              <CopyableField label="Attempts" value={`${detail.totalAttempts}`} />
             )}
           </div>
 
@@ -923,23 +907,42 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
       {detail.attempts && detail.attempts.length > 0 && (
         <TabsContent value="retry" className="mt-4">
           <div className="border-border relative flex flex-col gap-3 border-l-2 pl-4">
-            {detail.attempts.map((attempt) => (
-              <div key={`${attempt.round}-${attempt.attemptNum}`} className="relative">
+            {detail.attempts.map((attempt, i) => (
+              <div key={`${i}-${attempt.attemptNum}`} className="relative">
                 <div
                   className={`border-background absolute top-1 -left-[calc(0.5rem+1px)] h-3 w-3 rounded-full border-2 ${
-                    attempt.success ? "bg-green-500" : "bg-destructive"
+                    attempt.status === "success"
+                      ? "bg-green-500"
+                      : attempt.status === "circuit_break" || attempt.status === "skipped"
+                        ? "bg-yellow-500"
+                        : "bg-destructive"
                   }`}
                 />
                 <div className="ml-2 rounded-md border p-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs">
-                      R{attempt.round}.{attempt.attemptNum}
-                    </span>
+                    <span className="font-mono text-xs">#{attempt.attemptNum}</span>
+                    {attempt.sticky && (
+                      <Badge variant="outline" className="text-xs">
+                        Sticky
+                      </Badge>
+                    )}
                     <Badge
-                      variant={attempt.success ? "default" : "destructive"}
+                      variant={
+                        attempt.status === "success"
+                          ? "default"
+                          : attempt.status === "circuit_break" || attempt.status === "skipped"
+                            ? "secondary"
+                            : "destructive"
+                      }
                       className="text-xs"
                     >
-                      {attempt.success ? "OK" : "FAIL"}
+                      {attempt.status === "success"
+                        ? "OK"
+                        : attempt.status === "circuit_break"
+                          ? "CIRCUIT BREAK"
+                          : attempt.status === "skipped"
+                            ? "SKIPPED"
+                            : "FAIL"}
                     </Badge>
                     <span className="text-muted-foreground text-xs">
                       {formatDuration(attempt.duration)}
@@ -950,8 +953,8 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
                     <span className="text-muted-foreground">Model:</span>{" "}
                     <ModelBadge modelId={attempt.modelName} />
                   </p>
-                  {attempt.error && (
-                    <p className="text-destructive mt-1 text-xs break-all">{attempt.error}</p>
+                  {attempt.msg && (
+                    <p className="text-destructive mt-1 text-xs break-all">{attempt.msg}</p>
                   )}
                 </div>
               </div>
