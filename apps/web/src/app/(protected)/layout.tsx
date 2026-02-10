@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { AppLayout } from "@/components/app-layout"
 import { useStatsWebSocket } from "@/hooks/use-stats-ws"
 import { useAuthStore } from "@/lib/store/auth"
@@ -14,7 +14,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const queryClient = useQueryClient()
   useStatsWebSocket(queryClient)
 
-  const ready = isAuthenticated()
+  // Derive auth state synchronously from the store (no useState needed)
+  const ready = useMemo(() => isAuthenticated(), [isAuthenticated])
 
   useEffect(() => {
     if (!ready) {

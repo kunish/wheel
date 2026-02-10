@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
 import {
@@ -208,25 +208,15 @@ export default function PricesPage() {
     onError: () => toast.error("Failed to sync prices"),
   })
 
-  const models = (data?.data?.models ?? []) as ModelPrice[]
-  const filtered = models.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()))
+  const models = useMemo(() => (data?.data?.models ?? []) as ModelPrice[], [data])
+  const filtered = useMemo(
+    () => models.filter((m) => m.name.toLowerCase().includes(search.toLowerCase())),
+    [models, search],
+  )
 
-  function formatDate(dateStr: string) {
-    if (!dateStr) return "-"
-    const d = new Date(dateStr)
-    return d.toLocaleString("en-US", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
-  function formatLastSync(dateStr: string | undefined) {
+  function formatDateTime(dateStr: string | undefined): string | null {
     if (!dateStr) return null
-    const d = new Date(dateStr)
-    return d.toLocaleString("en-US", {
+    return new Date(dateStr).toLocaleString("en-US", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -244,7 +234,7 @@ export default function PricesPage() {
     setEditingPrice(m)
   }
 
-  const lastSync = formatLastSync(updateTimeData?.data?.lastUpdateTime ?? undefined)
+  const lastSync = formatDateTime(updateTimeData?.data?.lastUpdateTime ?? undefined)
 
   return (
     <div className="flex flex-col gap-6">
@@ -408,7 +398,7 @@ export default function PricesPage() {
                               {m.source}
                             </Badge>
                           </TableCell>
-                          <TableCell>{formatDate(m.updatedAt)}</TableCell>
+                          <TableCell>{formatDateTime(m.updatedAt) ?? "-"}</TableCell>
                           <TableCell>
                             <div className="flex gap-1">
                               <Button

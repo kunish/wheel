@@ -11,30 +11,34 @@ import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from "@f
 import { useQuery } from "@tanstack/react-query"
 import {
   Activity,
+  AlertCircle,
   ArrowDownToLine,
   ArrowUpFromLine,
   Bot,
   ChartColumnBig,
   Clock,
   DollarSign,
+  Loader2,
   MessageSquare,
+  RefreshCw,
   TrendingUp,
 } from "lucide-react"
-import { LayoutGroup, motion } from "motion/react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-} from "recharts"
 import { AnimatedNumber } from "@/components/animated-number"
+import {
+  LazyArea,
+  LazyAreaChart,
+  LazyCartesianGrid,
+  LazyRechartsTooltip,
+  LazyResponsiveContainer,
+  LazyXAxis,
+  LazyYAxis,
+} from "@/components/lazy-recharts"
 import { ModelBadge } from "@/components/model-badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -45,28 +49,33 @@ import {
   getModelStats,
   getTotalStats,
 } from "@/lib/api"
+import { formatCount, formatMoney, formatTime } from "@/lib/format"
 
-// ───────────── formatting helpers ─────────────
+// ───────────── Dynamic imports — lazy-load motion (only used in RankSection) ─────────────
 
-function formatCount(n: number): { value: string; unit: string; raw: number } {
-  if (n >= 1_000_000_000) return { value: (n / 1_000_000_000).toFixed(1), unit: "B", raw: n }
-  if (n >= 1_000_000) return { value: (n / 1_000_000).toFixed(1), unit: "M", raw: n }
-  if (n >= 1_000) return { value: (n / 1_000).toFixed(1), unit: "K", raw: n }
-  return { value: String(Math.round(n)), unit: "", raw: n }
-}
+const LazyLayoutGroup = dynamic(
+  () => import("motion/react").then((mod) => ({ default: mod.LayoutGroup })),
+  { ssr: false },
+)
 
-function formatMoney(n: number): { value: string; unit: string; raw: number } {
-  if (n >= 1_000_000) return { value: `$${(n / 1_000_000).toFixed(2)}`, unit: "M", raw: n }
-  if (n >= 1_000) return { value: `$${(n / 1_000).toFixed(2)}`, unit: "K", raw: n }
-  if (n >= 1) return { value: `$${n.toFixed(2)}`, unit: "", raw: n }
-  return { value: `$${n.toFixed(4)}`, unit: "", raw: n }
-}
+const LazyMotionDiv = dynamic(
+  () => import("motion/react").then((mod) => ({ default: mod.motion.div })),
+  { ssr: false },
+)
 
-function formatTime(ms: number): { value: string; unit: string; raw: number } {
-  if (ms >= 3600000) return { value: (ms / 3600000).toFixed(1), unit: "h", raw: ms }
-  if (ms >= 60000) return { value: (ms / 60000).toFixed(1), unit: "m", raw: ms }
-  if (ms >= 1000) return { value: (ms / 1000).toFixed(1), unit: "s", raw: ms }
-  return { value: String(Math.round(ms)), unit: "ms", raw: ms }
+// ───────────── Inline Error ─────────────
+
+function InlineError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Card className="flex flex-col items-center justify-center gap-3 py-10">
+      <AlertCircle className="text-destructive h-8 w-8" />
+      <p className="text-muted-foreground text-sm">{message}</p>
+      <Button variant="outline" size="sm" className="gap-1.5" onClick={onRetry}>
+        <RefreshCw className="h-3.5 w-3.5" />
+        Retry
+      </Button>
+    </Card>
+  )
 }
 
 // ───────────── Total (4 stat cards) ─────────────
@@ -249,6 +258,15 @@ function buildDayData(d: Date, map: Map<string, StatsDaily>, today: Date): DayDa
     isFuture: d > today,
     daily: map.get(dateStr) ?? null,
   }
+}
+
+/** Format a Date to YYYYMMDD string */
+function toDateStr(d: Date): string {
+  return (
+    d.getFullYear().toString() +
+    (d.getMonth() + 1).toString().padStart(2, "0") +
+    d.getDate().toString().padStart(2, "0")
+  )
 }
 
 function ActivitySection({
@@ -472,7 +490,12 @@ function ActivitySection({
       </div>
 
       <div className="px-4 pb-2">
-        {view === "year" && (
+        {!today && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+          </div>
+        )}
+        {today && view === "year" && (
           <div
             className="grid gap-[3px]"
             style={{
@@ -485,7 +508,7 @@ function ActivitySection({
           </div>
         )}
 
-        {view === "month" && (
+        {today && view === "month" && (
           <div>
             <div className="mb-1 grid grid-cols-7 gap-[3px]">
               {WEEKDAY_LABELS.map((label) => (
@@ -525,9 +548,77 @@ function ActivitySection({
                 )
               })}
             </div>
-            {selectedMonthDay && !selectedMonthDay.isFuture && (
-              <div className="mt-3 flex gap-1">
-                <div className="flex flex-col gap-[3px]">
+            {selectedMonthDay &&
+              !selectedMonthDay.isFuture &&
+              (() => {
+                const now = new Date()
+                const nowStr = toDateStr(now)
+                const nowHour = now.getHours()
+                return (
+                  <div className="mt-3 flex gap-1">
+                    <div className="flex flex-col gap-[3px]">
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <div
+                          key={h}
+                          className="text-muted-foreground flex h-[14px] items-center text-[10px] leading-none tabular-nums"
+                        >
+                          {h % 3 === 0 ? `${h.toString().padStart(2, "0")}` : ""}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-muted-foreground mb-0.5 text-[10px] font-medium">
+                        {selectedMonthDay.displayDate}
+                      </div>
+                      <div className="flex flex-col gap-[3px]">
+                        {Array.from({ length: 24 }, (_, h) => {
+                          const isFutureHour = selectedMonthDay.dateStr === nowStr && h > nowHour
+                          if (isFutureHour) {
+                            return (
+                              <div
+                                key={h}
+                                className="border-border/30 h-[14px] rounded-sm border border-dashed"
+                              />
+                            )
+                          }
+                          const hourly = monthHourlyMap.get(selectedMonthDay.dateStr)?.get(h)
+                          const hCount =
+                            (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+                          const hLevel = getActivityLevel(hCount)
+                          return (
+                            <div
+                              key={h}
+                              className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-110"
+                              style={{ backgroundColor: LEVEL_COLORS[hLevel] }}
+                              onClick={() => navigateToHour(selectedMonthDay.dateStr, h)}
+                              onMouseEnter={(e) =>
+                                handleMouseEnter(e, {
+                                  label: `${selectedMonthDay.displayDate} ${h.toString().padStart(2, "0")}:00`,
+                                  metrics: hourly ?? null,
+                                })
+                              }
+                              onMouseLeave={handleMouseLeave}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+          </div>
+        )}
+
+        {today &&
+          view === "week" &&
+          (() => {
+            const now = new Date()
+            const nowStr = toDateStr(now)
+            const nowHour = now.getHours()
+            return (
+              <div className="flex gap-1">
+                {/* Hour labels */}
+                <div className="flex flex-col gap-[3px] pt-[18px]">
                   {Array.from({ length: 24 }, (_, h) => (
                     <div
                       key={h}
@@ -537,190 +628,124 @@ function ActivitySection({
                     </div>
                   ))}
                 </div>
+                {/* Grid */}
                 <div className="flex-1">
-                  <div className="text-muted-foreground mb-0.5 text-[10px] font-medium">
-                    {selectedMonthDay.displayDate}
+                  <div className="mb-0.5 grid grid-cols-7 gap-[3px]">
+                    {weekDays.map((day) => (
+                      <div
+                        key={day.dateStr}
+                        className="text-muted-foreground text-center text-[10px] font-medium"
+                      >
+                        {
+                          WEEKDAY_LABELS[
+                            new Date(
+                              Number.parseInt(day.dateStr.slice(0, 4)),
+                              Number.parseInt(day.dateStr.slice(4, 6)) - 1,
+                              Number.parseInt(day.dateStr.slice(6, 8)),
+                            ).getDay()
+                          ]
+                        }
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex flex-col gap-[3px]">
-                    {Array.from({ length: 24 }, (_, h) => {
-                      const now = new Date()
-                      const todayStr = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, "0")}${now.getDate().toString().padStart(2, "0")}`
-                      const isFutureHour =
-                        selectedMonthDay.dateStr === todayStr && h > now.getHours()
-                      if (isFutureHour) {
+                  <div
+                    className="grid gap-[3px]"
+                    style={{
+                      gridTemplateColumns: "repeat(7, 1fr)",
+                      gridTemplateRows: "repeat(24, 1fr)",
+                    }}
+                  >
+                    {Array.from({ length: 24 }, (_, h) =>
+                      weekDays.map((day) => {
+                        const isFutureHour = day.isFuture || (day.dateStr === nowStr && h > nowHour)
+                        if (isFutureHour) {
+                          return (
+                            <div
+                              key={`${day.dateStr}-${h}`}
+                              className="border-border/30 h-[14px] rounded-sm border border-dashed"
+                            />
+                          )
+                        }
+                        const hourly = weekHourlyMap.get(day.dateStr)?.get(h)
+                        const count = (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+                        const level = getActivityLevel(count)
                         return (
                           <div
-                            key={h}
-                            className="border-border/30 h-[14px] rounded-sm border border-dashed"
+                            key={`${day.dateStr}-${h}`}
+                            className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-125"
+                            style={{ backgroundColor: LEVEL_COLORS[level] }}
+                            onClick={() => navigateToHour(day.dateStr, h)}
+                            onMouseEnter={(e) =>
+                              handleMouseEnter(e, {
+                                label: `${day.displayDate} ${h.toString().padStart(2, "0")}:00`,
+                                metrics: hourly ?? null,
+                              })
+                            }
+                            onMouseLeave={handleMouseLeave}
                           />
                         )
-                      }
-                      const hourly = monthHourlyMap.get(selectedMonthDay.dateStr)?.get(h)
-                      const hCount = (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
-                      const hLevel = getActivityLevel(hCount)
-                      return (
-                        <div
-                          key={h}
-                          className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-110"
-                          style={{ backgroundColor: LEVEL_COLORS[hLevel] }}
-                          onClick={() => navigateToHour(selectedMonthDay.dateStr, h)}
-                          onMouseEnter={(e) =>
-                            handleMouseEnter(e, {
-                              label: `${selectedMonthDay.displayDate} ${h.toString().padStart(2, "0")}:00`,
-                              metrics: hourly ?? null,
-                            })
-                          }
-                          onMouseLeave={handleMouseLeave}
-                        />
-                      )
-                    })}
+                      }),
+                    )}
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-        )}
-
-        {view === "week" && (
-          <div className="flex gap-1">
-            {/* Hour labels */}
-            <div className="flex flex-col gap-[3px] pt-[18px]">
-              {Array.from({ length: 24 }, (_, h) => (
-                <div
-                  key={h}
-                  className="text-muted-foreground flex h-[14px] items-center text-[10px] leading-none tabular-nums"
-                >
-                  {h % 3 === 0 ? `${h.toString().padStart(2, "0")}` : ""}
-                </div>
-              ))}
-            </div>
-            {/* Grid */}
-            <div className="flex-1">
-              <div className="mb-0.5 grid grid-cols-7 gap-[3px]">
-                {weekDays.map((day) => (
-                  <div
-                    key={day.dateStr}
-                    className="text-muted-foreground text-center text-[10px] font-medium"
-                  >
-                    {
-                      WEEKDAY_LABELS[
-                        new Date(
-                          Number.parseInt(day.dateStr.slice(0, 4)),
-                          Number.parseInt(day.dateStr.slice(4, 6)) - 1,
-                          Number.parseInt(day.dateStr.slice(6, 8)),
-                        ).getDay()
-                      ]
-                    }
-                  </div>
-                ))}
-              </div>
-              <div
-                className="grid gap-[3px]"
-                style={{
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gridTemplateRows: "repeat(24, 1fr)",
-                }}
-              >
-                {Array.from({ length: 24 }, (_, h) =>
-                  weekDays.map((day) => {
-                    const now = new Date()
-                    const isFutureHour =
-                      day.isFuture ||
-                      (day.dateStr ===
-                        `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, "0")}${now.getDate().toString().padStart(2, "0")}` &&
-                        h > now.getHours())
-                    if (isFutureHour) {
-                      return (
-                        <div
-                          key={`${day.dateStr}-${h}`}
-                          className="border-border/30 h-[14px] rounded-sm border border-dashed"
-                        />
-                      )
-                    }
-                    const hourly = weekHourlyMap.get(day.dateStr)?.get(h)
-                    const count = (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
-                    const level = getActivityLevel(count)
-                    return (
-                      <div
-                        key={`${day.dateStr}-${h}`}
-                        className="h-[14px] cursor-pointer rounded-sm transition-transform hover:scale-125"
-                        style={{ backgroundColor: LEVEL_COLORS[level] }}
-                        onClick={() => navigateToHour(day.dateStr, h)}
-                        onMouseEnter={(e) =>
-                          handleMouseEnter(e, {
-                            label: `${day.displayDate} ${h.toString().padStart(2, "0")}:00`,
-                            metrics: hourly ?? null,
-                          })
-                        }
-                        onMouseLeave={handleMouseLeave}
-                      />
-                    )
-                  }),
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+            )
+          })()}
       </div>
 
       {/* Legend */}
       <div className="text-muted-foreground flex items-center justify-end gap-1 px-4 pb-3 text-xs">
         <span>Less</span>
-        {LEVEL_COLORS.map((c) => (
-          <div key={c} className="h-3 w-3 rounded-sm" style={{ backgroundColor: c }} />
+        {LEVEL_COLORS.map((c, i) => (
+          // eslint-disable-next-line react/no-array-index-key -- static array of CSS color strings used as legend; index is stable
+          <div key={i} className="h-3 w-3 rounded-sm" style={{ backgroundColor: c }} />
         ))}
         <span>More</span>
       </div>
 
       {/* Floating tooltip */}
-      {activeTooltip && (
-        <FloatingPortal>
-          <div
-            ref={refs.setFloating}
-            style={floatingStyles}
-            className="bg-popover text-popover-foreground border-border pointer-events-none z-50 w-fit min-w-max rounded-md border-2 p-3 text-sm shadow-[2px_2px_0_var(--nb-shadow)]"
-          >
-            <p className="mb-1 font-bold">{activeTooltip.label}</p>
-            {activeTooltip.metrics ? (
-              <div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                <span>Requests</span>
-                <span className="text-foreground text-right font-medium">
-                  {
-                    formatCount(
-                      activeTooltip.metrics.request_success + activeTooltip.metrics.request_failed,
-                    ).value
-                  }
-                  {
-                    formatCount(
-                      activeTooltip.metrics.request_success + activeTooltip.metrics.request_failed,
-                    ).unit
-                  }
-                </span>
-                <span>Input Tokens</span>
-                <span className="text-foreground text-right font-medium">
-                  {formatCount(activeTooltip.metrics.input_token).value}
-                  {formatCount(activeTooltip.metrics.input_token).unit}
-                </span>
-                <span>Output Tokens</span>
-                <span className="text-foreground text-right font-medium">
-                  {formatCount(activeTooltip.metrics.output_token).value}
-                  {formatCount(activeTooltip.metrics.output_token).unit}
-                </span>
-                <span>Cost</span>
-                <span className="text-foreground text-right font-medium">
-                  {
-                    formatMoney(
-                      activeTooltip.metrics.input_cost + activeTooltip.metrics.output_cost,
-                    ).value
-                  }
-                </span>
+      {activeTooltip &&
+        (() => {
+          const m = activeTooltip.metrics
+          const reqCount = m ? formatCount(m.request_success + m.request_failed) : null
+          const inputTokens = m ? formatCount(m.input_token) : null
+          const outputTokens = m ? formatCount(m.output_token) : null
+          const cost = m ? formatMoney(m.input_cost + m.output_cost) : null
+          return (
+            <FloatingPortal>
+              <div
+                ref={refs.setFloating}
+                style={floatingStyles}
+                className="bg-popover text-popover-foreground border-border pointer-events-none z-50 w-fit min-w-max rounded-md border-2 p-3 text-sm shadow-[2px_2px_0_var(--nb-shadow)]"
+              >
+                <p className="mb-1 font-bold">{activeTooltip.label}</p>
+                {m ? (
+                  <div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    <span>Requests</span>
+                    <span className="text-foreground text-right font-medium">
+                      {reqCount!.value}
+                      {reqCount!.unit}
+                    </span>
+                    <span>Input Tokens</span>
+                    <span className="text-foreground text-right font-medium">
+                      {inputTokens!.value}
+                      {inputTokens!.unit}
+                    </span>
+                    <span>Output Tokens</span>
+                    <span className="text-foreground text-right font-medium">
+                      {outputTokens!.value}
+                      {outputTokens!.unit}
+                    </span>
+                    <span>Cost</span>
+                    <span className="text-foreground text-right font-medium">{cost!.value}</span>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No data</p>
+                )}
               </div>
-            ) : (
-              <p className="text-muted-foreground">No data</p>
-            )}
-          </div>
-        </FloatingPortal>
-      )}
+            </FloatingPortal>
+          )
+        })()}
     </Card>
   )
 }
@@ -759,23 +784,20 @@ function ChartSection({
   }, [sortedDaily, hourlyData, period])
 
   const totals = useMemo(() => {
-    if (period === "1") {
-      if (!hourlyData) return { requests: 0, cost: 0, inputTokens: 0, outputTokens: 0 }
-      return {
-        requests: hourlyData.reduce((a, s) => a + s.request_success + s.request_failed, 0),
-        cost: hourlyData.reduce((a, s) => a + s.input_cost + s.output_cost, 0),
-        inputTokens: hourlyData.reduce((a, s) => a + s.input_token, 0),
-        outputTokens: hourlyData.reduce((a, s) => a + s.output_token, 0),
-      }
+    const source = period === "1" ? hourlyData : sortedDaily.slice(-Number.parseInt(period))
+    if (!source || source.length === 0)
+      return { requests: 0, cost: 0, inputTokens: 0, outputTokens: 0 }
+    let requests = 0
+    let cost = 0
+    let inputTokens = 0
+    let outputTokens = 0
+    for (const s of source) {
+      requests += s.request_success + s.request_failed
+      cost += s.input_cost + s.output_cost
+      inputTokens += s.input_token
+      outputTokens += s.output_token
     }
-    const days = Number.parseInt(period)
-    const recent = sortedDaily.slice(-days)
-    return {
-      requests: recent.reduce((a, s) => a + s.request_success + s.request_failed, 0),
-      cost: recent.reduce((a, s) => a + s.input_cost + s.output_cost, 0),
-      inputTokens: recent.reduce((a, s) => a + s.input_token, 0),
-      outputTokens: recent.reduce((a, s) => a + s.output_token, 0),
-    }
+    return { requests, cost, inputTokens, outputTokens }
   }, [sortedDaily, hourlyData, period])
 
   const periodLabel: Record<string, string> = {
@@ -842,17 +864,17 @@ function ChartSection({
         </button>
       </CardHeader>
       <CardContent className="pb-2">
-        <ResponsiveContainer width="100%" height={160}>
-          <AreaChart data={chartData} margin={{ left: 10 }}>
+        <LazyResponsiveContainer width="100%" height={160}>
+          <LazyAreaChart data={chartData} margin={{ left: 10 }}>
             <defs>
               <linearGradient id="fillCost" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.8} />
                 <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.1} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
-            <XAxis dataKey="date" tickLine={false} axisLine={false} className="text-xs" />
-            <YAxis
+            <LazyCartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+            <LazyXAxis dataKey="date" tickLine={false} axisLine={false} className="text-xs" />
+            <LazyYAxis
               tickLine={false}
               axisLine={false}
               className="text-xs"
@@ -861,13 +883,18 @@ function ChartSection({
                 return `${f.value}${f.unit}`
               }}
             />
-            <RechartsTooltip
+            <LazyRechartsTooltip
               formatter={(v: unknown) => [formatMoney(Number(v ?? 0)).value, "Cost"]}
               labelClassName="text-foreground"
             />
-            <Area type="monotone" dataKey="cost" stroke="var(--primary)" fill="url(#fillCost)" />
-          </AreaChart>
-        </ResponsiveContainer>
+            <LazyArea
+              type="monotone"
+              dataKey="cost"
+              stroke="var(--primary)"
+              fill="url(#fillCost)"
+            />
+          </LazyAreaChart>
+        </LazyResponsiveContainer>
       </CardContent>
     </Card>
   )
@@ -904,13 +931,15 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
     }
     return (
       <div className="max-h-[300px] space-y-2 overflow-y-auto">
-        <LayoutGroup>
+        <LazyLayoutGroup>
           {channels.map((ch, index) => {
             const rank = index + 1
             const successRate =
               ch.totalRequests > 0 ? (ch.request_success / ch.totalRequests) * 100 : 0
+            const inTokens = formatCount(ch.input_token)
+            const outTokens = formatCount(ch.output_token)
             return (
-              <motion.div
+              <LazyMotionDiv
                 key={ch.channelId}
                 layout
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -929,45 +958,50 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
                   <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
                     {mode === "count" && <span>Success: {successRate.toFixed(1)}%</span>}
                     <span>
-                      In: {formatCount(ch.input_token).value}
-                      {formatCount(ch.input_token).unit}
+                      In: {inTokens.value}
+                      {inTokens.unit}
                     </span>
                     <span>
-                      Out: {formatCount(ch.output_token).value}
-                      {formatCount(ch.output_token).unit}
+                      Out: {outTokens.value}
+                      {outTokens.unit}
                     </span>
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  {mode === "count" ? (
-                    <div className="flex items-center gap-1 text-sm font-medium tabular-nums">
-                      <span className="text-green-600 dark:text-green-400">
-                        {formatCount(ch.request_success).value}
-                        <span className="text-muted-foreground text-xs">
-                          {formatCount(ch.request_success).unit}
-                        </span>
-                      </span>
-                      <span className="text-muted-foreground/40">/</span>
-                      <span className="text-red-600 dark:text-red-400">
-                        {formatCount(ch.request_failed).value}
-                        <span className="text-muted-foreground text-xs">
-                          {formatCount(ch.request_failed).unit}
-                        </span>
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="font-semibold">
-                      {formatMoney(ch.totalCost).value}
-                      <span className="text-muted-foreground ml-0.5 text-xs">
-                        {formatMoney(ch.totalCost).unit}
-                      </span>
-                    </span>
-                  )}
+                  {mode === "count"
+                    ? (() => {
+                        const success = formatCount(ch.request_success)
+                        const failed = formatCount(ch.request_failed)
+                        return (
+                          <div className="flex items-center gap-1 text-sm font-medium tabular-nums">
+                            <span className="text-green-600 dark:text-green-400">
+                              {success.value}
+                              <span className="text-muted-foreground text-xs">{success.unit}</span>
+                            </span>
+                            <span className="text-muted-foreground/40">/</span>
+                            <span className="text-red-600 dark:text-red-400">
+                              {failed.value}
+                              <span className="text-muted-foreground text-xs">{failed.unit}</span>
+                            </span>
+                          </div>
+                        )
+                      })()
+                    : (() => {
+                        const costFmt = formatMoney(ch.totalCost)
+                        return (
+                          <span className="font-semibold">
+                            {costFmt.value}
+                            <span className="text-muted-foreground ml-0.5 text-xs">
+                              {costFmt.unit}
+                            </span>
+                          </span>
+                        )
+                      })()}
                 </div>
-              </motion.div>
+              </LazyMotionDiv>
             )
           })}
-        </LayoutGroup>
+        </LazyLayoutGroup>
       </div>
     )
   }
@@ -1077,61 +1111,68 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
             </div>
           ) : (
             <div className="max-h-[400px] space-y-1.5 overflow-y-auto">
-              {sorted.map((item) => (
-                <Link
-                  key={item.model}
-                  href={`/logs?model=${encodeURIComponent(item.model)}`}
-                  className="hover:bg-muted/50 relative block rounded-md px-3 py-2 transition-colors"
-                >
-                  {/* Background bar */}
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-md opacity-10 transition-[width] duration-500 ease-out"
-                    style={{
-                      width: `${barPercent(item)}%`,
-                      backgroundColor: "var(--primary)",
-                    }}
-                  />
-                  <div className="relative flex flex-col gap-1">
-                    <div className="min-w-0 truncate text-sm font-medium">
-                      <ModelBadge modelId={item.model} />
+              {sorted.map((item) => {
+                const reqFmt = formatCount(item.requestCount)
+                const inFmt = formatCount(item.inputTokens)
+                const outFmt = formatCount(item.outputTokens)
+                const costFmt = formatMoney(item.totalCost)
+                const latFmt = formatTime(item.avgLatency)
+                return (
+                  <Link
+                    key={item.model}
+                    href={`/logs?model=${encodeURIComponent(item.model)}`}
+                    className="hover:bg-muted/50 relative block rounded-md px-3 py-2 transition-colors"
+                  >
+                    {/* Background bar */}
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-md opacity-10 transition-[width] duration-500 ease-out"
+                      style={{
+                        width: `${barPercent(item)}%`,
+                        backgroundColor: "var(--primary)",
+                      }}
+                    />
+                    <div className="relative flex flex-col gap-1">
+                      <div className="min-w-0 truncate text-sm font-medium">
+                        <ModelBadge modelId={item.model} />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums">
+                        <div>
+                          <span className="text-muted-foreground">Req </span>
+                          <span className="font-medium">
+                            {reqFmt.value}
+                            {reqFmt.unit}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">In </span>
+                          <span className="font-medium">
+                            {inFmt.value}
+                            {inFmt.unit}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Out </span>
+                          <span className="font-medium">
+                            {outFmt.value}
+                            {outFmt.unit}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Cost </span>
+                          <span className="font-medium">{costFmt.value}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Avg </span>
+                          <span className="font-medium">
+                            {latFmt.value}
+                            {latFmt.unit}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums">
-                      <div>
-                        <span className="text-muted-foreground">Req </span>
-                        <span className="font-medium">
-                          {formatCount(item.requestCount).value}
-                          {formatCount(item.requestCount).unit}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">In </span>
-                        <span className="font-medium">
-                          {formatCount(item.inputTokens).value}
-                          {formatCount(item.inputTokens).unit}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Out </span>
-                        <span className="font-medium">
-                          {formatCount(item.outputTokens).value}
-                          {formatCount(item.outputTokens).unit}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Cost </span>
-                        <span className="font-medium">{formatMoney(item.totalCost).value}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Avg </span>
-                        <span className="font-medium">
-                          {formatTime(item.avgLatency).value}
-                          {formatTime(item.avgLatency).unit}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -1143,39 +1184,80 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
 // ───────────── Page ─────────────
 
 export default function DashboardPage() {
-  const { data: totalData } = useQuery({
+  const {
+    data: totalData,
+    isError: isTotalError,
+    refetch: refetchTotal,
+  } = useQuery({
     queryKey: ["stats", "total"],
     queryFn: getTotalStats,
   })
 
-  const { data: dailyData } = useQuery({
+  const {
+    data: dailyData,
+    isError: isDailyError,
+    refetch: refetchDaily,
+  } = useQuery({
     queryKey: ["stats", "daily"],
     queryFn: getDailyStats,
   })
 
-  const { data: hourlyData } = useQuery({
+  const {
+    data: hourlyData,
+    isError: isHourlyError,
+    refetch: refetchHourly,
+  } = useQuery({
     queryKey: ["stats", "hourly"],
     queryFn: () => getHourlyStats(),
   })
 
-  const { data: channelData } = useQuery({
+  const {
+    data: channelData,
+    isError: isChannelError,
+    refetch: refetchChannel,
+  } = useQuery({
     queryKey: ["stats", "channel"],
     queryFn: getChannelStats,
   })
 
-  const { data: modelData } = useQuery({
+  const {
+    data: modelData,
+    isError: isModelError,
+    refetch: refetchModel,
+  } = useQuery({
     queryKey: ["stats", "model"],
     queryFn: getModelStats,
   })
 
+  const isStatsError = isTotalError || isDailyError || isHourlyError
+  const refetchStats = () => {
+    if (isTotalError) refetchTotal()
+    if (isDailyError) refetchDaily()
+    if (isHourlyError) refetchHourly()
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <TotalSection data={totalData?.data} />
-      <ActivitySection data={dailyData?.data} hourlyData={hourlyData?.data} />
-      <ChartSection dailyData={dailyData?.data} hourlyData={hourlyData?.data} />
+      {isStatsError ? (
+        <InlineError message="Failed to load dashboard stats" onRetry={refetchStats} />
+      ) : (
+        <>
+          <TotalSection data={totalData?.data} />
+          <ActivitySection data={dailyData?.data} hourlyData={hourlyData?.data} />
+          <ChartSection dailyData={dailyData?.data} hourlyData={hourlyData?.data} />
+        </>
+      )}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ModelStatsSection data={modelData?.data} />
-        <RankSection data={channelData?.data} />
+        {isModelError ? (
+          <InlineError message="Failed to load model stats" onRetry={() => refetchModel()} />
+        ) : (
+          <ModelStatsSection data={modelData?.data} />
+        )}
+        {isChannelError ? (
+          <InlineError message="Failed to load channel stats" onRetry={() => refetchChannel()} />
+        ) : (
+          <RankSection data={channelData?.data} />
+        )}
       </div>
     </div>
   )

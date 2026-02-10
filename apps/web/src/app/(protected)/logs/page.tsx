@@ -11,9 +11,6 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import JsonView from "@uiw/react-json-view"
-import { githubDarkTheme } from "@uiw/react-json-view/githubDark"
-import { githubLightTheme } from "@uiw/react-json-view/githubLight"
 import {
   AlertCircle,
   ArrowUp,
@@ -31,12 +28,11 @@ import {
   X,
 } from "lucide-react"
 import { useTheme } from "next-themes"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import * as React from "react"
 import { useCallback, useMemo, useRef, useState } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
 import { ModelCombobox } from "@/components/model-combobox"
@@ -75,6 +71,115 @@ import {
 } from "@/lib/api"
 import { createLogColumns, formatCost, formatDuration } from "./columns"
 import { buildFilterSearchParams, countMatches, parseLogFilters } from "./log-filters"
+
+// Hoisted constant arrays to avoid re-creation on every render
+const DETAIL_SKELETON_ITEMS = Array.from({ length: 9 })
+const SKELETON_ROWS_8 = Array.from({ length: 8 })
+const SKELETON_ROWS_10 = Array.from({ length: 10 })
+
+// --- Dynamic imports: heavy libs only needed inside the detail panel ---
+const LazyJsonView = dynamic(
+  () =>
+    Promise.all([
+      import("@uiw/react-json-view"),
+      import("@uiw/react-json-view/githubDark"),
+      import("@uiw/react-json-view/githubLight"),
+    ]).then(([mod, dark, light]) => {
+      const JsonView = mod.default
+      function LazyJsonViewInner(
+        props: React.ComponentProps<typeof JsonView> & { isDark: boolean },
+      ) {
+        const { isDark, style, ...rest } = props
+        return (
+          <JsonView
+            {...rest}
+            style={{
+              ...(isDark ? dark.githubDarkTheme : light.githubLightTheme),
+              ...style,
+            }}
+          />
+        )
+      }
+      LazyJsonViewInner.displayName = "LazyJsonView"
+      return { default: LazyJsonViewInner }
+    }),
+  {
+    loading: () => (
+      <div className="flex flex-col gap-2 p-3">
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    ),
+    ssr: false,
+  },
+)
+
+const LazyMarkdown = dynamic(
+  () =>
+    Promise.all([import("react-markdown"), import("remark-gfm")]).then(([md, gfm]) => {
+      const ReactMarkdown = md.default
+      const remarkGfm = gfm.default
+      function LazyMarkdownInner({ children }: { children: string }) {
+        return <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      }
+      LazyMarkdownInner.displayName = "LazyMarkdown"
+      return { default: LazyMarkdownInner }
+    }),
+  {
+    loading: () => (
+      <div className="flex flex-col gap-2 p-3">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-4/5" />
+      </div>
+    ),
+    ssr: false,
+  },
+)
+
+const LazyDetailPanel = dynamic(() => Promise.resolve({ default: DetailPanel }), {
+  loading: () => (
+    <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-4 w-60" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {DETAIL_SKELETON_ITEMS.map((_, i) => (
+          <div key={`detail-sk-${i.toString()}`} className="flex flex-col gap-1">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-5 w-24" />
+          </div>
+        ))}
+      </div>
+    </div>
+  ),
+  ssr: false,
+})
+
+/** Best-effort repair of truncated JSON (e.g. from log storage limits) */
+function repairTruncatedJson(text: string): { data: unknown; truncated: boolean } | null {
+  if (!text.startsWith("{") && !text.startsWith("[")) return null
+  try {
+    let repaired = text
+    const opens = (repaired.match(/[{[]/g) || []).length
+    const closes = (repaired.match(/[}\]]/g) || []).length
+    const lastComma = Math.max(
+      repaired.lastIndexOf(","),
+      repaired.lastIndexOf("}"),
+      repaired.lastIndexOf("]"),
+    )
+    if (lastComma > 0) {
+      repaired = repaired.slice(0, lastComma + 1)
+    }
+    for (let i = 0; i < opens - closes; i++) {
+      repaired += text.startsWith("{") ? "}" : "]"
+    }
+    return { data: JSON.parse(repaired), truncated: true }
+  } catch {
+    return null
+  }
+}
 
 // Hoist row model factories outside the component to maintain stable references
 const coreRowModel = getCoreRowModel<LogEntry>()
@@ -674,7 +779,7 @@ export default function LogsPage() {
             </div>
           </SheetHeader>
           {detail ? (
-            <DetailPanel detail={detail} />
+            <LazyDetailPanel detail={detail} />
           ) : (
             <div className="flex flex-col gap-4 px-4 py-4">
               <div className="flex flex-col gap-2">
@@ -682,8 +787,8 @@ export default function LogsPage() {
                 <Skeleton className="h-4 w-60" />
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <div key={i} className="flex flex-col gap-1">
+                {DETAIL_SKELETON_ITEMS.map((_, i) => (
+                  <div key={`detail-sk-${i.toString()}`} className="flex flex-col gap-1">
                     <Skeleton className="h-3 w-16" />
                     <Skeleton className="h-5 w-24" />
                   </div>
@@ -1094,29 +1199,8 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
     try {
       return { isJson: true, data: JSON.parse(displayContent), truncated: false }
     } catch {
-      // Best-effort: if content looks like truncated JSON, try to salvage it
-      if (displayContent.startsWith("{") || displayContent.startsWith("[")) {
-        try {
-          let repaired = displayContent
-          const opens = (repaired.match(/[{[]/g) || []).length
-          const closes = (repaired.match(/[}\]]/g) || []).length
-          const lastComma = Math.max(
-            repaired.lastIndexOf(","),
-            repaired.lastIndexOf("}"),
-            repaired.lastIndexOf("]"),
-          )
-          if (lastComma > 0) {
-            repaired = repaired.slice(0, lastComma + 1)
-          }
-          for (let i = 0; i < opens - closes; i++) {
-            repaired += displayContent.startsWith("{") ? "}" : "]"
-          }
-          const data = JSON.parse(repaired)
-          return { isJson: true, data, truncated: true }
-        } catch {
-          // Give up — display as plain text
-        }
-      }
+      const repaired = repairTruncatedJson(displayContent)
+      if (repaired) return { isJson: true, ...repaired }
       return { isJson: false, data: displayContent, truncated: false }
     }
   }, [displayContent])
@@ -1192,10 +1276,10 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
             </p>
           )}
           <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-md border p-3">
-            <JsonView
+            <LazyJsonView
+              isDark={resolvedTheme === "dark"}
               value={parsed.data}
               style={{
-                ...(resolvedTheme === "dark" ? githubDarkTheme : githubLightTheme),
                 fontSize: "12px",
                 backgroundColor: "transparent",
                 fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
@@ -1208,7 +1292,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
         </div>
       ) : (
         <div className="bg-muted/30 prose prose-sm dark:prose-invert max-h-[50vh] max-w-none overflow-auto rounded-md border p-3 break-words">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
+          <LazyMarkdown>{displayContent}</LazyMarkdown>
         </div>
       )}
     </div>
@@ -1216,6 +1300,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
 }
 
 function LogTableSkeleton({ rows = 8 }: { rows?: number }) {
+  const skeletonRows = rows > 8 ? SKELETON_ROWS_10 : SKELETON_ROWS_8
   return (
     <Table>
       <TableHeader>
@@ -1233,8 +1318,8 @@ function LogTableSkeleton({ rows = 8 }: { rows?: number }) {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {Array.from({ length: rows }).map((_, i) => (
-          <TableRow key={i}>
+        {skeletonRows.map((_, i) => (
+          <TableRow key={`log-sk-${i.toString()}`}>
             <TableCell>
               <Skeleton className="h-4 w-24" />
             </TableCell>

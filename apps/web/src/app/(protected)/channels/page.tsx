@@ -1,6 +1,8 @@
 "use client"
 
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core"
+import type { ChannelFormData } from "./_components/channel-dialog"
+import type { GroupFormData, GroupItemForm } from "./_components/group-dialog"
 import {
   DndContext,
   DragOverlay,
@@ -23,17 +25,15 @@ import {
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
-  Download,
   GripVertical,
   List,
-  Loader2,
   Pencil,
   Plus,
-  Search,
   Trash2,
   X,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
+import dynamic from "next/dynamic"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -53,18 +53,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
 import { fuzzyLookup, useModelMetadataQuery } from "@/hooks/use-model-meta"
 import {
   createChannel,
@@ -72,7 +62,6 @@ import {
   deleteChannel,
   deleteGroup,
   enableChannel,
-  fetchChannelModelsPreview,
   getModelList,
   listChannels,
   listGroups,
@@ -80,8 +69,19 @@ import {
   updateChannel,
   updateGroup,
 } from "@/lib/api"
-
 import { cn } from "@/lib/utils"
+import { EMPTY_CHANNEL_FORM } from "./_components/channel-dialog"
+import { EMPTY_GROUP_FORM } from "./_components/group-dialog"
+
+// ─── Lazy-loaded Dialog components ──────────────
+
+const ChannelDialog = dynamic(() => import("./_components/channel-dialog"), {
+  loading: () => null,
+})
+
+const GroupDialog = dynamic(() => import("./_components/group-dialog"), {
+  loading: () => null,
+})
 
 // ─── Type labels ───────────────────────────────
 
@@ -115,13 +115,6 @@ interface ChannelRecord {
   paramOverride: string | null
 }
 
-interface GroupItemForm {
-  channelId: number
-  modelName: string
-  priority: number
-  weight: number
-}
-
 interface GroupRecord {
   id: number
   name: string
@@ -130,46 +123,6 @@ interface GroupRecord {
   sessionKeepTime: number
   order: number
   items: GroupItemForm[]
-}
-
-interface ChannelFormData {
-  id?: number
-  name: string
-  type: number
-  enabled: boolean
-  baseUrls: { url: string; delay: number }[]
-  keys: { channelKey: string; remark: string }[]
-  model: string[]
-  customModel: string
-  paramOverride: string
-}
-
-interface GroupFormData {
-  id?: number
-  name: string
-  mode: number
-  firstTokenTimeOut: number
-  sessionKeepTime: number
-  items: GroupItemForm[]
-}
-
-const EMPTY_CHANNEL_FORM: ChannelFormData = {
-  name: "",
-  type: 1,
-  enabled: true,
-  baseUrls: [{ url: "", delay: 0 }],
-  keys: [{ channelKey: "", remark: "" }],
-  model: [],
-  customModel: "",
-  paramOverride: "",
-}
-
-const EMPTY_GROUP_FORM: GroupFormData = {
-  name: "",
-  mode: 1,
-  firstTokenTimeOut: 0,
-  sessionKeepTime: 0,
-  items: [],
 }
 
 // ─── Drag data types ───────────────────────────
@@ -248,7 +201,7 @@ export default function ChannelsAndGroupsPage() {
     [channelData],
   )
   const groups = useMemo(() => (groupData?.data?.groups ?? []) as GroupRecord[], [groupData])
-  const models = (modelData?.data?.models ?? []) as string[]
+  const models = useMemo(() => (modelData?.data?.models ?? []) as string[], [modelData])
 
   // ─── Highlight scroll logic ───────────────────
   const setChannelRef = useCallback((id: number, el: HTMLDivElement | null) => {
@@ -499,7 +452,7 @@ export default function ChannelsAndGroupsPage() {
     setGroupDialogOpen(true)
   }
 
-  const channelMap = new Map(channels.map((ch) => [ch.id, ch]))
+  const channelMap = useMemo(() => new Map(channels.map((ch) => [ch.id, ch])), [channels])
   const groupIds = useMemo(() => groups.map((g) => `sortable-group-${g.id}`), [groups])
 
   // ─── Render ────────────────────────────────────
@@ -841,15 +794,18 @@ function DraggableChannel({
   const [collapsed, setCollapsed] = useState(true)
 
   // Sync with parent's expand/collapse all toggle
-  useEffect(() => {
+  const prevForceCollapsedRef = useRef(forceCollapsed)
+  if (prevForceCollapsedRef.current !== forceCollapsed) {
+    prevForceCollapsedRef.current = forceCollapsed
     if (forceCollapsed !== undefined) setCollapsed(forceCollapsed)
-  }, [forceCollapsed])
+  }
 
   // Auto-expand if highlighted while collapsed
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- auto-expand on highlight
+  const prevHighlightedRef = useRef(highlighted)
+  if (prevHighlightedRef.current !== highlighted) {
+    prevHighlightedRef.current = highlighted
     if (highlighted && collapsed) setCollapsed(false)
-  }, [highlighted, collapsed])
+  }
 
   return (
     <Card
@@ -1000,9 +956,11 @@ function SortableGroup({
   const [collapsed, setCollapsed] = useState(true)
 
   // Sync with parent's expand/collapse all toggle
-  useEffect(() => {
+  const prevForceCollapsedRef = useRef(forceCollapsed)
+  if (prevForceCollapsedRef.current !== forceCollapsed) {
+    prevForceCollapsedRef.current = forceCollapsed
     if (forceCollapsed !== undefined) setCollapsed(forceCollapsed)
-  }, [forceCollapsed])
+  }
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1272,813 +1230,5 @@ function ProviderHeader({
         {name} ({count})
       </span>
     </div>
-  )
-}
-
-// ─── Channel Dialog ────────────────────────────
-
-function ChannelDialog({
-  open,
-  onOpenChange,
-  form,
-  setForm,
-  onSave,
-  isPending,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  form: ChannelFormData
-  setForm: (f: ChannelFormData) => void
-  onSave: () => void
-  isPending: boolean
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] w-full max-w-2xl max-w-[95vw] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{form.id ? "Edit Channel" : "Create Channel"}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-4 py-2">
-          <div className="flex flex-col gap-2">
-            <Label>Name</Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Provider Type</Label>
-            <Select
-              value={String(form.type)}
-              onValueChange={(v) => setForm({ ...form, type: Number(v) })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(TYPE_LABELS).map(([val, label]) => (
-                  <SelectItem key={val} value={val}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Base URL</Label>
-            <Input
-              placeholder="https://api.openai.com"
-              value={form.baseUrls[0]?.url ?? ""}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  baseUrls: [{ url: e.target.value, delay: form.baseUrls[0]?.delay ?? 0 }],
-                })
-              }
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>API Key</Label>
-            <Input
-              placeholder="sk-..."
-              value={form.keys[0]?.channelKey ?? ""}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  keys: [{ channelKey: e.target.value, remark: form.keys[0]?.remark ?? "" }],
-                })
-              }
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Models</Label>
-              <FetchModelsButton form={form} setForm={setForm} />
-            </div>
-            <ModelTagInput value={form.model} onChange={(model) => setForm({ ...form, model })} />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Custom Models</Label>
-            <Input
-              value={form.customModel}
-              onChange={(e) => setForm({ ...form, customModel: e.target.value })}
-              placeholder="model-alias:actual-model, ..."
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Parameter Override (JSON)</Label>
-            <Textarea
-              value={form.paramOverride}
-              onChange={(e) => setForm({ ...form, paramOverride: e.target.value })}
-              placeholder='{"temperature": 0.7}'
-              rows={3}
-            />
-          </div>
-
-          <Button className="mt-2" onClick={onSave} disabled={isPending || !form.name}>
-            {isPending ? "Saving..." : "Save"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ─── Model Tag Input ────────────────────────────
-
-function ModelTagInput({
-  value,
-  onChange,
-}: {
-  value: string[]
-  onChange: (value: string[]) => void
-}) {
-  const [input, setInput] = useState("")
-  const tags = value ?? []
-
-  function addTags(raw: string) {
-    const newTags = raw
-      .split(/[,\n]/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-    if (newTags.length === 0) return
-    const merged = [...new Set([...tags, ...newTags])]
-    onChange(merged)
-    setInput("")
-  }
-
-  function removeTag(tag: string) {
-    onChange(tags.filter((t) => t !== tag))
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault()
-      addTags(input)
-    }
-    if (e.key === "Backspace" && input === "" && tags.length > 0) {
-      removeTag(tags[tags.length - 1])
-    }
-  }
-
-  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
-    e.preventDefault()
-    addTags(e.clipboardData.getData("text"))
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          onBlur={() => {
-            if (input.trim()) addTags(input)
-          }}
-          placeholder="Type model name, press Enter to add"
-          className="flex-1"
-        />
-        <span className="text-muted-foreground text-xs whitespace-nowrap">
-          {tags.length} model{tags.length !== 1 ? "s" : ""}
-        </span>
-      </div>
-      {tags.length > 0 && (
-        <div className="max-h-40 overflow-y-auto">
-          <GroupedModelList
-            models={tags}
-            renderModel={(tag) => (
-              <ModelCard key={tag} modelId={tag} onRemove={() => removeTag(tag)} />
-            )}
-          />
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Fetch Models Button ────────────────────────
-
-function FetchModelsButton({
-  form,
-  setForm,
-}: {
-  form: ChannelFormData
-  setForm: (f: ChannelFormData) => void
-}) {
-  const [loading, setLoading] = useState(false)
-
-  const baseUrl = form.baseUrls[0]?.url?.trim()
-  const key = form.keys[0]?.channelKey?.trim()
-  const canFetch = !!baseUrl && !!key
-
-  async function handleFetch() {
-    if (!canFetch) {
-      toast.error("Please fill in Base URL and API Key first")
-      return
-    }
-    setLoading(true)
-    try {
-      const res = await fetchChannelModelsPreview({
-        type: form.type,
-        baseUrl,
-        key,
-      })
-      const models = res.data.models
-      if (models.length === 0) {
-        toast.info("No models found from this provider")
-        return
-      }
-      setForm({ ...form, model: models })
-      toast.success(`Fetched ${models.length} models`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to fetch models")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <Button variant="outline" size="sm" onClick={handleFetch} disabled={!canFetch || loading}>
-      {loading ? (
-        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-      ) : (
-        <Download className="mr-1 h-3 w-3" />
-      )}
-      {loading ? "Fetching..." : "Fetch Models"}
-    </Button>
-  )
-}
-
-// ─── Sortable Dialog Item ─────────────────────
-
-function SortableDialogItem({
-  id,
-  item,
-  mode,
-  channelOptions,
-  onEdit,
-  onUpdate,
-  onRemove,
-}: {
-  id: string
-  item: GroupItemForm
-  mode: number
-  channelOptions: { id: number; name: string; model: string[] }[]
-  onEdit: () => void
-  onUpdate: (patch: Partial<GroupItemForm>) => void
-  onRemove: () => void
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-  })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn("flex items-center gap-2 rounded-md border p-2", isDragging && "opacity-50")}
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <button type="button" onClick={onEdit} className="shrink-0 cursor-pointer">
-        <ModelCard modelId={item.modelName || "(empty)"} />
-      </button>
-      <Select
-        value={item.channelId ? String(item.channelId) : ""}
-        onValueChange={(v) => onUpdate({ channelId: Number(v) })}
-      >
-        <SelectTrigger className="w-36">
-          <SelectValue placeholder="Channel" />
-        </SelectTrigger>
-        <SelectContent>
-          {channelOptions.map((ch) => (
-            <SelectItem key={ch.id} value={String(ch.id)}>
-              {ch.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {mode === 3 && (
-        <Input
-          className="w-20"
-          type="number"
-          placeholder="Priority"
-          value={item.priority}
-          onChange={(e) => onUpdate({ priority: Number(e.target.value) })}
-        />
-      )}
-      {mode === 4 && (
-        <Input
-          className="w-20"
-          type="number"
-          placeholder="Weight"
-          value={item.weight}
-          onChange={(e) => onUpdate({ weight: Number(e.target.value) })}
-        />
-      )}
-      <Button variant="ghost" size="icon" className="ml-auto shrink-0" onClick={onRemove}>
-        <X className="h-4 w-4" />
-      </Button>
-    </div>
-  )
-}
-
-// ─── Group Dialog ──────────────────────────────
-
-function GroupDialog({
-  open,
-  onOpenChange,
-  form,
-  setForm,
-  channelOptions,
-  onSave,
-  isPending,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  form: GroupFormData
-  setForm: (f: GroupFormData) => void
-  channelOptions: { id: number; name: string; model: string[] }[]
-  onSave: () => void
-  isPending: boolean
-}) {
-  const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  // null = closed, -1 = adding new item, >= 0 = editing item at index
-  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null)
-
-  const dialogSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  )
-  const dialogItemIds = useMemo(() => form.items.map((_, i) => `dialog-item-${i}`), [form.items])
-
-  function handleDialogDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-
-    const oldIndex = Number(String(active.id).replace("dialog-item-", ""))
-    const newIndex = Number(String(over.id).replace("dialog-item-", ""))
-    if (oldIndex === newIndex) return
-
-    setForm({ ...form, items: arrayMove(form.items, oldIndex, newIndex) })
-  }
-
-  // Build channel→models mapping for the item model picker
-  const channelModels = useMemo(() => {
-    return channelOptions
-      .filter((ch) => ch.model && ch.model.length > 0)
-      .map((ch) => ({
-        channelId: ch.id,
-        channelName: ch.name,
-        models: ch.model.filter(Boolean).sort(),
-      }))
-  }, [channelOptions])
-
-  function updateItem(index: number, patch: Partial<GroupItemForm>) {
-    const items = [...form.items]
-    items[index] = { ...items[index], ...patch }
-    setForm({ ...form, items })
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] w-full max-w-2xl max-w-[95vw] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{form.id ? "Edit Group" : "Create Group"}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-4 py-2">
-          <div className="flex flex-col gap-2">
-            <Label>Name</Label>
-            <div className="relative">
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. claude-opus-4-6"
-                className="pr-28"
-              />
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-accent-foreground hover:bg-accent absolute top-1/2 right-1.5 inline-flex -translate-y-1/2 items-center rounded-md px-2 py-1 text-xs transition-colors"
-                onClick={() => setModelPickerOpen(true)}
-              >
-                <Search className="mr-1 h-3 w-3" />
-                models.dev
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Load Balancing Mode</Label>
-            <Select
-              value={String(form.mode)}
-              onValueChange={(v) => setForm({ ...form, mode: Number(v) })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(MODE_LABELS).map(([val, label]) => (
-                  <SelectItem key={val} value={val}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>First Token Timeout (seconds)</Label>
-            <Input
-              type="number"
-              value={form.firstTokenTimeOut}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  firstTokenTimeOut: Number(e.target.value),
-                })
-              }
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Session Keep Time (seconds)</Label>
-            <Input
-              type="number"
-              value={form.sessionKeepTime}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  sessionKeepTime: Number(e.target.value),
-                })
-              }
-              placeholder="0 = disabled"
-            />
-          </div>
-
-          {/* Group Items */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Models</Label>
-              <Button variant="outline" size="sm" onClick={() => setEditingItemIndex(-1)}>
-                <Plus className="mr-1 h-3 w-3" /> Add
-              </Button>
-            </div>
-            {form.items.length === 0 && (
-              <p className="text-muted-foreground text-sm">
-                No models added yet. Click Add or drag from the left panel.
-              </p>
-            )}
-            {/* eslint-disable react/no-array-index-key -- items may have duplicate channelId+modelName */}
-            <DndContext sensors={dialogSensors} onDragEnd={handleDialogDragEnd}>
-              <SortableContext items={dialogItemIds} strategy={verticalListSortingStrategy}>
-                {form.items.map((item, i) => (
-                  <SortableDialogItem
-                    key={`${item.channelId}-${item.modelName}-${i}`}
-                    id={`dialog-item-${i}`}
-                    item={item}
-                    mode={form.mode}
-                    channelOptions={channelOptions}
-                    onEdit={() => setEditingItemIndex(i)}
-                    onUpdate={(patch) => updateItem(i, patch)}
-                    onRemove={() =>
-                      setForm({
-                        ...form,
-                        items: form.items.filter((_, j) => j !== i),
-                      })
-                    }
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-            {/* eslint-enable react/no-array-index-key */}
-          </div>
-
-          <Button className="mt-2" onClick={onSave} disabled={isPending || !form.name}>
-            {isPending ? "Saving..." : "Save"}
-          </Button>
-        </div>
-      </DialogContent>
-
-      <ModelPickerDialog
-        open={modelPickerOpen}
-        onOpenChange={setModelPickerOpen}
-        onSelect={(modelId: string) => {
-          setForm({ ...form, name: modelId })
-          setModelPickerOpen(false)
-        }}
-      />
-
-      <ChannelModelPickerDialog
-        open={editingItemIndex !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditingItemIndex(null)
-        }}
-        channelModels={channelModels}
-        onSelect={(channelId: number, modelId: string) => {
-          if (editingItemIndex !== null && editingItemIndex >= 0) {
-            // Editing existing item — replace model and channel
-            updateItem(editingItemIndex, { modelName: modelId, channelId })
-          } else {
-            // Adding new item
-            setForm({
-              ...form,
-              items: [...form.items, { channelId, modelName: modelId, priority: 0, weight: 1 }],
-            })
-          }
-          setEditingItemIndex(null)
-        }}
-      />
-    </Dialog>
-  )
-}
-
-// ─── Model Picker Dialog (models.dev) ──────────────
-
-function ModelPickerDialog({
-  open,
-  onOpenChange,
-  onSelect,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSelect: (modelId: string) => void
-}) {
-  const { data, isLoading } = useModelMetadataQuery()
-  const [search, setSearch] = useState("")
-
-  const grouped = useMemo(() => {
-    const allModels = data?.data
-    if (!allModels) return {}
-    const q = search.toLowerCase()
-    const result: Record<string, { id: string; name: string; logoUrl: string }[]> = {}
-    for (const [id, meta] of Object.entries(allModels)) {
-      if (
-        q &&
-        !id.toLowerCase().includes(q) &&
-        !meta.name.toLowerCase().includes(q) &&
-        !meta.providerName.toLowerCase().includes(q)
-      )
-        continue
-      const provider = meta.providerName || "Other"
-      if (!result[provider]) result[provider] = []
-      result[provider].push({ id, name: meta.name, logoUrl: meta.logoUrl })
-    }
-    // sort providers alphabetically, models alphabetically within
-    for (const models of Object.values(result)) {
-      models.sort((a, b) => a.id.localeCompare(b.id))
-    }
-    return result
-  }, [data, search])
-
-  const providerKeys = useMemo(() => Object.keys(grouped).sort(), [grouped])
-
-  const totalCount = useMemo(
-    () => providerKeys.reduce((s, k) => s + grouped[k].length, 0),
-    [grouped, providerKeys],
-  )
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg overflow-hidden">
-        <DialogHeader>
-          <DialogTitle>Select Model from models.dev</DialogTitle>
-        </DialogHeader>
-
-        <div className="relative">
-          <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
-          <Input
-            placeholder="Search models..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        <ScrollArea className="h-[50vh]">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-            </div>
-          ) : totalCount === 0 ? (
-            <p className="text-muted-foreground py-8 text-center text-sm">No models found</p>
-          ) : (
-            <div className="flex flex-col gap-3 pr-3">
-              {providerKeys.map((provider) => (
-                <div key={provider}>
-                  <p className="text-muted-foreground mb-1.5 px-1 text-xs font-semibold">
-                    {provider}
-                    <span className="text-muted-foreground/60 ml-1">
-                      ({grouped[provider].length})
-                    </span>
-                  </p>
-                  <div className="flex flex-col gap-0.5">
-                    {grouped[provider].map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-                        onClick={() => onSelect(m.id)}
-                      >
-                        <img
-                          src={m.logoUrl}
-                          alt=""
-                          width={16}
-                          height={16}
-                          className="shrink-0 dark:invert"
-                          onError={(e) => {
-                            ;(e.target as HTMLImageElement).style.display = "none"
-                          }}
-                        />
-                        <span className="truncate">{m.id}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ─── Channel Model Picker Dialog ────────────────
-
-interface ChannelModelEntry {
-  channelId: number
-  channelName: string
-  models: string[]
-}
-
-function ChannelModelPickerDialog({
-  open,
-  onOpenChange,
-  channelModels,
-  onSelect,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  channelModels: ChannelModelEntry[]
-  onSelect: (channelId: number, modelId: string) => void
-}) {
-  const { data } = useModelMetadataQuery()
-  const [search, setSearch] = useState("")
-  const [channelFilter, setChannelFilter] = useState<number | null>(null)
-
-  // Flatten channel→model pairs, group by provider
-  const grouped = useMemo(() => {
-    const rawMap = data?.data
-    const q = search.toLowerCase()
-    const result: Record<
-      string,
-      { modelId: string; channelId: number; channelName: string; logoUrl: string }[]
-    > = {}
-
-    for (const ch of channelModels) {
-      // Quick filter by channel
-      if (channelFilter !== null && ch.channelId !== channelFilter) continue
-
-      for (const modelId of ch.models) {
-        const meta = rawMap ? fuzzyLookup(rawMap, modelId) : null
-        const providerName = meta?.providerName || "Other"
-
-        if (q) {
-          const idMatch = modelId.toLowerCase().includes(q)
-          const nameMatch = meta?.name.toLowerCase().includes(q)
-          const providerMatch = providerName.toLowerCase().includes(q)
-          const channelMatch = ch.channelName.toLowerCase().includes(q)
-          if (!idMatch && !nameMatch && !providerMatch && !channelMatch) continue
-        }
-
-        if (!result[providerName]) result[providerName] = []
-        result[providerName].push({
-          modelId,
-          channelId: ch.channelId,
-          channelName: ch.channelName,
-          logoUrl: meta?.logoUrl || "",
-        })
-      }
-    }
-
-    for (const items of Object.values(result)) {
-      items.sort((a, b) => a.modelId.localeCompare(b.modelId))
-    }
-    return result
-  }, [data, channelModels, search, channelFilter])
-
-  const providerKeys = useMemo(
-    () =>
-      Object.keys(grouped)
-        .sort()
-        .sort((a, b) => (a === "Other" ? 1 : b === "Other" ? -1 : 0)),
-    [grouped],
-  )
-
-  const totalCount = useMemo(
-    () => providerKeys.reduce((s, k) => s + grouped[k].length, 0),
-    [grouped, providerKeys],
-  )
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg overflow-hidden">
-        <DialogHeader>
-          <DialogTitle>Select Model</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
-            <Input
-              placeholder="Search models..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <Select
-            value={channelFilter !== null ? String(channelFilter) : "all"}
-            onValueChange={(v) => setChannelFilter(v === "all" ? null : Number(v))}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="All Channels" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Channels</SelectItem>
-              {channelModels.map((ch) => (
-                <SelectItem key={ch.channelId} value={String(ch.channelId)}>
-                  {ch.channelName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <ScrollArea className="h-[50vh]">
-          {totalCount === 0 ? (
-            <p className="text-muted-foreground py-8 text-center text-sm">
-              {channelModels.length === 0
-                ? "No channels have models configured"
-                : "No models found"}
-            </p>
-          ) : (
-            <div className="flex flex-col gap-3 pr-3">
-              {providerKeys.map((provider) => (
-                <div key={provider}>
-                  <p className="text-muted-foreground mb-1.5 px-1 text-xs font-semibold">
-                    {provider}
-                    <span className="text-muted-foreground/60 ml-1">
-                      ({grouped[provider].length})
-                    </span>
-                  </p>
-                  <div className="flex flex-col gap-0.5">
-                    {grouped[provider].map((m) => (
-                      <button
-                        key={`${m.channelId}-${m.modelId}`}
-                        type="button"
-                        className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-                        onClick={() => onSelect(m.channelId, m.modelId)}
-                      >
-                        {m.logoUrl && (
-                          <img
-                            src={m.logoUrl}
-                            alt=""
-                            width={16}
-                            height={16}
-                            className="shrink-0 dark:invert"
-                            onError={(e) => {
-                              ;(e.target as HTMLImageElement).style.display = "none"
-                            }}
-                          />
-                        )}
-                        <span className="flex-1 truncate">{m.modelId}</span>
-                        <span className="text-muted-foreground shrink-0 text-xs">
-                          {m.channelName}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
   )
 }
