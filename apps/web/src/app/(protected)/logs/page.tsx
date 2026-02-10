@@ -1,29 +1,39 @@
 "use client"
 
-import type { ReactNode } from "react"
+import type { ExpandedState, GroupingState, SortingState } from "@tanstack/react-table"
+import type { LogEntry } from "./columns"
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  flexRender,
+  getCoreRowModel,
+  getExpandedRowModel,
+  getGroupedRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table"
 import JsonView from "@uiw/react-json-view"
 import { githubDarkTheme } from "@uiw/react-json-view/githubDark"
 import { githubLightTheme } from "@uiw/react-json-view/githubLight"
 import {
-  ArrowDown,
+  AlertCircle,
   ArrowUp,
-  ArrowUpDown,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Copy,
-  Eye,
+  FileText,
   Loader2,
   Play,
+  RefreshCw,
   Search,
   X,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import * as React from "react"
 import { useCallback, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -33,6 +43,7 @@ import { ModelCombobox } from "@/components/model-combobox"
 import { formatRangeSummary, TimeRangePicker } from "@/components/time-range-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -52,7 +63,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { useModelMeta } from "@/hooks/use-model-meta"
 import { useWsEvent } from "@/hooks/use-stats-ws"
 import {
@@ -62,23 +73,14 @@ import {
   listLogs,
   replayLog,
 } from "@/lib/api"
-import { buildFilterSearchParams, countMatches, parseLogFilters, sortLogs } from "./log-filters"
+import { createLogColumns, formatCost, formatDuration } from "./columns"
+import { buildFilterSearchParams, countMatches, parseLogFilters } from "./log-filters"
 
-interface LogEntry {
-  id: number
-  time: number
-  requestModelName: string
-  actualModelName: string
-  channelId: number
-  channelName: string
-  inputTokens: number
-  outputTokens: number
-  ftut: number
-  useTime: number
-  error: string
-  cost?: number
-  totalAttempts: number
-}
+// Hoist row model factories outside the component to maintain stable references
+const coreRowModel = getCoreRowModel<LogEntry>()
+const sortedRowModel = getSortedRowModel<LogEntry>()
+const groupedRowModel = getGroupedRowModel<LogEntry>()
+const expandedRowModel = getExpandedRowModel<LogEntry>()
 
 interface LogDetail {
   id: number
@@ -108,31 +110,6 @@ interface LogDetail {
     msg?: string
   }>
   totalAttempts: number
-}
-
-type SortField = "inputTokens" | "outputTokens" | "useTime" | "cost"
-type SortDir = "asc" | "desc"
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
-}
-
-function formatCost(cost: number | undefined): string {
-  if (!cost || cost === 0) return "$0"
-  if (cost < 0.000001) return `$${cost.toExponential(1)}`
-  if (cost < 0.01) return `$${cost.toFixed(6)}`
-  return `$${cost.toFixed(4)}`
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts * 1000)
-  const month = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  const hours = String(d.getHours()).padStart(2, "0")
-  const minutes = String(d.getMinutes()).padStart(2, "0")
-  const seconds = String(d.getSeconds()).padStart(2, "0")
-  return `${month}/${day} ${hours}:${minutes}:${seconds}`
 }
 
 export default function LogsPage() {
@@ -179,8 +156,9 @@ export default function LogsPage() {
 
   const [detailId, setDetailId] = useState<number | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
-  const [sortField, setSortField] = useState<SortField | null>(null)
-  const [sortDir, setSortDir] = useState<SortDir>("desc")
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [grouping, setGrouping] = useState<GroupingState>([])
+  const [expanded, setExpanded] = useState<ExpandedState>(true)
 
   const hasFilters =
     model !== "" ||
@@ -190,7 +168,7 @@ export default function LogsPage() {
     startTime !== undefined
   const isFirstPage = page === 1
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ["logs", page, pageSize, model, status, channelId, keyword, startTime, endTime],
     queryFn: () =>
       listLogs({
@@ -314,18 +292,28 @@ export default function LogsPage() {
   const totalPages = Math.ceil(total / pageSize)
   const detail = (detailData?.data ?? null) as LogDetail | null
 
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
-    } else {
-      setSortField(field)
-      setSortDir("desc")
-    }
-  }
+  const columns = useMemo(() => createLogColumns(setDetailId), [])
 
-  const sortedLogs = useMemo(() => {
-    return sortLogs(logs, sortField, sortDir)
-  }, [logs, sortField, sortDir])
+  const table = useReactTable({
+    data: logs,
+    columns,
+    state: { sorting, grouping, expanded },
+    onSortingChange: setSorting,
+    onGroupingChange: setGrouping,
+    onExpandedChange: setExpanded,
+    enableSortingRemoval: true,
+    getCoreRowModel: coreRowModel,
+    getSortedRowModel: sortedRowModel,
+    getGroupedRowModel: groupedRowModel,
+    getExpandedRowModel: expandedRowModel,
+  })
+
+  // Flat data rows for detail panel navigation (skip group headers)
+  const visibleRows = useMemo(
+    () => table.getRowModel().rows.filter((r) => !r.getIsGrouped()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [table.getRowModel().rows],
+  )
 
   // Pagination controls (reused top and bottom)
   const paginationControls = (
@@ -525,7 +513,16 @@ export default function LogsPage() {
         )}
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <Card className="flex flex-col items-center justify-center gap-3 py-12">
+          <AlertCircle className="text-destructive h-8 w-8" />
+          <p className="text-muted-foreground text-sm">Failed to load logs</p>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetch()}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry
+          </Button>
+        </Card>
+      ) : isLoading ? (
         <LogTableSkeleton rows={pageSize > 20 ? 10 : 8} />
       ) : (
         <div
@@ -535,179 +532,89 @@ export default function LogsPage() {
             <TooltipProvider delayDuration={300}>
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Channel</TableHead>
-                    <SortableHead
-                      field="inputTokens"
-                      sortField={sortField}
-                      sortDir={sortDir}
-                      onToggle={toggleSort}
-                      className="text-right"
-                    >
-                      Input
-                    </SortableHead>
-                    <SortableHead
-                      field="outputTokens"
-                      sortField={sortField}
-                      sortDir={sortDir}
-                      onToggle={toggleSort}
-                      className="text-right"
-                    >
-                      Output
-                    </SortableHead>
-                    <TableHead className="text-right">TTFT</TableHead>
-                    <SortableHead
-                      field="useTime"
-                      sortField={sortField}
-                      sortDir={sortDir}
-                      onToggle={toggleSort}
-                      className="text-right"
-                    >
-                      Latency
-                    </SortableHead>
-                    <SortableHead
-                      field="cost"
-                      sortField={sortField}
-                      sortDir={sortDir}
-                      onToggle={toggleSort}
-                      className="text-right"
-                    >
-                      Cost
-                    </SortableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-10" />
-                  </TableRow>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead
+                          key={header.id}
+                          className={
+                            (header.column.columnDef.meta as { className?: string })?.className
+                          }
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
                 </TableHeader>
                 <TableBody>
-                  {sortedLogs.map((log) => (
-                    <tr
-                      key={log.id}
-                      className={`hover:bg-muted/50 cursor-pointer border-b ${
-                        log.error ? "border-l-destructive bg-destructive/5 border-l-2" : ""
-                      }`}
-                      onClick={() => setDetailId(log.id)}
-                    >
-                      <TableCell className="font-mono text-xs whitespace-nowrap">
-                        {formatTime(log.time)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              {log.channelId ? (
-                                <Link
-                                  href={`/channels?highlight=${log.channelId}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="hover:underline"
-                                >
-                                  <ModelBadge modelId={log.requestModelName} />
-                                </Link>
-                              ) : (
-                                <ModelBadge modelId={log.requestModelName} />
-                              )}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="font-mono text-xs">{log.requestModelName}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          {log.actualModelName && log.actualModelName !== log.requestModelName && (
-                            <span className="text-muted-foreground max-w-[150px] truncate text-[10px]">
-                              {log.actualModelName}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <div className="flex items-center gap-1">
-                          {log.channelId ? (
-                            <Link
-                              href={`/channels?highlight=${log.channelId}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="hover:underline"
+                  {table.getRowModel().rows.map((row) => {
+                    if (row.getIsGrouped()) {
+                      return (
+                        <TableRow key={row.id} className="bg-muted/30">
+                          <TableCell colSpan={columns.length}>
+                            <button
+                              className="flex items-center gap-1.5 text-sm font-medium"
+                              onClick={row.getToggleExpandedHandler()}
                             >
-                              {log.channelName || "—"}
-                            </Link>
-                          ) : (
-                            <span>{log.channelName || "—"}</span>
-                          )}
-                          {log.totalAttempts > 1 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge variant="outline" className="px-1 py-0 text-[10px]">
-                                  R{log.totalAttempts}
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent>{log.totalAttempts} attempts</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
-                        {log.inputTokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
-                        {log.outputTokens.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-right font-mono text-xs">
-                        {log.ftut > 0 ? formatDuration(log.ftut) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
-                        {formatDuration(log.useTime)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
-                        {formatCost(log.cost)}
-                      </TableCell>
-                      <TableCell>
-                        {log.error ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Badge variant="destructive">Error</Badge>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <p className="text-xs break-all whitespace-pre-wrap">
-                                {log.error.length > 200
-                                  ? `${log.error.slice(0, 200)}...`
-                                  : log.error}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <Badge variant="default">OK</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDetailId(log.id)
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </tr>
-                  ))}
+                              <ChevronRight
+                                className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
+                              />
+                              {String(row.groupingValue)}
+                              <Badge variant="secondary" className="text-xs">
+                                {row.subRows.length}
+                              </Badge>
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    }
+                    const log = row.original
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`hover:bg-muted/50 cursor-pointer border-b ${
+                          log.error ? "border-l-destructive bg-destructive/5 border-l-2" : ""
+                        }`}
+                        onClick={() => setDetailId(log.id)}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell
+                            key={cell.id}
+                            className={
+                              (cell.column.columnDef.meta as { className?: string })?.className
+                            }
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </tr>
+                    )
+                  })}
                   {logs.length === 0 && !isLoading && (
                     <TableRow>
-                      <TableCell colSpan={10} className="py-12 text-center">
-                        <p className="text-muted-foreground">No logs match your filters</p>
-                        {hasFilters && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3"
-                            onClick={() => {
-                              router.replace(pathname, { scroll: false })
-                              setKeywordInput("")
-                            }}
-                          >
-                            Clear all filters
-                          </Button>
-                        )}
+                      <TableCell colSpan={columns.length} className="py-12 text-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <FileText className="text-muted-foreground/30 h-10 w-10" />
+                          <p className="text-muted-foreground">
+                            {hasFilters ? "No logs match your filters" : "No logs yet"}
+                          </p>
+                          {hasFilters && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-1"
+                              onClick={() => {
+                                router.replace(pathname, { scroll: false })
+                                setKeywordInput("")
+                              }}
+                            >
+                              Clear all filters
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )}
@@ -736,10 +643,12 @@ export default function LogsPage() {
                   variant="outline"
                   size="icon"
                   className="h-7 w-7"
-                  disabled={!detailId || sortedLogs.findIndex((l) => l.id === detailId) <= 0}
+                  disabled={
+                    !detailId || visibleRows.findIndex((r) => r.original.id === detailId) <= 0
+                  }
                   onClick={() => {
-                    const idx = sortedLogs.findIndex((l) => l.id === detailId)
-                    if (idx > 0) setDetailId(sortedLogs[idx - 1].id)
+                    const idx = visibleRows.findIndex((r) => r.original.id === detailId)
+                    if (idx > 0) setDetailId(visibleRows[idx - 1].original.id)
                   }}
                 >
                   <ChevronUp className="h-4 w-4" />
@@ -750,11 +659,13 @@ export default function LogsPage() {
                   className="h-7 w-7"
                   disabled={
                     !detailId ||
-                    sortedLogs.findIndex((l) => l.id === detailId) >= sortedLogs.length - 1
+                    visibleRows.findIndex((r) => r.original.id === detailId) >=
+                      visibleRows.length - 1
                   }
                   onClick={() => {
-                    const idx = sortedLogs.findIndex((l) => l.id === detailId)
-                    if (idx >= 0 && idx < sortedLogs.length - 1) setDetailId(sortedLogs[idx + 1].id)
+                    const idx = visibleRows.findIndex((r) => r.original.id === detailId)
+                    if (idx >= 0 && idx < visibleRows.length - 1)
+                      setDetailId(visibleRows[idx + 1].original.id)
                   }}
                 >
                   <ChevronDown className="h-4 w-4" />
@@ -765,47 +676,24 @@ export default function LogsPage() {
           {detail ? (
             <DetailPanel detail={detail} />
           ) : (
-            <p className="text-muted-foreground py-4 text-center">Loading...</p>
+            <div className="flex flex-col gap-4 px-4 py-4">
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-4 w-60" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-5 w-24" />
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </SheetContent>
       </Sheet>
     </div>
-  )
-}
-
-function SortableHead({
-  field,
-  sortField,
-  sortDir,
-  onToggle,
-  children,
-  className,
-}: {
-  field: SortField
-  sortField: SortField | null
-  sortDir: SortDir
-  onToggle: (field: SortField) => void
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <TableHead
-      className={`cursor-pointer select-none ${className ?? ""}`}
-      onClick={() => onToggle(field)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {children}
-        {sortField === field ? (
-          sortDir === "asc" ? (
-            <ArrowUp className="h-3 w-3" />
-          ) : (
-            <ArrowDown className="h-3 w-3" />
-          )
-        ) : (
-          <ArrowUpDown className="text-muted-foreground/50 h-3 w-3" />
-        )}
-      </span>
-    </TableHead>
   )
 }
 

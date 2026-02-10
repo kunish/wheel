@@ -3,6 +3,7 @@ volumes:
 
 services:
   worker:
+    image: registry.nexus.kunish.org/wheel-worker
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
@@ -21,6 +22,7 @@ services:
       - worker-data:/app/data
 
   web:
+    image: registry.nexus.kunish.org/wheel-web
     build:
       context: .
       dockerfile: apps/web/Dockerfile

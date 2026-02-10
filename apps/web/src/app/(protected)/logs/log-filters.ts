@@ -80,16 +80,6 @@ export function computeTimePresetFrom(presetSeconds: number, now?: number): numb
   return currentTime - presetSeconds
 }
 
-/** Sort an array of log entries by a numeric field */
-export function sortLogs<T>(logs: T[], field: (keyof T & string) | null, dir: "asc" | "desc"): T[] {
-  if (!field) return logs
-  return [...logs].sort((a, b) => {
-    const av = (a[field] as number) ?? 0
-    const bv = (b[field] as number) ?? 0
-    return dir === "asc" ? av - bv : bv - av
-  })
-}
-
 /** Count case-insensitive occurrences of needle in text */
 export function countMatches(text: string, needle: string): number {
   if (!needle || !text) return 0
