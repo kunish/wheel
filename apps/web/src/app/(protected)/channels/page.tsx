@@ -66,7 +66,7 @@ import {
   updateChannel,
   updateGroup,
 } from "@/lib/api"
-import { groupModelsByProvider } from "@/lib/group-models"
+
 import { cn } from "@/lib/utils"
 
 // ─── Type labels ───────────────────────────────
@@ -907,7 +907,6 @@ function GroupItemList({
   const modelItems = items.filter((it) => it.modelName)
   const allItems = items.filter((it) => !it.modelName)
   const modelIds = modelItems.map((it) => it.modelName)
-  const itemByModel = new Map(modelItems.map((it) => [it.modelName, it]))
 
   // Build resolved metadata map using fuzzy matching
   const resolvedMap = useMemo(() => {
@@ -920,21 +919,52 @@ function GroupItemList({
     return map
   }, [metadataMap, modelIds])
 
-  const groups = useMemo(
-    () => groupModelsByProvider(modelIds, resolvedMap),
-    [modelIds, resolvedMap],
-  )
+  // Group items by provider, preserving full item references to handle
+  // duplicate model names across different channels correctly.
+  const groupedItems = useMemo(() => {
+    interface ItemGroup {
+      provider: string
+      providerName: string
+      logoUrl: string | null
+      items: GroupItemForm[]
+    }
+    if (!resolvedMap) {
+      return [
+        { provider: "other", providerName: "Other", logoUrl: null, items: modelItems },
+      ] as ItemGroup[]
+    }
+    const groups = new Map<string, ItemGroup>()
+    for (const it of modelItems) {
+      const meta = resolvedMap[it.modelName]
+      const key = meta?.provider ?? "other"
+      let group = groups.get(key)
+      if (!group) {
+        group = {
+          provider: key,
+          providerName: meta?.providerName ?? "Other",
+          logoUrl: meta?.logoUrl ?? null,
+          items: [],
+        }
+        groups.set(key, group)
+      }
+      group.items.push(it)
+    }
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.provider === "other") return 1
+      if (b.provider === "other") return -1
+      return a.providerName.localeCompare(b.providerName)
+    }) as ItemGroup[]
+  }, [modelItems, resolvedMap])
 
   const shouldGroup = modelIds.length >= 4
 
-  const renderModelCard = (modelName: string, idx: number) => {
-    const item = itemByModel.get(modelName)!
+  const renderModelCard = (item: GroupItemForm, idx: number) => {
     const ch = channelMap.get(item.channelId)
     const isDisabled = ch?.enabled === false
     return (
       <ModelCard
-        key={`${item.channelId}-${modelName}-${idx}`}
-        modelId={modelName}
+        key={`${item.channelId}-${item.modelName}-${idx}`}
+        modelId={item.modelName}
         disabled={isDisabled}
       >
         <span className="text-muted-foreground text-[10px]">
@@ -965,7 +995,7 @@ function GroupItemList({
   if (!shouldGroup) {
     return (
       <div className="flex flex-wrap gap-1.5">
-        {modelItems.map((it, i) => renderModelCard(it.modelName, i))}
+        {modelItems.map((it, i) => renderModelCard(it, i))}
         {allItems.map((it, i) => renderAllBadge(it, i))}
       </div>
     )
@@ -973,11 +1003,11 @@ function GroupItemList({
 
   return (
     <div className="flex flex-col gap-2">
-      {groups.map((g) => (
+      {groupedItems.map((g) => (
         <div key={g.provider}>
-          <ProviderHeader logoUrl={g.logoUrl} name={g.providerName} count={g.models.length} />
+          <ProviderHeader logoUrl={g.logoUrl} name={g.providerName} count={g.items.length} />
           <div className="flex flex-wrap gap-1.5">
-            {g.models.map((m, i) => renderModelCard(m, i))}
+            {g.items.map((it, i) => renderModelCard(it, i))}
           </div>
         </div>
       ))}
