@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { AppLayout } from "@/components/app-layout"
 import { useStatsWebSocket } from "@/hooks/use-stats-ws"
 import { useAuthStore } from "@/lib/store/auth"
@@ -14,14 +14,18 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const queryClient = useQueryClient()
   useStatsWebSocket(queryClient)
 
-  // Derive auth state synchronously from the store (no useState needed)
-  const ready = useMemo(() => isAuthenticated(), [isAuthenticated])
+  // Start as false to match SSR output, then sync with client-side auth state.
+  // This two-pass approach avoids hydration mismatch because the server has no
+  // access to localStorage where the auth token is stored.
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (!ready) {
+    if (isAuthenticated()) {
+      setReady(true)
+    } else {
       router.replace("/login")
     }
-  }, [ready, router])
+  }, [isAuthenticated, router])
 
   if (!ready)
     return (
