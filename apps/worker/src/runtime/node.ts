@@ -31,9 +31,10 @@ export const nodeRunBackground: RunBackground = (promise) => {
 
 /** Create a Drizzle database instance from a better-sqlite3 file */
 export function createNodeDb(filepath: string): Database {
-  // Dynamic imports to avoid bundling in CF Workers
   const BetterSqlite3 = require("better-sqlite3")
+
   const { drizzle } = require("drizzle-orm/better-sqlite3")
+
   const schema = require("../db/schema")
 
   const sqlite = new BetterSqlite3(filepath)

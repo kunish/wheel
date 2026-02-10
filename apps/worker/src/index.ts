@@ -1,7 +1,13 @@
-import type { AppEnv, Database, IKVStore } from "./runtime/types"
+import type { AppEnv } from "./runtime/types"
+import * as fs from "node:fs"
+import * as path from "node:path"
+import process from "node:process"
+import { serve } from "@hono/node-server"
+import { createNodeWebSocket } from "@hono/node-ws"
+/** Wheel API server — Hono + better-sqlite3 + in-memory KV */
 import { Hono } from "hono"
 import { cors } from "hono/cors"
-import { createDb } from "./db"
+import cron from "node-cron"
 import { jwtAuth } from "./middleware/jwt"
 import { relayRoutes } from "./relay/handler"
 import { syncAllModels } from "./relay/sync"
@@ -13,56 +19,48 @@ import { modelRoutes, syncPricesFromModelsDev } from "./routes/model"
 import { settingRoutes } from "./routes/setting"
 import { statsRoutes } from "./routes/stats"
 import { userRoutes } from "./routes/user"
-import { CfKV, createCfRunBackground } from "./runtime/cf"
+import { createNodeDb, MemoryKV, nodeRunBackground } from "./runtime/node"
 import { addClient } from "./ws/hub"
 
-interface CfBindings {
-  DB: D1Database
-  CACHE: KVNamespace
-  JWT_SECRET: string
-  ADMIN_USERNAME: string
-  ADMIN_PASSWORD: string
+// ─── Config from env ───────────────────────────
+const PORT = Number.parseInt(process.env.PORT || "8787", 10)
+const DB_PATH = process.env.DB_PATH || "./data/wheel.db"
+const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production"
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin"
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin"
+
+// Ensure data directory exists
+const dataDir = path.dirname(DB_PATH)
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true })
 }
 
-// Module-level singletons: created once per isolate from the raw CF bindings.
-// We store the original D1/KV references to detect if env has already been adapted.
-let _db: Database | null = null
-let _rawD1: D1Database | null = null
-let _cache: IKVStore | null = null
-let _rawKV: KVNamespace | null = null
+// ─── Auto-apply migrations ────────────────────
+applyMigrations(DB_PATH)
 
+// ─── Initialize database ──────────────────────
+const db = createNodeDb(DB_PATH)
+
+// ─── Create shared instances ───────────────────
+const cache = new MemoryKV()
+
+// ─── Hono app ──────────────────────────────────
 const app = new Hono<AppEnv>()
+
+// WebSocket setup for Node.js
+const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
 
 // CORS
 app.use("/*", cors())
 
-// Middleware: adapt CF-specific bindings into platform-agnostic AppBindings.
-// Caches wrappers per isolate so the same Drizzle/CfKV instance is reused.
+// Inject platform-agnostic bindings
 app.use("/*", async (c, next) => {
-  const env = c.env as unknown as CfBindings & Record<string, unknown>
-
-  // Only wrap if DB is still a raw D1Database (has .prepare method)
-  if (typeof (env.DB as any)?.prepare === "function") {
-    const rawD1 = env.DB as D1Database
-    if (_rawD1 !== rawD1 || !_db) {
-      _db = createDb(rawD1)
-      _rawD1 = rawD1
-    }
-    ;(env as any).DB = _db
-  }
-
-  if (typeof (env.CACHE as any)?.list === "function") {
-    const rawKV = env.CACHE as KVNamespace
-    if (_rawKV !== rawKV || !_cache) {
-      _cache = new CfKV(rawKV)
-      _rawKV = rawKV
-    }
-    ;(env as any).CACHE = _cache
-  }
-
-  const runBg = createCfRunBackground(c.executionCtx.waitUntil.bind(c.executionCtx))
-  c.set("runBackground", runBg)
-
+  ;(c.env as any).DB = db
+  ;(c.env as any).CACHE = cache
+  ;(c.env as any).JWT_SECRET = JWT_SECRET
+  ;(c.env as any).ADMIN_USERNAME = ADMIN_USERNAME
+  ;(c.env as any).ADMIN_PASSWORD = ADMIN_PASSWORD
+  c.set("runBackground", nodeRunBackground)
   await next()
 })
 
@@ -71,24 +69,21 @@ app.get("/", (c) => {
   return c.json({ name: "wheel", version: "0.1.0" })
 })
 
-// Public: login (no auth required)
+// Public: login
 app.route("/api/v1/user", userRoutes)
 
 // API Key authenticated endpoints (for end-user access)
 app.route("/api/v1/user/apikey", apikeyUserRoutes)
 
-// WebSocket endpoint for real-time stats push (no auth, must be before admin routes)
-app.get("/api/v1/ws", (c) => {
-  const upgradeHeader = c.req.header("Upgrade")
-  if (upgradeHeader !== "websocket") {
-    return c.text("Expected WebSocket upgrade", 426)
-  }
-  const pair = new WebSocketPair()
-  const [client, server] = Object.values(pair)
-  server.accept()
-  addClient(server)
-  return new Response(null, { status: 101, webSocket: client })
-})
+// WebSocket endpoint using @hono/node-ws
+app.get(
+  "/api/v1/ws",
+  upgradeWebSocket(() => ({
+    onOpen(_evt, ws) {
+      addClient(ws.raw as any)
+    },
+  })),
+)
 
 // Admin API: JWT protected
 const admin = new Hono<AppEnv>()
@@ -106,11 +101,79 @@ app.route("/api/v1", admin)
 // Relay proxy: API Key protected
 app.route("/v1", relayRoutes)
 
-export default {
-  fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: CfBindings) {
-    const db = createDb(env.DB)
-    const cache = new CfKV(env.CACHE)
+// ─── Start server ──────────────────────────────
+const server = serve({ fetch: app.fetch, port: PORT }, (info) => {
+  console.warn(`Wheel listening on http://localhost:${info.port}`)
+})
+
+// Inject WebSocket support into the HTTP server
+injectWebSocket(server)
+
+// ─── Scheduled tasks (cron) ────────────────────
+cron.schedule("0 */6 * * *", async () => {
+  console.warn("[cron] Running scheduled sync...")
+  try {
     await Promise.allSettled([syncPricesFromModelsDev(db), syncAllModels({ DB: db, CACHE: cache })])
-  },
+    console.warn("[cron] Scheduled sync completed")
+  } catch (err) {
+    console.error("[cron] Scheduled sync error:", err)
+  }
+})
+
+// ─── Migration helper ──────────────────────────
+function applyMigrations(dbPath: string) {
+  // eslint-disable-next-line ts/no-require-imports
+  const BetterSqlite3 = require("better-sqlite3")
+  const sqlite = new BetterSqlite3(dbPath)
+  sqlite.pragma("journal_mode = WAL")
+
+  const migrationsDir = path.resolve(__dirname, "../drizzle")
+  if (!fs.existsSync(migrationsDir)) {
+    console.warn("[migration] No migrations directory found, skipping")
+    sqlite.close()
+    return
+  }
+
+  // Create migration tracking table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS _drizzle_migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `)
+
+  const applied = new Set(
+    sqlite
+      .prepare("SELECT hash FROM _drizzle_migrations")
+      .all()
+      .map((r: any) => r.hash),
+  )
+
+  const sqlFiles = fs
+    .readdirSync(migrationsDir)
+    .filter((f: string) => f.endsWith(".sql"))
+    .sort()
+
+  for (const file of sqlFiles) {
+    if (applied.has(file)) continue
+
+    const migrationSql = fs.readFileSync(path.join(migrationsDir, file), "utf8")
+    const statements = migrationSql
+      .split(/-->\s*statement-breakpoint/)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0)
+
+    const transaction = sqlite.transaction(() => {
+      for (const stmt of statements) {
+        sqlite.exec(stmt)
+      }
+      sqlite.prepare("INSERT INTO _drizzle_migrations (hash) VALUES (?)").run(file)
+    })
+
+    transaction()
+    console.warn(`[migration] Applied: ${file}`)
+  }
+
+  sqlite.close()
 }

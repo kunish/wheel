@@ -10,6 +10,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel&env=NEXT_PUBLIC_API_BASE_URL&envDescription=Worker%20API%20Base%20URL&envLink=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel%23environment-variables&project-name=wheel)
+
 </div>
 
 ---
@@ -80,7 +82,7 @@
 
 - **JSON 导出** — 完整数据库备份（通道、分组、Key、设置，可选日志）
 - **JSON 导入** — ID 自动重映射，按名称去重，导入结果摘要
-- **部署向导** — 图形化生成 Cloudflare / Docker 配置文件
+- **部署向导** — 图形化生成 Docker 配置文件
 
 ---
 
@@ -88,9 +90,7 @@
 
 ```
 apps/
-  worker/     API Backend (Hono + Drizzle ORM)
-              ├─ Cloudflare Workers (D1 + KV)
-              └─ Node.js (better-sqlite3 + in-memory KV)
+  worker/     API Backend (Hono + better-sqlite3 + Drizzle ORM)
   web/        Next.js Dashboard (shadcn/ui + Tailwind)
 packages/
   core/       Shared TypeScript types and enums
@@ -100,7 +100,31 @@ packages/
 
 ## Deploy
 
-### Option 1: Docker Self-Hosted
+### Option 1: Vercel + Docker
+
+Web 仪表盘部署到 Vercel，Worker 后端 Docker 自部署。最简单的上手方式。
+
+**Step 1 — 部署 Worker**
+
+```bash
+docker run -d \
+  -p 8787:8787 \
+  -v wheel-data:/app/data \
+  -e JWT_SECRET=$(openssl rand -hex 32) \
+  ghcr.io/kunish/wheel-worker
+```
+
+**Step 2 — 部署 Web 到 Vercel**
+
+点击按钮一键部署，填入 Worker 的公网地址（如 `https://api.your-domain.com`）作为 `NEXT_PUBLIC_API_BASE_URL`：
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel&env=NEXT_PUBLIC_API_BASE_URL&envDescription=Worker%20API%20Base%20URL&envLink=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel%23environment-variables&project-name=wheel)
+
+默认管理员账号：`admin` / `admin`，请登录后立即修改。
+
+---
+
+### Option 2: Docker Self-Hosted
 
 一键部署 Worker + Web，使用 SQLite 存储，无需云服务账号。
 
@@ -114,7 +138,7 @@ volumes:
 
 services:
   worker:
-    image: ghcr.io/YOUR_USERNAME/wheel-worker
+    image: ghcr.io/kunish/wheel-worker
     restart: always
     environment:
       JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
@@ -126,7 +150,7 @@ services:
       - worker-data:/app/data
 
   web:
-    image: ghcr.io/YOUR_USERNAME/wheel-web
+    image: ghcr.io/kunish/wheel-web
     restart: always
     depends_on:
       - worker
@@ -160,42 +184,6 @@ docker compose up -d
 
 ---
 
-### Option 2: Cloudflare Workers + Vercel
-
-API 后端部署到 Cloudflare Workers（免费额度），仪表盘部署到 Vercel。
-
-#### 1. 部署 Worker
-
-```bash
-# 创建 D1 数据库和 KV
-npx wrangler d1 create wheel-db
-npx wrangler kv namespace create wheel-cache
-
-# 更新 wrangler.toml 中的 database_id 和 KV id
-
-# 执行数据库迁移
-npx wrangler d1 migrations apply wheel-db
-
-# 设置 JWT 密钥
-npx wrangler secret put JWT_SECRET
-
-# 部署
-npx wrangler deploy
-```
-
-#### 2. 部署 Web 到 Vercel
-
-```bash
-npx vercel link
-npx vercel env add NEXT_PUBLIC_API_BASE_URL
-# 输入 Worker URL: https://wheel.<subdomain>.workers.dev
-npx vercel deploy --prod
-```
-
-或使用仪表盘内置的 **Deploy Wizard**（Settings > Deploy）生成配置文件。
-
----
-
 ### Option 3: Manual Build
 
 #### 前置条件
@@ -206,9 +194,9 @@ npx vercel deploy --prod
 ```bash
 pnpm install
 
-# Worker (Node.js 模式)
-pnpm --filter @wheel/worker build:node
-JWT_SECRET=your-secret node apps/worker/dist/index.node.js
+# Worker
+pnpm --filter @wheel/worker build
+JWT_SECRET=your-secret node apps/worker/dist/index.js
 
 # Web
 pnpm --filter @wheel/web build
@@ -219,14 +207,14 @@ node apps/web/.next/standalone/apps/web/server.js
 
 ## Environment Variables
 
-| 变量                       | 组件             | 描述              | 必填              | 默认值            |
-| -------------------------- | ---------------- | ----------------- | ----------------- | ----------------- |
-| `JWT_SECRET`               | Worker           | JWT 签名密钥      | Yes               | —                 |
-| `ADMIN_USERNAME`           | Worker           | 管理员用户名      | No                | `admin`           |
-| `ADMIN_PASSWORD`           | Worker           | 管理员密码        | No                | `admin`           |
-| `DB_PATH`                  | Worker (Node.js) | SQLite 数据库路径 | No                | `./data/wheel.db` |
-| `PORT`                     | Worker (Node.js) | HTTP 端口         | No                | `8787`            |
-| `NEXT_PUBLIC_API_BASE_URL` | Web (Vercel)     | Worker API 地址   | Vercel 部署时必填 | —                 |
+| 变量                       | 组件         | 描述              | 必填              | 默认值            |
+| -------------------------- | ------------ | ----------------- | ----------------- | ----------------- |
+| `JWT_SECRET`               | Worker       | JWT 签名密钥      | Yes               | —                 |
+| `ADMIN_USERNAME`           | Worker       | 管理员用户名      | No                | `admin`           |
+| `ADMIN_PASSWORD`           | Worker       | 管理员密码        | No                | `admin`           |
+| `DB_PATH`                  | Worker       | SQLite 数据库路径 | No                | `./data/wheel.db` |
+| `PORT`                     | Worker       | HTTP 端口         | No                | `8787`            |
+| `NEXT_PUBLIC_API_BASE_URL` | Web (Vercel) | Worker API 地址   | Vercel 部署时必填 | —                 |
 
 ---
 

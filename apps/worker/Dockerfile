@@ -17,7 +17,7 @@ COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=deps /app/packages/core/node_modules ./packages/core/node_modules
 COPY . .
 RUN pnpm --filter @wheel/core build
-RUN cd apps/worker && npx tsc -p tsconfig.node.json
+RUN cd apps/worker && npx tsc
 
 FROM base AS runner
 WORKDIR /app
@@ -42,4 +42,4 @@ EXPOSE 8787
 
 # NODE_PATH so requires resolve from the monorepo node_modules
 ENV NODE_PATH=/app/node_modules:/app/apps/worker/node_modules
-CMD ["node", "dist/index.node.js"]
+CMD ["node", "dist/index.js"]

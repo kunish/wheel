@@ -8,7 +8,6 @@ import {
   Menu,
   Moon,
   Radio,
-  Rocket,
   Settings,
   Sun,
   Zap,
@@ -28,7 +27,6 @@ const navItems = [
   { href: "/prices", label: "Prices", icon: DollarSign },
   { href: "/logs", label: "Logs", icon: FileText },
   { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/deploy", label: "Deploy", icon: Rocket },
 ]
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {

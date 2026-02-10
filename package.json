@@ -9,8 +9,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "deploy:worker": "pnpm --filter @wheel/worker run deploy",
-    "deploy:web": "pnpm --filter @wheel/web run deploy",
+    "deploy:web": "vercel deploy --prod",
     "prepare": "husky"
   },
   "devDependencies": {

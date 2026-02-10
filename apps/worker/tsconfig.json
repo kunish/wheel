@@ -1,18 +1,18 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx",
-    "lib": ["ESNext"],
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
     "rootDir": "./src",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "types": ["@cloudflare/workers-types"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "types": ["node"],
     "strict": true,
+    "declaration": false,
     "outDir": "./dist",
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "src/index.node.ts", "src/runtime/node.ts", "dist"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
