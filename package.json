@@ -10,6 +10,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "deploy:web": "vercel deploy --prod",
+    "docker:push": "docker buildx bake --push",
     "prepare": "husky"
   },
   "devDependencies": {

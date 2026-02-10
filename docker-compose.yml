@@ -7,6 +7,9 @@ services:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
     restart: always
     environment:
       JWT_SECRET: ${JWT_SECRET:-dummy}
@@ -23,6 +26,9 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
     restart: always
     ports:
       - 3000:3000
