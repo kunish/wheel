@@ -20,6 +20,8 @@ import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Download,
   GripVertical,
   List,
@@ -197,11 +199,13 @@ export default function ChannelsAndGroupsPage() {
   // Channel state
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
   const [channelForm, setChannelForm] = useState<ChannelFormData>(EMPTY_CHANNEL_FORM)
+  const [channelsCollapsed, setChannelsCollapsed] = useState(true)
 
   // Group state
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
   const [groupForm, setGroupForm] = useState<GroupFormData>(EMPTY_GROUP_FORM)
   const [modelListOpen, setModelListOpen] = useState(false)
+  const [groupsCollapsed, setGroupsCollapsed] = useState(true)
 
   // Drag state
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null)
@@ -498,9 +502,26 @@ export default function ChannelsAndGroupsPage() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Channels</h3>
-              <Button size="sm" onClick={openCreateChannel}>
-                <Plus className="mr-1 h-3 w-3" /> Add
-              </Button>
+              <div className="flex items-center gap-1">
+                {channels.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setChannelsCollapsed((v) => !v)}
+                    title={channelsCollapsed ? "Expand all" : "Collapse all"}
+                  >
+                    {channelsCollapsed ? (
+                      <ChevronsUpDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronsDownUp className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                <Button size="sm" onClick={openCreateChannel}>
+                  <Plus className="mr-1 h-3 w-3" /> Add
+                </Button>
+              </div>
             </div>
 
             <ScrollArea className="flex-1">
@@ -532,6 +553,7 @@ export default function ChannelsAndGroupsPage() {
                             }
                           }}
                           onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
+                          forceCollapsed={channelsCollapsed}
                         />
                       </motion.div>
                     ))}
@@ -545,9 +567,26 @@ export default function ChannelsAndGroupsPage() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Groups</h3>
-              <Button size="sm" onClick={openCreateGroup}>
-                <Plus className="mr-1 h-3 w-3" /> Add
-              </Button>
+              <div className="flex items-center gap-1">
+                {groups.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setGroupsCollapsed((v) => !v)}
+                    title={groupsCollapsed ? "Expand all" : "Collapse all"}
+                  >
+                    {groupsCollapsed ? (
+                      <ChevronsUpDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronsDownUp className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                <Button size="sm" onClick={openCreateGroup}>
+                  <Plus className="mr-1 h-3 w-3" /> Add
+                </Button>
+              </div>
             </div>
 
             <ScrollArea className="flex-1">
@@ -584,6 +623,7 @@ export default function ChannelsAndGroupsPage() {
                               }
                             }}
                             isOver={activeDrag !== null}
+                            forceCollapsed={groupsCollapsed}
                           />
                         </motion.div>
                       ))}
@@ -679,6 +719,7 @@ function DraggableChannel({
   onEdit,
   onDelete,
   onToggle,
+  forceCollapsed,
 }: {
   channel: ChannelRecord
   highlighted?: boolean
@@ -686,6 +727,7 @@ function DraggableChannel({
   onEdit: () => void
   onDelete: () => void
   onToggle: (enabled: boolean) => void
+  forceCollapsed?: boolean
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `channel-${channel.id}`,
@@ -693,7 +735,12 @@ function DraggableChannel({
   })
 
   const modelNames = parseModels(channel.model)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
+
+  // Sync with parent's expand/collapse all toggle
+  useEffect(() => {
+    if (forceCollapsed !== undefined) setCollapsed(forceCollapsed)
+  }, [forceCollapsed])
 
   // Auto-expand if highlighted while collapsed
   useEffect(() => {
@@ -826,6 +873,7 @@ function SortableGroup({
   onDelete,
   onClear,
   isOver: dragActive,
+  forceCollapsed,
 }: {
   group: GroupRecord
   channelMap: Map<number, ChannelRecord>
@@ -833,6 +881,7 @@ function SortableGroup({
   onDelete: () => void
   onClear: () => void
   isOver: boolean
+  forceCollapsed?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `sortable-group-${group.id}`,
@@ -845,7 +894,12 @@ function SortableGroup({
   })
 
   const { data: metaData } = useModelMetadataQuery()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
+
+  // Sync with parent's expand/collapse all toggle
+  useEffect(() => {
+    if (forceCollapsed !== undefined) setCollapsed(forceCollapsed)
+  }, [forceCollapsed])
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1781,6 +1835,7 @@ function ChannelModelPickerDialog({
 }) {
   const { data } = useModelMetadataQuery()
   const [search, setSearch] = useState("")
+  const [channelFilter, setChannelFilter] = useState<number | null>(null)
 
   // Flatten channel→model pairs, group by provider
   const grouped = useMemo(() => {
@@ -1792,6 +1847,9 @@ function ChannelModelPickerDialog({
     > = {}
 
     for (const ch of channelModels) {
+      // Quick filter by channel
+      if (channelFilter !== null && ch.channelId !== channelFilter) continue
+
       for (const modelId of ch.models) {
         const meta = rawMap ? fuzzyLookup(rawMap, modelId) : null
         const providerName = meta?.providerName || "Other"
@@ -1818,7 +1876,7 @@ function ChannelModelPickerDialog({
       items.sort((a, b) => a.modelId.localeCompare(b.modelId))
     }
     return result
-  }, [data, channelModels, search])
+  }, [data, channelModels, search, channelFilter])
 
   const providerKeys = useMemo(
     () =>
@@ -1840,14 +1898,32 @@ function ChannelModelPickerDialog({
           <DialogTitle>Select Model</DialogTitle>
         </DialogHeader>
 
-        <div className="relative">
-          <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
-          <Input
-            placeholder="Search models..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
+            <Input
+              placeholder="Search models..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select
+            value={channelFilter !== null ? String(channelFilter) : "all"}
+            onValueChange={(v) => setChannelFilter(v === "all" ? null : Number(v))}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="All Channels" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Channels</SelectItem>
+              {channelModels.map((ch) => (
+                <SelectItem key={ch.channelId} value={String(ch.channelId)}>
+                  {ch.channelName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <ScrollArea className="h-[50vh]">

@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 import JsonView from "@uiw/react-json-view"
 import { githubDarkTheme } from "@uiw/react-json-view/githubDark"
 import { githubLightTheme } from "@uiw/react-json-view/githubLight"
@@ -30,6 +30,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
+import { ModelCombobox } from "@/components/model-combobox"
 import { formatRangeSummary, TimeRangePicker } from "@/components/time-range-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -42,6 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -54,7 +56,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useModelMeta } from "@/hooks/use-model-meta"
 import { useWsEvent } from "@/hooks/use-stats-ws"
-import { listChannels as apiListChannels, getLog, listLogs, replayLog } from "@/lib/api"
+import {
+  listChannels as apiListChannels,
+  getLog,
+  getModelList,
+  listLogs,
+  replayLog,
+} from "@/lib/api"
 import { buildFilterSearchParams, countMatches, parseLogFilters, sortLogs } from "./log-filters"
 
 interface LogEntry {
@@ -139,16 +147,10 @@ export default function LogsPage() {
   const { page, model, status, channelId, keyword, pageSize, startTime, endTime } = filters
 
   // Local state for controlled text inputs (synced to URL via debounce)
-  const [modelInput, setModelInput] = useState(model)
   const [keywordInput, setKeywordInput] = useState(keyword)
 
   // Sync local input state when URL changes externally (e.g., deep links from dashboard)
-  const prevModelRef = useRef(model)
   const prevKeywordRef = useRef(keyword)
-  if (prevModelRef.current !== model) {
-    prevModelRef.current = model
-    setModelInput(model)
-  }
   if (prevKeywordRef.current !== keyword) {
     prevKeywordRef.current = keyword
     setKeywordInput(keyword)
@@ -189,7 +191,7 @@ export default function LogsPage() {
     startTime !== undefined
   const isFirstPage = page === 1
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["logs", page, pageSize, model, status, channelId, keyword, startTime, endTime],
     queryFn: () =>
       listLogs({
@@ -202,6 +204,7 @@ export default function LogsPage() {
         ...(startTime ? { startTime } : {}),
         ...(endTime ? { endTime } : {}),
       }),
+    placeholderData: keepPreviousData,
   })
 
   const { data: detailData } = useQuery({
@@ -216,6 +219,13 @@ export default function LogsPage() {
     staleTime: 5 * 60 * 1000,
   })
   const channels = (channelsData?.data?.channels ?? []) as Array<{ id: number; name: string }>
+
+  const { data: modelsData } = useQuery({
+    queryKey: ["models-for-filter"],
+    queryFn: getModelList,
+    staleTime: 5 * 60 * 1000,
+  })
+  const modelOptions = (modelsData?.data?.models ?? []) as string[]
 
   // Listen for log-created WebSocket events (reuses global WS connection)
   const filtersRef = useRef({
@@ -295,7 +305,6 @@ export default function LogsPage() {
   const handleShowNew = useCallback(() => {
     // Clear all filters and go to page 1
     router.replace(pathname, { scroll: false })
-    setModelInput("")
     setKeywordInput("")
     setPendingCount(0)
     queryClient.invalidateQueries({ queryKey: ["logs"] })
@@ -360,9 +369,7 @@ export default function LogsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-3">
           <h2 className="text-2xl font-bold tracking-tight">Logs</h2>
-          {!isLoading && (
-            <span className="text-muted-foreground text-sm">{total.toLocaleString()} total</span>
-          )}
+          <span className="text-muted-foreground text-sm">{total.toLocaleString()} total</span>
           {pendingCount > 0 && (
             <Button
               variant="outline"
@@ -375,7 +382,7 @@ export default function LogsPage() {
             </Button>
           )}
         </div>
-        {!isLoading && totalPages > 0 && paginationControls}
+        {totalPages > 0 && paginationControls}
       </div>
 
       {/* Filter Bar */}
@@ -407,14 +414,10 @@ export default function LogsPage() {
               </Button>
             )}
           </div>
-          <Input
-            placeholder="Model..."
-            value={modelInput}
-            onChange={(e) => {
-              setModelInput(e.target.value)
-              debouncedUpdateFilter("model", e.target.value)
-            }}
-            className="w-36"
+          <ModelCombobox
+            models={modelOptions}
+            value={model}
+            onChange={(v) => updateFilter({ model: v || undefined })}
           />
           <Select
             value={channelId ? String(channelId) : "all"}
@@ -477,7 +480,6 @@ export default function LogsPage() {
                 Model: {model}
                 <button
                   onClick={() => {
-                    setModelInput("")
                     updateFilter({ model: undefined })
                   }}
                 >
@@ -515,7 +517,6 @@ export default function LogsPage() {
               className="h-6 px-2 text-xs"
               onClick={() => {
                 router.replace(pathname, { scroll: false })
-                setModelInput("")
                 setKeywordInput("")
               }}
             >
@@ -526,9 +527,11 @@ export default function LogsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <LogTableSkeleton rows={pageSize > 20 ? 10 : 8} />
       ) : (
-        <>
+        <div
+          className={`transition-opacity duration-150 ${isFetching ? "pointer-events-none opacity-50" : ""}`}
+        >
           <TooltipProvider delayDuration={300}>
             <Table>
               <TableHeader>
@@ -704,7 +707,6 @@ export default function LogsPage() {
                           className="mt-3"
                           onClick={() => {
                             router.replace(pathname, { scroll: false })
-                            setModelInput("")
                             setKeywordInput("")
                           }}
                         >
@@ -717,7 +719,7 @@ export default function LogsPage() {
               </TableBody>
             </Table>
           </TooltipProvider>
-        </>
+        </div>
       )}
 
       {/* Log Detail Side Panel */}
@@ -1326,5 +1328,62 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
         </div>
       )}
     </div>
+  )
+}
+
+function LogTableSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Time</TableHead>
+          <TableHead>Model</TableHead>
+          <TableHead>Channel</TableHead>
+          <TableHead className="text-right">Input</TableHead>
+          <TableHead className="text-right">Output</TableHead>
+          <TableHead className="text-right">TTFT</TableHead>
+          <TableHead className="text-right">Latency</TableHead>
+          <TableHead className="text-right">Cost</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="w-10" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {Array.from({ length: rows }).map((_, i) => (
+          <TableRow key={i}>
+            <TableCell>
+              <Skeleton className="h-4 w-24" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="h-5 w-28 rounded-full" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="h-4 w-20" />
+            </TableCell>
+            <TableCell className="text-right">
+              <Skeleton className="ml-auto h-4 w-12" />
+            </TableCell>
+            <TableCell className="text-right">
+              <Skeleton className="ml-auto h-4 w-12" />
+            </TableCell>
+            <TableCell className="text-right">
+              <Skeleton className="ml-auto h-4 w-14" />
+            </TableCell>
+            <TableCell className="text-right">
+              <Skeleton className="ml-auto h-4 w-14" />
+            </TableCell>
+            <TableCell className="text-right">
+              <Skeleton className="ml-auto h-4 w-12" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="h-5 w-10 rounded-full" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="h-8 w-8 rounded-md" />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
