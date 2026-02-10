@@ -10,7 +10,6 @@ import {
   Radio,
   Settings,
   Sun,
-  Zap,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import Link from "next/link"
@@ -38,7 +37,25 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="p-5">
         <div className="flex items-center gap-2.5">
           <div className="bg-nb-lime border-sidebar-foreground flex size-9 items-center justify-center rounded-md border-2">
-            <Zap className="size-5 fill-current" />
+            <svg
+              className="size-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <circle cx="12" cy="12" r="3" />
+              <line x1="12" y1="3" x2="12" y2="9" />
+              <line x1="12" y1="15" x2="12" y2="21" />
+              <line x1="3" y1="12" x2="9" y2="12" />
+              <line x1="15" y1="12" x2="21" y2="12" />
+              <line x1="5.64" y1="5.64" x2="9.88" y2="9.88" />
+              <line x1="14.12" y1="14.12" x2="18.36" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="14.12" y2="9.88" />
+              <line x1="9.88" y1="14.12" x2="5.64" y2="18.36" />
+            </svg>
           </div>
           <div>
             <h1 className="text-sidebar-foreground text-base font-bold tracking-tight">Wheel</h1>
