@@ -606,7 +606,7 @@ relayRoutes.post("/*", async (c) => {
   const retryAfterSecs = rateLimited ? Math.ceil(lastRetryAfterMs / 1000) || 1 : 0
 
   // Determine channel from last attempt
-  const lastAttempt = attempts.findLast((a) => a.status === "failed")
+  const lastAttempt = [...attempts].reverse().find((a: AttemptRecord) => a.status === "failed")
 
   const logBody = truncateForLog(body)
   c.get("runBackground")(
