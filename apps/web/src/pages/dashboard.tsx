@@ -217,6 +217,24 @@ function getActivityLevel(value: number): number {
   return ACTIVITY_LEVELS.find((l) => value >= l.min)?.level ?? 1
 }
 
+/** Detect the locale's first day of week (0=Sun, 1=Mon, … 6=Sat).
+ *  Uses Intl.Locale weekInfo when available, falls back to Sunday. */
+function getFirstDayOfWeek(lang: string): number {
+  try {
+    const locale = new Intl.Locale(lang) as Intl.Locale & {
+      weekInfo?: { firstDay: number }
+      getWeekInfo?: () => { firstDay: number }
+    }
+    // weekInfo is a getter property (Chrome 99+, Safari 17.4+)
+    const info = locale.weekInfo ?? locale.getWeekInfo?.()
+    if (info) {
+      // Intl returns 1=Mon … 7=Sun; convert to JS getDay() convention (0=Sun … 6=Sat)
+      return info.firstDay === 7 ? 0 : info.firstDay
+    }
+  } catch {}
+  return 0 // fallback: Sunday
+}
+
 type HeatmapView = "day" | "week" | "month" | "year"
 
 const HEATMAP_VIEWS: HeatmapView[] = ["day", "week", "month", "year"]
@@ -261,8 +279,9 @@ function toDateStr(d: Date): string {
 }
 
 function ActivitySection({ data }: { data?: StatsDaily[] }) {
-  const { t } = useTranslation("dashboard")
+  const { t, i18n } = useTranslation("dashboard")
   const { t: tc } = useTranslation("common")
+  const firstDay = useMemo(() => getFirstDayOfWeek(i18n.language), [i18n.language])
   const [view, setViewRaw] = useState<HeatmapView>(getStoredView)
   const setView = useCallback((v: HeatmapView) => {
     setViewRaw(v)
@@ -288,7 +307,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 
   const dataMap = useMemo(() => new Map((data ?? []).map((d) => [d.date, d])), [data])
 
-  const weekdayLabels = useMemo(
+  const weekdayLabelsRaw = useMemo(
     () => [
       tc("weekdays.sun"),
       tc("weekdays.mon"),
@@ -299,6 +318,12 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       tc("weekdays.sat"),
     ],
     [tc],
+  )
+
+  // Reorder weekday labels so the locale's first day comes first
+  const weekdayLabels = useMemo(
+    () => [...weekdayLabelsRaw.slice(firstDay), ...weekdayLabelsRaw.slice(0, firstDay)],
+    [weekdayLabelsRaw, firstDay],
   )
 
   const weekdaysFull = useMemo(
@@ -339,7 +364,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 
   const yearDays = useMemo(() => {
     const anchor = yearAnchor
-    const anchorDay = anchor.getDay()
+    const anchorDay = (anchor.getDay() - firstDay + 7) % 7
     const start = new Date(anchor)
     start.setDate(start.getDate() - anchorDay - 52 * 7)
     const result: DayData[] = []
@@ -349,7 +374,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       result.push(buildDayData(d, dataMap, today))
     }
     return result
-  }, [dataMap, today, yearAnchor])
+  }, [dataMap, today, yearAnchor, firstDay])
 
   // ── Month view: offset-based month ──
   const monthAnchor = useMemo(() => {
@@ -363,9 +388,9 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
   const monthDays = useMemo(() => {
     const year = monthAnchor.getFullYear()
     const month = monthAnchor.getMonth()
-    const firstDay = new Date(year, month, 1)
+    const monthFirstDate = new Date(year, month, 1)
     const lastDay = new Date(year, month + 1, 0)
-    const startPad = firstDay.getDay()
+    const startPad = (monthFirstDate.getDay() - firstDay + 7) % 7
     const result: (DayData | null)[] = []
     for (let i = 0; i < startPad; i++) result.push(null)
     for (let d = 1; d <= lastDay.getDate(); d++) {
@@ -373,15 +398,16 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       result.push(buildDayData(date, dataMap, today))
     }
     return result
-  }, [dataMap, today, monthAnchor])
+  }, [dataMap, today, monthAnchor, firstDay])
 
-  // ── Week view: offset-based week (Sun–Sat) ──
+  // ── Week view: offset-based week, starting from locale first day ──
   const weekStart = useMemo(() => {
     const todayDay = today.getDay()
+    const diff = (todayDay - firstDay + 7) % 7
     const start = new Date(today)
-    start.setDate(start.getDate() - todayDay + weekOffset * 7)
+    start.setDate(start.getDate() - diff + weekOffset * 7)
     return start
-  }, [today, weekOffset])
+  }, [today, weekOffset, firstDay])
 
   const weekLabel = useMemo(() => {
     const end = new Date(weekStart)
@@ -706,49 +732,359 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                   ))}
                 </div>
 
-                {/* 24-hour heatmap grid */}
-                <div className="flex gap-1">
-                  <div className="flex flex-col gap-[3px]">
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <div
-                        key={h}
-                        className="text-muted-foreground flex h-5 items-center text-[10px] leading-none tabular-nums"
-                      >
-                        {h.toString().padStart(2, "0")}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-[3px]">
-                    {Array.from({ length: 24 }, (_, h) => {
-                      const isFutureHour = isToday && h > nowHour
-                      if (isFutureHour) {
-                        return (
-                          <div
-                            key={h}
-                            className="border-border/30 h-5 rounded-sm border border-dashed"
-                          />
-                        )
+                {/* 12-hour dual-ring clock heatmap with wheel/gear motif */}
+                <div className="flex items-center justify-center py-2">
+                  <svg
+                    viewBox="-10 -10 360 360"
+                    className="w-full max-w-[380px]"
+                    style={{ filter: "drop-shadow(2px 2px 0 var(--nb-shadow))" }}
+                  >
+                    {(() => {
+                      const CX = 170
+                      const CY = 170
+                      const toRad = (deg: number) => (deg * Math.PI) / 180
+                      // Arc segment geometry — 12 segments of 30° each
+                      // Each segment is CENTERED on its clock tick (12 at top = -90°)
+                      // so it spans from tick-15° to tick+15°, with GAP padding on each side
+                      const GAP = 1.5
+                      const ARC_SPAN = 30 - GAP * 2 // 27° per arc
+                      // Base offset: i=0 tick is at -90°, arc center at -90°, arc starts at -90°-15°+GAP
+                      const BASE = -90 - 15
+                      // Radii
+                      const PM_OUTER = 155
+                      const PM_INNER = 120
+                      const AM_OUTER = 114
+                      const AM_INNER = 80
+                      const HUB_R = 74
+                      const GEAR_RING_R = 158
+                      const GEAR_TOOTH_H = 8
+                      const GEAR_OUTER = GEAR_RING_R + GEAR_TOOTH_H
+
+                      /** Build an arc‑segment path between two radii */
+                      function arcPath(
+                        startDeg: number,
+                        spanDeg: number,
+                        rIn: number,
+                        rOut: number,
+                      ) {
+                        const a1 = toRad(startDeg)
+                        const a2 = toRad(startDeg + spanDeg)
+                        const x1 = CX + rOut * Math.cos(a1)
+                        const y1 = CY + rOut * Math.sin(a1)
+                        const x2 = CX + rOut * Math.cos(a2)
+                        const y2 = CY + rOut * Math.sin(a2)
+                        const x3 = CX + rIn * Math.cos(a2)
+                        const y3 = CY + rIn * Math.sin(a2)
+                        const x4 = CX + rIn * Math.cos(a1)
+                        const y4 = CY + rIn * Math.sin(a1)
+                        return [
+                          `M ${x1} ${y1}`,
+                          `A ${rOut} ${rOut} 0 0 1 ${x2} ${y2}`,
+                          `L ${x3} ${y3}`,
+                          `A ${rIn} ${rIn} 0 0 0 ${x4} ${y4}`,
+                          "Z",
+                        ].join(" ")
                       }
-                      const hourly = dayHourlyMap.get(h)
-                      const hCount = (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
-                      const hLevel = getActivityLevel(hCount)
+
                       return (
-                        <div
-                          key={h}
-                          className="h-5 cursor-pointer rounded-sm transition-transform hover:scale-[1.02]"
-                          style={{ backgroundColor: LEVEL_COLORS[hLevel] }}
-                          onClick={() => navigateToHour(selectedDayDateStr, h)}
-                          onMouseEnter={(e) =>
-                            handleMouseEnter(e, {
-                              label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
-                              metrics: hourly ?? null,
-                            })
-                          }
-                          onMouseLeave={handleMouseLeave}
-                        />
+                        <>
+                          {/* ── Gear teeth: 24 teeth, 2 per segment, centered in each arc ── */}
+                          {Array.from({ length: 24 }, (_, i) => {
+                            // Segment index and sub-position (0 or 1)
+                            const seg = Math.floor(i / 2)
+                            const sub = i % 2
+                            // Segment center at seg*30 - 90 (clock tick), two teeth at ±7°
+                            const segCenter = seg * 30 - 90
+                            const toothAngle = segCenter + (sub === 0 ? -7 : 7)
+                            const hw = 3.5 // half-width of tooth
+                            const mid = toRad(toothAngle)
+                            const perp = mid + Math.PI / 2
+                            const ix1 = CX + GEAR_RING_R * Math.cos(mid) + hw * Math.cos(perp)
+                            const iy1 = CY + GEAR_RING_R * Math.sin(mid) + hw * Math.sin(perp)
+                            const ix2 = CX + GEAR_RING_R * Math.cos(mid) - hw * Math.cos(perp)
+                            const iy2 = CY + GEAR_RING_R * Math.sin(mid) - hw * Math.sin(perp)
+                            const ox1 =
+                              CX + GEAR_OUTER * Math.cos(mid) + (hw - 0.8) * Math.cos(perp)
+                            const oy1 =
+                              CY + GEAR_OUTER * Math.sin(mid) + (hw - 0.8) * Math.sin(perp)
+                            const ox2 =
+                              CX + GEAR_OUTER * Math.cos(mid) - (hw - 0.8) * Math.cos(perp)
+                            const oy2 =
+                              CY + GEAR_OUTER * Math.sin(mid) - (hw - 0.8) * Math.sin(perp)
+                            return (
+                              <path
+                                key={`tooth-${i}`}
+                                d={`M ${ix1} ${iy1} L ${ox1} ${oy1} L ${ox2} ${oy2} L ${ix2} ${iy2} Z`}
+                                fill="var(--border)"
+                                opacity={0.2}
+                              />
+                            )
+                          })}
+
+                          {/* ── Outer gear ring ── */}
+                          <circle
+                            cx={CX}
+                            cy={CY}
+                            r={GEAR_RING_R}
+                            fill="none"
+                            stroke="var(--border)"
+                            strokeWidth="2"
+                          />
+
+                          {/* ── PM ring (outer): hours 12–23 ── */}
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const h = i + 12
+                            const isFutureHour = isToday && h > nowHour
+                            const hourly = dayHourlyMap.get(h)
+                            const hCount = isFutureHour
+                              ? 0
+                              : (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+                            const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
+                            const startDeg = i * 30 + BASE + GAP
+
+                            return (
+                              <path
+                                key={`pm-${h}`}
+                                d={arcPath(startDeg, ARC_SPAN, PM_INNER, PM_OUTER)}
+                                fill={hLevel === -1 ? "none" : LEVEL_COLORS[hLevel]}
+                                stroke={hLevel === -1 ? "var(--border)" : "none"}
+                                strokeWidth={hLevel === -1 ? "0.5" : "0"}
+                                strokeDasharray={hLevel === -1 ? "3 2" : "none"}
+                                opacity={hLevel === -1 ? 0.3 : 1}
+                                className="cursor-pointer transition-opacity hover:opacity-80"
+                                onClick={() => navigateToHour(selectedDayDateStr, h)}
+                                onMouseEnter={(e) =>
+                                  handleMouseEnter(e, {
+                                    label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
+                                    metrics: hourly ?? null,
+                                  })
+                                }
+                                onMouseLeave={handleMouseLeave}
+                              />
+                            )
+                          })}
+
+                          {/* ── Divider ring between AM / PM ── */}
+                          <circle
+                            cx={CX}
+                            cy={CY}
+                            r={117}
+                            fill="none"
+                            stroke="var(--border)"
+                            strokeWidth="1"
+                          />
+
+                          {/* ── AM ring (inner): hours 0–11 ── */}
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const h = i
+                            const isFutureHour = isToday && h > nowHour
+                            const hourly = dayHourlyMap.get(h)
+                            const hCount = isFutureHour
+                              ? 0
+                              : (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+                            const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
+                            const startDeg = i * 30 + BASE + GAP
+
+                            return (
+                              <path
+                                key={`am-${h}`}
+                                d={arcPath(startDeg, ARC_SPAN, AM_INNER, AM_OUTER)}
+                                fill={hLevel === -1 ? "none" : LEVEL_COLORS[hLevel]}
+                                stroke={hLevel === -1 ? "var(--border)" : "none"}
+                                strokeWidth={hLevel === -1 ? "0.5" : "0"}
+                                strokeDasharray={hLevel === -1 ? "3 2" : "none"}
+                                opacity={hLevel === -1 ? 0.3 : 1}
+                                className="cursor-pointer transition-opacity hover:opacity-80"
+                                onClick={() => navigateToHour(selectedDayDateStr, h)}
+                                onMouseEnter={(e) =>
+                                  handleMouseEnter(e, {
+                                    label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
+                                    metrics: hourly ?? null,
+                                  })
+                                }
+                                onMouseLeave={handleMouseLeave}
+                              />
+                            )
+                          })}
+
+                          {/* ── Center hub ── */}
+                          <circle
+                            cx={CX}
+                            cy={CY}
+                            r={HUB_R}
+                            fill="var(--card)"
+                            stroke="var(--border)"
+                            strokeWidth="1.5"
+                          />
+
+                          {/* ── Wheel spokes — thin lines at each segment boundary (every 30°) ── */}
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const angle = toRad(i * 30 + BASE + 15)
+                            return (
+                              <line
+                                key={`spoke-${i}`}
+                                x1={CX + HUB_R * Math.cos(angle)}
+                                y1={CY + HUB_R * Math.sin(angle)}
+                                x2={CX + GEAR_RING_R * Math.cos(angle)}
+                                y2={CY + GEAR_RING_R * Math.sin(angle)}
+                                stroke="var(--border)"
+                                strokeWidth="1.2"
+                                opacity={0.12}
+                              />
+                            )
+                          })}
+
+                          {/* ── Small hub accent circle (axle) ── */}
+                          <circle cx={CX} cy={CY} r="5" fill="var(--border)" opacity={0.15} />
+
+                          {/* ── Clock hour labels at the outer edge of each segment ── */}
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const displayHour = i === 0 ? 12 : i
+                            // Label at the clock tick position (center of arc segment)
+                            const midAngle = i * 30 - 90
+                            const labelR = GEAR_RING_R + GEAR_TOOTH_H / 2 + 10
+                            const x = CX + labelR * Math.cos(toRad(midAngle))
+                            const y = CY + labelR * Math.sin(toRad(midAngle))
+                            const isCardinal = i % 3 === 0
+                            return (
+                              <text
+                                key={`label-${i}`}
+                                x={x}
+                                y={y}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                fill="var(--foreground)"
+                                fontSize={isCardinal ? "10" : "7.5"}
+                                fontWeight={isCardinal ? "800" : "600"}
+                                fontFamily="inherit"
+                                opacity={isCardinal ? 1 : 0.5}
+                              >
+                                {displayHour}
+                              </text>
+                            )
+                          })}
+
+                          {/* ── AM / PM labels inside their rings ── */}
+                          <text
+                            x={CX}
+                            y={CY - (PM_INNER + PM_OUTER) / 2}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fill="var(--muted-foreground)"
+                            fontSize="6"
+                            fontWeight="700"
+                            fontFamily="inherit"
+                            letterSpacing="1"
+                            opacity={0.5}
+                          >
+                            PM
+                          </text>
+                          <text
+                            x={CX}
+                            y={CY - (AM_INNER + AM_OUTER) / 2}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fill="var(--muted-foreground)"
+                            fontSize="6"
+                            fontWeight="700"
+                            fontFamily="inherit"
+                            letterSpacing="1"
+                            opacity={0.5}
+                          >
+                            AM
+                          </text>
+
+                          {/* ── Current hour hand (today only) ── */}
+                          {isToday &&
+                            (() => {
+                              const minuteFraction = now.getMinutes() / 60
+                              const clockPos = (nowHour % 12) + minuteFraction
+                              const handAngle = clockPos * 30 - 90
+                              const isPM = nowHour >= 12
+                              const handLen = isPM ? PM_OUTER : AM_OUTER
+                              const hx = CX + handLen * Math.cos(toRad(handAngle))
+                              const hy = CY + handLen * Math.sin(toRad(handAngle))
+                              return (
+                                <>
+                                  <line
+                                    x1={CX}
+                                    y1={CY}
+                                    x2={hx}
+                                    y2={hy}
+                                    stroke="var(--destructive)"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                  />
+                                  <circle cx={CX} cy={CY} r="4" fill="var(--destructive)" />
+                                  <circle cx={hx} cy={hy} r="3" fill="var(--destructive)" />
+                                </>
+                              )
+                            })()}
+
+                          {/* ── Center stats ── */}
+                          <text
+                            x={CX}
+                            y={CY - 18}
+                            textAnchor="middle"
+                            fill="var(--foreground)"
+                            fontSize="20"
+                            fontWeight="900"
+                            fontFamily="inherit"
+                          >
+                            {formatCount(reqCount).value}
+                          </text>
+                          <text
+                            x={CX}
+                            y={CY - 5}
+                            textAnchor="middle"
+                            fill="var(--muted-foreground)"
+                            fontSize="7"
+                            fontWeight="600"
+                            fontFamily="inherit"
+                            letterSpacing="0.5"
+                          >
+                            {t("stats.requests").toUpperCase()}
+                          </text>
+
+                          {/* ── Bottom stats row inside hub ── */}
+                          {[
+                            { label: "In", value: formatCount(inTokens) },
+                            { label: "Out", value: formatCount(outTokens) },
+                            { label: "$", value: formatMoney(totalCost) },
+                          ].map((s, si) => {
+                            const xPos = CX - 30 + si * 30
+                            return (
+                              <g key={s.label}>
+                                <text
+                                  x={xPos}
+                                  y={CY + 11}
+                                  textAnchor="middle"
+                                  fill="var(--muted-foreground)"
+                                  fontSize="5.5"
+                                  fontWeight="600"
+                                  fontFamily="inherit"
+                                >
+                                  {s.label}
+                                </text>
+                                <text
+                                  x={xPos}
+                                  y={CY + 20}
+                                  textAnchor="middle"
+                                  fill="var(--foreground)"
+                                  fontSize="8"
+                                  fontWeight="800"
+                                  fontFamily="inherit"
+                                >
+                                  {s.value.value}
+                                  {s.value.unit && s.value.unit}
+                                </text>
+                              </g>
+                            )
+                          })}
+                        </>
                       )
-                    })}
-                  </div>
+                    })()}
+                  </svg>
                 </div>
               </div>
             )
@@ -817,173 +1153,419 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
           </div>
         )}
 
-        {view === "month" && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setMonthOffset((o) => o - 1)}
-                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M10 4L6 8L10 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <span className="text-base font-bold">{monthLabel}</span>
-              <button
-                onClick={() => setMonthOffset((o) => o + 1)}
-                disabled={monthOffset >= 0}
-                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M6 4L10 8L6 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <div className="ml-auto flex items-center gap-3">
-                {monthOffset !== 0 && (
+        {view === "month" &&
+          (() => {
+            const todayStr = toDateStr(today)
+            const monthMaxCount = Math.max(
+              1,
+              ...monthDays
+                .filter(Boolean)
+                .map((d) =>
+                  d && d.daily ? (d.daily.request_success ?? 0) + (d.daily.request_failed ?? 0) : 0,
+                ),
+            )
+            // Aggregate monthly stats
+            const monthTotalReq = monthDays.reduce(
+              (s, d) =>
+                s + (d?.daily ? (d.daily.request_success ?? 0) + (d.daily.request_failed ?? 0) : 0),
+              0,
+            )
+            const monthTotalIn = monthDays.reduce((s, d) => s + (d?.daily?.input_token ?? 0), 0)
+            const monthTotalOut = monthDays.reduce((s, d) => s + (d?.daily?.output_token ?? 0), 0)
+            const monthTotalCost = monthDays.reduce(
+              (s, d) => s + (d?.daily ? (d.daily.input_cost ?? 0) + (d.daily.output_cost ?? 0) : 0),
+              0,
+            )
+
+            return (
+              <div className="flex flex-col gap-3">
+                {/* Month header with nav */}
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={() => setMonthOffset(0)}
-                    className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                    onClick={() => setMonthOffset((o) => o - 1)}
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors"
                   >
-                    {t("activity.thisMonth")}
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M10 4L6 8L10 12"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </button>
-                )}
-                <button
-                  onClick={navigateToMonth}
-                  className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
-                >
-                  {t("activity.viewLogs")}
-                </button>
-              </div>
-            </div>
-            <div>
-              <div className="mb-1 grid grid-cols-7 gap-[3px]">
-                {weekdayLabels.map((label) => (
-                  <div
-                    key={label}
-                    className="text-muted-foreground py-0.5 text-center text-xs font-medium"
+                  <span className="text-base font-bold">{monthLabel}</span>
+                  <button
+                    onClick={() => setMonthOffset((o) => o + 1)}
+                    disabled={monthOffset >= 0}
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
                   >
-                    {label}
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M6 4L10 8L6 12"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    {monthOffset !== 0 && (
+                      <button
+                        onClick={() => setMonthOffset(0)}
+                        className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                      >
+                        {t("activity.thisMonth")}
+                      </button>
+                    )}
+                    <button
+                      onClick={navigateToMonth}
+                      className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                    >
+                      {t("activity.viewLogs")}
+                    </button>
                   </div>
-                ))}
+                </div>
+
+                {/* Monthly stats summary */}
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    {
+                      label: t("stats.requests"),
+                      value: formatCount(monthTotalReq),
+                      icon: MessageSquare,
+                      bg: "bg-blue-500/10",
+                    },
+                    {
+                      label: t("stats.inputTokens"),
+                      value: formatCount(monthTotalIn),
+                      icon: ArrowDownToLine,
+                      bg: "bg-orange-500/10",
+                    },
+                    {
+                      label: t("stats.outputTokens"),
+                      value: formatCount(monthTotalOut),
+                      icon: ArrowUpFromLine,
+                      bg: "bg-violet-500/10",
+                    },
+                    {
+                      label: t("stats.cost"),
+                      value: formatMoney(monthTotalCost),
+                      icon: DollarSign,
+                      bg: "bg-emerald-500/10",
+                    },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="bg-muted/50 flex items-center gap-2 rounded-md px-2.5 py-2"
+                    >
+                      <div
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${stat.bg}`}
+                      >
+                        <stat.icon className="text-primary h-3 w-3" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-muted-foreground text-[10px] leading-tight">
+                          {stat.label}
+                        </div>
+                        <div className="text-sm leading-tight font-bold tabular-nums">
+                          {stat.value.value}
+                          {stat.value.unit && (
+                            <span className="text-muted-foreground ml-0.5 text-[10px] font-medium">
+                              {stat.value.unit}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Calendar grid */}
+                <div>
+                  {/* Weekday header */}
+                  <div className="mb-1.5 grid grid-cols-7 gap-1.5">
+                    {weekdayLabels.map((label) => (
+                      <div
+                        key={label}
+                        className="text-muted-foreground py-0.5 text-center text-xs font-bold"
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Day cells */}
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {monthDays.map((day, i) => {
+                      // eslint-disable-next-line react/no-array-index-key -- padding cells have no stable identity
+                      if (!day) return <div key={`pad-${i}`} />
+                      const isToday = day.dateStr === todayStr
+                      const dayNum = Number.parseInt(day.dateStr.slice(6, 8))
+
+                      if (day.isFuture) {
+                        return (
+                          <div
+                            key={day.dateStr}
+                            className="border-border/20 flex aspect-square flex-col items-center justify-center rounded-md border border-dashed"
+                          >
+                            <span className="text-muted-foreground/30 text-xs font-bold tabular-nums">
+                              {dayNum}
+                            </span>
+                          </div>
+                        )
+                      }
+
+                      const count =
+                        (day.daily?.request_success ?? 0) + (day.daily?.request_failed ?? 0)
+                      const level = getActivityLevel(count)
+                      const barWidthPct =
+                        monthMaxCount > 0 ? Math.max(8, (count / monthMaxCount) * 100) : 8
+
+                      return (
+                        <div
+                          key={day.dateStr}
+                          className={`flex aspect-square cursor-pointer flex-col items-center justify-between rounded-md border-2 p-1 transition-all hover:scale-105 ${
+                            isToday
+                              ? "border-foreground bg-card shadow-[2px_2px_0_var(--nb-shadow)]"
+                              : "border-border/40 hover:border-border bg-card/50"
+                          }`}
+                          onClick={() => drillIntoDay(day.dateStr)}
+                          onMouseEnter={(e) =>
+                            handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })
+                          }
+                          onMouseLeave={handleMouseLeave}
+                        >
+                          {/* Day number */}
+                          <span
+                            className={`text-xs leading-none font-bold tabular-nums ${isToday ? "text-foreground" : "text-muted-foreground"}`}
+                          >
+                            {dayNum}
+                          </span>
+                          {/* Request count */}
+                          {count > 0 && (
+                            <span className="text-foreground text-[9px] leading-none font-bold tabular-nums">
+                              {formatCount(count).value}
+                            </span>
+                          )}
+                          {/* Activity bar at bottom */}
+                          <div className="bg-muted/60 h-[3px] w-full overflow-hidden rounded-full">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: count > 0 ? `${barWidthPct}%` : "0%",
+                                backgroundColor: LEVEL_COLORS[level],
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-7 gap-[3px]">
-                {monthDays.map((day, i) => {
-                  // eslint-disable-next-line react/no-array-index-key -- padding cells for calendar alignment have no stable identity
-                  if (!day) return <div key={`pad-${i}`} />
-                  if (day.isFuture)
+            )
+          })()}
+
+        {view === "week" &&
+          (() => {
+            const weekMaxCount = Math.max(
+              1,
+              ...weekDays.map((d) =>
+                d.daily ? (d.daily.request_success ?? 0) + (d.daily.request_failed ?? 0) : 0,
+              ),
+            )
+            const todayStr = toDateStr(today)
+            // Aggregate weekly stats
+            const weekTotalReq = weekDays.reduce(
+              (s, d) =>
+                s + (d.daily ? (d.daily.request_success ?? 0) + (d.daily.request_failed ?? 0) : 0),
+              0,
+            )
+            const weekTotalIn = weekDays.reduce((s, d) => s + (d.daily?.input_token ?? 0), 0)
+            const weekTotalOut = weekDays.reduce((s, d) => s + (d.daily?.output_token ?? 0), 0)
+            const weekTotalCost = weekDays.reduce(
+              (s, d) => s + (d.daily ? (d.daily.input_cost ?? 0) + (d.daily.output_cost ?? 0) : 0),
+              0,
+            )
+
+            return (
+              <div className="flex flex-col gap-3">
+                {/* Week header with nav */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setWeekOffset((o) => o - 1)}
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M10 4L6 8L10 12"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <span className="text-base font-bold">{weekLabel}</span>
+                  <button
+                    onClick={() => setWeekOffset((o) => o + 1)}
+                    disabled={weekOffset >= 0}
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M6 4L10 8L6 12"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    {weekOffset !== 0 && (
+                      <button
+                        onClick={() => setWeekOffset(0)}
+                        className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                      >
+                        {t("activity.thisWeek")}
+                      </button>
+                    )}
+                    <button
+                      onClick={navigateToWeek}
+                      className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                    >
+                      {t("activity.viewLogs")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Weekly stats summary */}
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    {
+                      label: t("stats.requests"),
+                      value: formatCount(weekTotalReq),
+                      icon: MessageSquare,
+                      bg: "bg-blue-500/10",
+                    },
+                    {
+                      label: t("stats.inputTokens"),
+                      value: formatCount(weekTotalIn),
+                      icon: ArrowDownToLine,
+                      bg: "bg-orange-500/10",
+                    },
+                    {
+                      label: t("stats.outputTokens"),
+                      value: formatCount(weekTotalOut),
+                      icon: ArrowUpFromLine,
+                      bg: "bg-violet-500/10",
+                    },
+                    {
+                      label: t("stats.cost"),
+                      value: formatMoney(weekTotalCost),
+                      icon: DollarSign,
+                      bg: "bg-emerald-500/10",
+                    },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="bg-muted/50 flex items-center gap-2 rounded-md px-2.5 py-2"
+                    >
+                      <div
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${stat.bg}`}
+                      >
+                        <stat.icon className="text-primary h-3 w-3" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-muted-foreground text-[10px] leading-tight">
+                          {stat.label}
+                        </div>
+                        <div className="text-sm leading-tight font-bold tabular-nums">
+                          {stat.value.value}
+                          {stat.value.unit && (
+                            <span className="text-muted-foreground ml-0.5 text-[10px] font-medium">
+                              {stat.value.unit}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bar chart — 7 vertical columns */}
+                <div className="flex items-end gap-2 px-1" style={{ height: 180 }}>
+                  {weekDays.map((day) => {
+                    const dayOfWeek = new Date(
+                      Number.parseInt(day.dateStr.slice(0, 4)),
+                      Number.parseInt(day.dateStr.slice(4, 6)) - 1,
+                      Number.parseInt(day.dateStr.slice(6, 8)),
+                    ).getDay()
+                    const count = day.daily
+                      ? (day.daily.request_success ?? 0) + (day.daily.request_failed ?? 0)
+                      : 0
+                    const level = day.isFuture ? -1 : getActivityLevel(count)
+                    const barHeight = day.isFuture ? 0 : Math.max(4, (count / weekMaxCount) * 150)
+                    const isCurrentDay = day.dateStr === todayStr
+
                     return (
                       <div
                         key={day.dateStr}
-                        className="border-border/30 aspect-square rounded-sm border border-dashed"
-                      />
-                    )
-                  const count = (day.daily?.request_success ?? 0) + (day.daily?.request_failed ?? 0)
-                  const level = getActivityLevel(count)
-                  return (
-                    <div
-                      key={day.dateStr}
-                      className="aspect-square cursor-pointer rounded-sm transition-transform hover:scale-125"
-                      style={{ backgroundColor: LEVEL_COLORS[level] }}
-                      onClick={() => drillIntoDay(day.dateStr)}
-                      onMouseEnter={(e) =>
-                        handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })
-                      }
-                      onMouseLeave={handleMouseLeave}
-                    />
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+                        className="flex flex-1 flex-col items-center gap-1.5"
+                        style={{ height: "100%" }}
+                      >
+                        {/* Count label on top */}
+                        <div className="text-muted-foreground text-[10px] font-bold tabular-nums">
+                          {day.isFuture ? "" : count > 0 ? formatCount(count).value : "0"}
+                        </div>
 
-        {view === "week" && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setWeekOffset((o) => o - 1)}
-                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M10 4L6 8L10 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <span className="text-base font-bold">{weekLabel}</span>
-              <button
-                onClick={() => setWeekOffset((o) => o + 1)}
-                disabled={weekOffset >= 0}
-                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M6 4L10 8L6 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <div className="ml-auto flex items-center gap-3">
-                {weekOffset !== 0 && (
-                  <button
-                    onClick={() => setWeekOffset(0)}
-                    className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
-                  >
-                    {t("activity.thisWeek")}
-                  </button>
-                )}
-                <button
-                  onClick={navigateToWeek}
-                  className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
-                >
-                  {t("activity.viewLogs")}
-                </button>
+                        {/* Bar grows upward */}
+                        <div className="relative flex w-full flex-1 items-end justify-center">
+                          {day.isFuture ? (
+                            <div
+                              className="border-border/30 w-full rounded-t-md border border-b-0 border-dashed"
+                              style={{ height: 30 }}
+                            />
+                          ) : (
+                            <div
+                              className={`w-full cursor-pointer rounded-t-md transition-all hover:opacity-80 ${isCurrentDay ? "border-foreground border-2 border-b-0" : ""}`}
+                              style={{
+                                height: barHeight,
+                                backgroundColor: LEVEL_COLORS[level],
+                                transition: "height 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                              }}
+                              onClick={() => drillIntoDay(day.dateStr)}
+                              onMouseEnter={(e) =>
+                                handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })
+                              }
+                              onMouseLeave={handleMouseLeave}
+                            />
+                          )}
+                        </div>
+
+                        {/* Bottom baseline */}
+                        <div className="bg-border h-[2px] w-full" />
+
+                        {/* Weekday label */}
+                        <div
+                          className={`text-center text-xs font-bold ${isCurrentDay ? "text-foreground" : "text-muted-foreground"}`}
+                        >
+                          {weekdayLabelsRaw[dayOfWeek]}
+                        </div>
+                        {/* Date label */}
+                        <div className="text-muted-foreground text-center text-[10px] leading-none tabular-nums">
+                          {day.dateStr.slice(4, 6)}/{day.dateStr.slice(6, 8)}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="mb-1 grid grid-cols-7 gap-[3px]">
-                {weekDays.map((day) => (
-                  <div
-                    key={day.dateStr}
-                    className="text-muted-foreground py-0.5 text-center text-xs font-medium"
-                  >
-                    {
-                      weekdayLabels[
-                        new Date(
-                          Number.parseInt(day.dateStr.slice(0, 4)),
-                          Number.parseInt(day.dateStr.slice(4, 6)) - 1,
-                          Number.parseInt(day.dateStr.slice(6, 8)),
-                        ).getDay()
-                      ]
-                    }
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-[3px]">
-                {weekDays.map((day) => renderCell(day, day.dateStr))}
-              </div>
-            </div>
-          </div>
-        )}
+            )
+          })()}
       </div>
 
       {/* Legend */}
