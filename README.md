@@ -96,14 +96,14 @@ apps/
 
 **数据库**
 
-Worker 使用两个独立的 SQLite 数据库文件，均存放在 `DB_PATH` 所在目录下：
+Worker 使用两个独立的 SQLite 数据库文件，均存放在 `DATA_PATH` 目录下：
 
 | 文件            | 用途       | 说明                                               |
 | --------------- | ---------- | -------------------------------------------------- |
 | `wheel.db`      | 主数据库   | 通道、分组、API Key、设置、定价等配置数据          |
 | `wheel-logs.db` | 日志数据库 | 请求日志（高频写入），独立文件避免与配置数据库争用 |
 
-日志数据库路径由 `DB_PATH` 自动推导（同目录下的 `wheel-logs.db`），无需额外配置。
+日志数据库自动创建在 `DATA_PATH` 目录下（`wheel-logs.db`），无需额外配置。
 
 **启动时自动迁移** — Worker 启动时会自动执行数据库迁移，无需手动操作：
 
@@ -158,7 +158,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
-      DB_PATH: /app/data/wheel.db # 日志数据库自动创建在同目录
+      DATA_PATH: /app/data
       PORT: 8787
     volumes:
       - worker-data:/app/data
@@ -221,14 +221,14 @@ node apps/web/.next/standalone/apps/web/server.js
 
 ## Environment Variables
 
-| 变量                       | 组件         | 描述                                                        | 必填              | 默认值            |
-| -------------------------- | ------------ | ----------------------------------------------------------- | ----------------- | ----------------- |
-| `JWT_SECRET`               | Worker       | JWT 签名密钥                                                | Yes               | —                 |
-| `ADMIN_USERNAME`           | Worker       | 管理员用户名                                                | No                | `admin`           |
-| `ADMIN_PASSWORD`           | Worker       | 管理员密码                                                  | No                | `admin`           |
-| `DB_PATH`                  | Worker       | 主数据库路径，日志数据库 (`wheel-logs.db`) 自动创建在同目录 | No                | `./data/wheel.db` |
-| `PORT`                     | Worker       | HTTP 端口                                                   | No                | `8787`            |
-| `NEXT_PUBLIC_API_BASE_URL` | Web (Vercel) | Worker API 地址                                             | Vercel 部署时必填 | —                 |
+| 变量                       | 组件         | 描述                                             | 必填              | 默认值   |
+| -------------------------- | ------------ | ------------------------------------------------ | ----------------- | -------- |
+| `JWT_SECRET`               | Worker       | JWT 签名密钥                                     | Yes               | —        |
+| `ADMIN_USERNAME`           | Worker       | 管理员用户名                                     | No                | `admin`  |
+| `ADMIN_PASSWORD`           | Worker       | 管理员密码                                       | No                | `admin`  |
+| `DATA_PATH`                | Worker       | 数据目录路径，包含 `wheel.db` 和 `wheel-logs.db` | No                | `./data` |
+| `PORT`                     | Worker       | HTTP 端口                                        | No                | `8787`   |
+| `NEXT_PUBLIC_API_BASE_URL` | Web (Vercel) | Worker API 地址                                  | Vercel 部署时必填 | —        |
 
 ---
 

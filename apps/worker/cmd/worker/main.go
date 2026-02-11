@@ -27,20 +27,21 @@ func main() {
 	}
 
 	// ── Database ──
-	database, err := db.Open(cfg.DBPath)
+	dbPath := filepath.Join(cfg.DataPath, "wheel.db")
+	database, err := db.Open(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer database.Close()
 
 	// Run Drizzle-compatible migrations
-	migrationsDir := filepath.Join(filepath.Dir(cfg.DBPath), "..", "drizzle")
+	migrationsDir := filepath.Join(cfg.DataPath, "..", "drizzle")
 	if err := db.Migrate(database.DB, migrationsDir); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// ── Log Database (separate file for write-heavy logs) ──
-	logDBPath := filepath.Join(filepath.Dir(cfg.DBPath), "wheel-logs.db")
+	logDBPath := filepath.Join(cfg.DataPath, "wheel-logs.db")
 	logDatabase, err := db.OpenLogDB(logDBPath)
 	if err != nil {
 		log.Fatalf("Failed to open log database: %v", err)

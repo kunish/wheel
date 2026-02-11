@@ -23,7 +23,7 @@ COPY apps/worker/drizzle/ ./drizzle/
 RUN mkdir -p /app/data
 
 ENV PORT=8787
-ENV DB_PATH=/app/data/wheel.db
+ENV DATA_PATH=/app/data
 
 EXPOSE 8787
 

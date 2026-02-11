@@ -4,7 +4,7 @@ import "os"
 
 type Config struct {
 	Port          string
-	DBPath        string
+	DataPath      string
 	JWTSecret     string
 	AdminUsername string
 	AdminPassword string
@@ -13,7 +13,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:          getEnv("PORT", "8787"),
-		DBPath:        getEnv("DB_PATH", "./data/wheel.db"),
+		DataPath:      getEnv("DATA_PATH", "./data"),
 		JWTSecret:     getEnv("JWT_SECRET", "change-me-in-production"),
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword: getEnv("ADMIN_PASSWORD", "admin"),
