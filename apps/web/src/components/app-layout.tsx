@@ -1,9 +1,10 @@
 import {
   DollarSign,
+  Ellipsis,
   FileText,
+  Languages,
   LayoutDashboard,
   LogOut,
-  Menu,
   Moon,
   Radio,
   Settings,
@@ -11,10 +12,9 @@ import {
 } from "lucide-react"
 import { motion } from "motion/react"
 import { useTheme } from "next-themes"
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation } from "react-router"
-import { LanguageSwitcher } from "@/components/language-switcher"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,9 +25,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useAuthStore } from "@/lib/store/auth"
 import { cn } from "@/lib/utils"
 
@@ -39,152 +42,76 @@ const navItemDefs = [
   { href: "/settings", labelKey: "nav.settings", icon: Settings },
 ] as const
 
-function NavContent({ onNavigate }: { onNavigate?: () => void }) {
+function BottomNav() {
   const { pathname } = useLocation()
-  const { t } = useTranslation()
-
-  const navItems = useMemo(
-    () => navItemDefs.map((item) => ({ ...item, label: t(item.labelKey) })),
-    [t],
-  )
-
-  return (
-    <div className="flex h-full flex-col">
-      {/* Logo */}
-      <div className="p-5">
-        <div className="group flex items-center gap-2.5">
-          <div className="bg-nb-lime border-sidebar-foreground flex size-9 items-center justify-center rounded-md border-2">
-            <motion.svg
-              className="size-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              animate={{ rotate: 0 }}
-              whileHover={{ rotate: 360 }}
-              transition={{ duration: 2, ease: "linear", repeat: Infinity }}
-            >
-              <circle cx="12" cy="12" r="9" />
-              <circle cx="12" cy="12" r="3" />
-              <line x1="12" y1="3" x2="12" y2="9" />
-              <line x1="12" y1="15" x2="12" y2="21" />
-              <line x1="3" y1="12" x2="9" y2="12" />
-              <line x1="15" y1="12" x2="21" y2="12" />
-              <line x1="5.64" y1="5.64" x2="9.88" y2="9.88" />
-              <line x1="14.12" y1="14.12" x2="18.36" y2="18.36" />
-              <line x1="18.36" y1="5.64" x2="14.12" y2="9.88" />
-              <line x1="9.88" y1="14.12" x2="5.64" y2="18.36" />
-            </motion.svg>
-          </div>
-          <div>
-            <h1 className="text-sidebar-foreground text-base font-bold tracking-tight">Wheel</h1>
-            <p className="text-sidebar-foreground/50 text-[10px] font-medium tracking-widest uppercase">
-              LLM Gateway
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Divider */}
-      <div className="border-sidebar-border mx-4 border-t-2" />
-
-      {/* Nav */}
-      <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="flex flex-col gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = pathname.startsWith(item.href)
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                onClick={onNavigate}
-                className={cn(
-                  "relative isolate flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-bold transition-all",
-                  isActive
-                    ? "text-sidebar-primary-foreground border-sidebar-foreground border-2 shadow-[2px_2px_0_rgba(255,255,255,0.15)]"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground border-2 border-transparent",
-                )}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="sidebar-active"
-                    className="bg-nb-lime absolute inset-0 -z-10 rounded-md"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <motion.div
-                  animate={isActive ? { rotate: [0, -10, 10, 0] } : {}}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Icon className="size-4" />
-                </motion.div>
-                {item.label}
-              </Link>
-            )
-          })}
-        </nav>
-      </ScrollArea>
-
-      {/* Footer */}
-      <div className="border-sidebar-border mx-4 border-t-2" />
-      <div className="p-3">
-        <div className="text-sidebar-foreground/40 px-3 py-2 text-[10px] font-medium tracking-widest uppercase">
-          Wheel
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function TopBar() {
+  const { t, i18n } = useTranslation()
   const { theme, setTheme } = useTheme()
   const logout = useAuthStore((s) => s.logout)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
-  const { t } = useTranslation()
 
   return (
-    <header className="border-border bg-background flex h-14 items-center gap-3 border-b-2 px-4 lg:px-6">
-      {/* Mobile menu */}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="lg:hidden" aria-label={t("aria.openNav")}>
-            <Menu className="size-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent
-          side="left"
-          className="bg-sidebar border-sidebar-border w-64 border-r-2 p-0"
-          showCloseButton={false}
-        >
-          <SheetTitle className="sr-only">{t("aria.navigation")}</SheetTitle>
-          <NavContent />
-        </SheetContent>
-      </Sheet>
+    <>
+      <nav className="bg-sidebar border-sidebar-border fixed inset-x-0 bottom-0 z-50 flex h-16 items-stretch border-t-2">
+        {navItemDefs.map((item) => {
+          const Icon = item.icon
+          const isActive = pathname.startsWith(item.href)
+          return (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                "relative isolate flex flex-1 flex-col items-center justify-center gap-0.5 transition-all",
+                isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/50",
+              )}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="bottom-nav-active"
+                  className="bg-nb-lime absolute inset-x-1 inset-y-1.5 -z-10 rounded-lg"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+              <Icon className="size-5" />
+              <span className="text-[10px] leading-none font-bold">{t(item.labelKey)}</span>
+            </Link>
+          )
+        })}
 
-      <div className="flex-1" />
-
-      <LanguageSwitcher />
-
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={theme === "dark" ? t("theme.light") : t("theme.dark")}
-        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      >
-        <Sun className="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
-        <Moon className="absolute size-4 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={t("logout.button")}
-        onClick={() => setShowLogoutConfirm(true)}
-      >
-        <LogOut className="size-4" />
-      </Button>
+        {/* More menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="text-sidebar-foreground/50 flex flex-1 flex-col items-center justify-center gap-0.5">
+              <Ellipsis className="size-5" />
+              <span className="text-[10px] leading-none font-bold">{t("nav.more", "More")}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="end" className="mb-2">
+            {(
+              [
+                { code: "en", label: "English" },
+                { code: "zh-CN", label: "中文" },
+              ] as const
+            ).map((lang) => (
+              <DropdownMenuItem
+                key={lang.code}
+                onClick={() => i18n.changeLanguage(lang.code)}
+                className={i18n.language === lang.code ? "bg-accent/30" : ""}
+              >
+                <Languages className="size-4" />
+                {lang.label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+              {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              {theme === "dark" ? t("theme.light") : t("theme.dark")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowLogoutConfirm(true)}>
+              <LogOut className="size-4" />
+              {t("logout.button")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </nav>
 
       <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
         <AlertDialogContent>
@@ -205,23 +132,20 @@ function TopBar() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </header>
+    </>
   )
 }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen">
-      {/* Desktop sidebar — dark panel */}
-      <aside className="bg-sidebar border-sidebar-border hidden border-r-2 lg:flex lg:w-60 lg:flex-col">
-        <NavContent />
-      </aside>
-
+    <div className="flex h-screen flex-col">
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar />
-        <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
-      </div>
+      <main className="flex flex-1 flex-col overflow-auto p-4 pb-20 lg:p-6 lg:pb-20">
+        {children}
+      </main>
+
+      {/* Bottom nav — all screen sizes */}
+      <BottomNav />
     </div>
   )
 }

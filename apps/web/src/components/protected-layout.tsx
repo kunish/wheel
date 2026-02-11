@@ -40,6 +40,7 @@ export function ProtectedLayout() {
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
           key={routeKey}
+          className="flex min-h-0 flex-1 flex-col"
           initial={{ opacity: 0, y: direction * 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: direction * -4 }}
