@@ -235,7 +235,7 @@ func (s *streamingState) appendContent(text string) {
 }
 
 // ProxyStreaming performs an SSE streaming proxy, writing directly to the http.ResponseWriter.
-// It handles protocol conversion for Anthropic SSE → OpenAI SSE format.
+// It handles protocol conversion between Anthropic SSE and OpenAI SSE formats.
 func ProxyStreaming(
 	w http.ResponseWriter,
 	upstreamUrl string,
@@ -244,6 +244,7 @@ func ProxyStreaming(
 	channelType types.OutboundType,
 	firstTokenTimeout int,
 	passthrough bool,
+	anthropicInbound bool,
 	onContent StreamContentCallback,
 ) (*StreamCompleteInfo, error) {
 	flusher, ok := w.(http.Flusher)
@@ -318,6 +319,12 @@ func ProxyStreaming(
 		convertChunk = createAnthropicSSEConverter()
 	}
 
+	// OpenAI SSE → Anthropic SSE converter for anthropic inbound + openai outbound
+	var convertToAnthropic func(string) []string
+	if anthropicInbound && channelType != types.OutboundAnthropic {
+		convertToAnthropic = createOpenAIToAnthropicSSEConverter()
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -339,6 +346,8 @@ func ProxyStreaming(
 			flusher.Flush()
 		} else if channelType == types.OutboundAnthropic && convertChunk != nil {
 			processAnthropicConverted(line, convertChunk, state, markFirstToken, w, flusher)
+		} else if convertToAnthropic != nil {
+			processOpenAIToAnthropic(line, convertToAnthropic, state, markFirstToken, w, flusher)
 		} else {
 			processOpenAI(line, state, markFirstToken, w, flusher)
 		}
@@ -745,4 +754,246 @@ func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
 			return nil
 		}
 	}
+}
+
+// ── OpenAI SSE → Anthropic SSE Converter ──────────────────────────
+
+// createOpenAIToAnthropicSSEConverter returns a stateful converter
+// from OpenAI SSE chunks to Anthropic SSE event lines.
+func createOpenAIToAnthropicSSEConverter() func(string) []string {
+	started := false
+	contentBlockOpen := false
+	msgId := "msg_unknown"
+	msgModel := ""
+
+	return func(jsonStr string) []string {
+		if jsonStr == "[DONE]" {
+			var lines []string
+			if contentBlockOpen {
+				evt := map[string]any{
+					"type":  "content_block_stop",
+					"index": 0,
+				}
+				b, _ := json.Marshal(evt)
+				lines = append(lines,
+					"event: content_block_stop",
+					"data: "+string(b),
+					"",
+				)
+				contentBlockOpen = false
+			}
+			delta := map[string]any{
+				"type":  "message_delta",
+				"delta": map[string]any{"stop_reason": "end_turn"},
+				"usage": map[string]any{"output_tokens": 0},
+			}
+			b, _ := json.Marshal(delta)
+			lines = append(lines,
+				"event: message_delta",
+				"data: "+string(b),
+				"",
+			)
+			stop := map[string]any{"type": "message_stop"}
+			b, _ = json.Marshal(stop)
+			lines = append(lines,
+				"event: message_stop",
+				"data: "+string(b),
+				"",
+			)
+			return lines
+		}
+
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &obj); err != nil {
+			return nil
+		}
+
+		if id, ok := obj["id"].(string); ok {
+			msgId = id
+		}
+		if model, ok := obj["model"].(string); ok {
+			msgModel = model
+		}
+
+		var lines []string
+
+		if !started {
+			started = true
+			lines = append(lines, openaiToAnthropicStart(msgId, msgModel)...)
+		}
+
+		choices, _ := obj["choices"].([]any)
+		if len(choices) == 0 {
+			if len(lines) > 0 {
+				return lines
+			}
+			return nil
+		}
+
+		choice, _ := choices[0].(map[string]any)
+		if choice == nil {
+			return lines
+		}
+
+		delta, _ := choice["delta"].(map[string]any)
+		finishReason, _ := choice["finish_reason"].(string)
+
+		if delta != nil {
+			content, _ := delta["content"].(string)
+
+			if content != "" {
+				if !contentBlockOpen {
+					lines = append(lines,
+						openaiToAnthropicBlockStart(0, "text")...)
+					contentBlockOpen = true
+				}
+				evt := map[string]any{
+					"type":  "content_block_delta",
+					"index": 0,
+					"delta": map[string]any{
+						"type": "text_delta",
+						"text": content,
+					},
+				}
+				b, _ := json.Marshal(evt)
+				lines = append(lines,
+					"event: content_block_delta",
+					"data: "+string(b),
+					"",
+				)
+			}
+		}
+
+		if finishReason != "" {
+			if contentBlockOpen {
+				evt := map[string]any{
+					"type":  "content_block_stop",
+					"index": 0,
+				}
+				b, _ := json.Marshal(evt)
+				lines = append(lines,
+					"event: content_block_stop",
+					"data: "+string(b),
+					"",
+				)
+				contentBlockOpen = false
+			}
+
+			usage, _ := obj["usage"].(map[string]any)
+			inTok := toInt(usage["prompt_tokens"])
+			outTok := toInt(usage["completion_tokens"])
+
+			stopReason := mapOpenAIFinishReason(finishReason)
+			md := map[string]any{
+				"type":  "message_delta",
+				"delta": map[string]any{"stop_reason": stopReason},
+				"usage": map[string]any{
+					"input_tokens":  inTok,
+					"output_tokens": outTok,
+				},
+			}
+			b, _ := json.Marshal(md)
+			lines = append(lines,
+				"event: message_delta",
+				"data: "+string(b),
+				"",
+			)
+
+			stop := map[string]any{"type": "message_stop"}
+			b, _ = json.Marshal(stop)
+			lines = append(lines,
+				"event: message_stop",
+				"data: "+string(b),
+				"",
+			)
+		}
+
+		if len(lines) > 0 {
+			return lines
+		}
+		return nil
+	}
+}
+
+func openaiToAnthropicStart(id, model string) []string {
+	msg := map[string]any{
+		"type": "message_start",
+		"message": map[string]any{
+			"id":      id,
+			"type":    "message",
+			"role":    "assistant",
+			"model":   model,
+			"content": []any{},
+			"usage":   map[string]any{"input_tokens": 0, "output_tokens": 0},
+		},
+	}
+	b, _ := json.Marshal(msg)
+	return []string{
+		"event: message_start",
+		"data: " + string(b),
+		"",
+	}
+}
+
+func openaiToAnthropicBlockStart(index int, blockType string) []string {
+	evt := map[string]any{
+		"type":  "content_block_start",
+		"index": index,
+		"content_block": map[string]any{
+			"type": blockType,
+			"text": "",
+		},
+	}
+	b, _ := json.Marshal(evt)
+	return []string{
+		"event: content_block_start",
+		"data: " + string(b),
+		"",
+	}
+}
+
+func processOpenAIToAnthropic(
+	line string,
+	convert func(string) []string,
+	state *streamingState,
+	markFirstToken func(),
+	w http.ResponseWriter,
+	flusher http.Flusher,
+) {
+	if !strings.HasPrefix(line, "data: ") {
+		return
+	}
+	data := strings.TrimPrefix(line, "data: ")
+
+	var obj map[string]any
+	if data != "[DONE]" {
+		if err := json.Unmarshal([]byte(data), &obj); err == nil {
+			if usage, ok := obj["usage"].(map[string]any); ok {
+				state.inputTokens = toIntOr(
+					usage["prompt_tokens"], state.inputTokens)
+				state.outputTokens = toIntOr(
+					usage["completion_tokens"], state.outputTokens)
+			}
+			if choices, ok := obj["choices"].([]any); ok && len(choices) > 0 {
+				if ch, ok := choices[0].(map[string]any); ok {
+					if d, ok := ch["delta"].(map[string]any); ok {
+						if c, ok := d["content"].(string); ok {
+							state.appendContent(c)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	markFirstToken()
+
+	converted := convert(data)
+	if converted == nil {
+		return
+	}
+	for _, l := range converted {
+		fmt.Fprintf(w, "%s\n", l)
+	}
+	flusher.Flush()
 }

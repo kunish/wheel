@@ -406,6 +406,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					channel.Type,
 					firstTokenTimeout,
 					isAnthropicPassthrough,
+					isAnthropicInbound,
 					onContent,
 				)
 
