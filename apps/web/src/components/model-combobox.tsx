@@ -1,5 +1,3 @@
-"use client"
-
 import { Check, ChevronDown, Search } from "lucide-react"
 import { useMemo, useState } from "react"
 import { ModelBadge } from "@/components/model-badge"

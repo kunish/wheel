@@ -1,0 +1,673 @@
+package relay
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/kunish/wheel/apps/worker/internal/types"
+)
+
+// ProxyError represents an upstream proxy error with optional retry info.
+type ProxyError struct {
+	Message      string
+	StatusCode   int
+	RetryAfterMs int64
+}
+
+func (e *ProxyError) Error() string {
+	return e.Message
+}
+
+// ProxyResult holds the result of a non-streaming proxy call.
+type ProxyResult struct {
+	Response            map[string]any
+	InputTokens         int
+	OutputTokens        int
+	CacheReadTokens     int
+	CacheCreationTokens int
+	StatusCode          int
+}
+
+// StreamCompleteInfo holds usage info collected after a stream finishes.
+type StreamCompleteInfo struct {
+	InputTokens         int
+	OutputTokens        int
+	CacheReadTokens     int
+	CacheCreationTokens int
+	FirstTokenTime      int
+	StatusCode          int
+	ResponseContent     string
+}
+
+const maxResponseContent = 10000
+
+// extractCacheTokens extracts cache token counts from a response usage object.
+func extractCacheTokens(data map[string]any, channelType types.OutboundType) (cacheRead, cacheCreation int) {
+	if channelType == types.OutboundAnthropic {
+		usage, _ := data["usage"].(map[string]any)
+		cacheRead = toInt(usage["cache_read_input_tokens"])
+		cacheCreation = toInt(usage["cache_creation_input_tokens"])
+		return
+	}
+	// OpenAI: prompt_tokens_details.cached_tokens
+	usage, _ := data["usage"].(map[string]any)
+	if usage != nil {
+		details, _ := usage["prompt_tokens_details"].(map[string]any)
+		if details != nil {
+			cacheRead = toInt(details["cached_tokens"])
+		}
+	}
+	return
+}
+
+var quotaResetPattern = regexp.MustCompile(`quotaResetDelay["'\s:]+["']?([\d.]+)(ms|s)`)
+
+// parseRetryDelay extracts retry delay from response headers or body.
+func parseRetryDelay(resp *http.Response, body string) int64 {
+	// 1. Check Retry-After header (seconds)
+	if ra := resp.Header.Get("Retry-After"); ra != "" {
+		if secs, err := strconv.ParseFloat(ra, 64); err == nil && secs > 0 {
+			return int64(math.Ceil(secs * 1000))
+		}
+	}
+
+	// 2. Parse quotaResetDelay from Google Cloud error body
+	if matches := quotaResetPattern.FindStringSubmatch(body); len(matches) == 3 {
+		val, err := strconv.ParseFloat(matches[1], 64)
+		if err == nil {
+			if matches[2] == "s" {
+				return int64(math.Ceil(val * 1000))
+			}
+			return int64(math.Ceil(val))
+		}
+	}
+
+	return 0
+}
+
+// ProxyNonStreaming performs a single non-streaming HTTP POST to the upstream.
+func ProxyNonStreaming(
+	upstreamUrl string,
+	upstreamHeaders map[string]string,
+	upstreamBody string,
+	channelType types.OutboundType,
+	passthrough bool,
+) (*ProxyResult, error) {
+	req, err := http.NewRequest("POST", upstreamUrl, strings.NewReader(upstreamBody))
+	if err != nil {
+		return nil, &ProxyError{Message: fmt.Sprintf("failed to create request: %v", err), StatusCode: 502}
+	}
+	for k, v := range upstreamHeaders {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, &ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: 502}
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, &ProxyError{Message: fmt.Sprintf("failed to read response: %v", err), StatusCode: 502}
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errorText := string(bodyBytes)
+		return nil, &ProxyError{
+			Message:      fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, errorText),
+			StatusCode:   resp.StatusCode,
+			RetryAfterMs: parseRetryDelay(resp, errorText),
+		}
+	}
+
+	var data map[string]any
+	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+		return nil, &ProxyError{Message: fmt.Sprintf("failed to parse response: %v", err), StatusCode: 502}
+	}
+
+	cacheRead, cacheCreation := extractCacheTokens(data, channelType)
+
+	// Passthrough mode: return raw Anthropic response
+	if passthrough && channelType == types.OutboundAnthropic {
+		usage, _ := data["usage"].(map[string]any)
+		return &ProxyResult{
+			Response:            data,
+			InputTokens:         toInt(usage["input_tokens"]),
+			OutputTokens:        toInt(usage["output_tokens"]),
+			CacheReadTokens:     cacheRead,
+			CacheCreationTokens: cacheCreation,
+			StatusCode:          resp.StatusCode,
+		}, nil
+	}
+
+	// Convert Anthropic → OpenAI if needed
+	finalResponse := data
+	if channelType == types.OutboundAnthropic {
+		finalResponse = ConvertAnthropicResponse(data)
+	}
+
+	usage, _ := finalResponse["usage"].(map[string]any)
+	return &ProxyResult{
+		Response:            finalResponse,
+		InputTokens:         toInt(usage["prompt_tokens"]),
+		OutputTokens:        toInt(usage["completion_tokens"]),
+		CacheReadTokens:     cacheRead,
+		CacheCreationTokens: cacheCreation,
+		StatusCode:          resp.StatusCode,
+	}, nil
+}
+
+// streamingState tracks state during SSE streaming.
+type streamingState struct {
+	firstTokenReceived bool
+	firstTokenTime     int
+	inputTokens        int
+	outputTokens       int
+	cacheReadTokens    int
+	cacheCreationTokens int
+	responseContent    string
+}
+
+func (s *streamingState) appendContent(text string) {
+	if len(s.responseContent) >= maxResponseContent {
+		return
+	}
+	chunk := text
+	if len(s.responseContent) == 0 {
+		chunk = strings.TrimLeft(chunk, " \t\n\r")
+	}
+	if chunk == "" {
+		return
+	}
+	s.responseContent += chunk
+	if len(s.responseContent) > maxResponseContent {
+		s.responseContent = s.responseContent[:maxResponseContent]
+	}
+}
+
+// ProxyStreaming performs an SSE streaming proxy, writing directly to the http.ResponseWriter.
+// It handles protocol conversion for Anthropic SSE → OpenAI SSE format.
+func ProxyStreaming(
+	w http.ResponseWriter,
+	upstreamUrl string,
+	upstreamHeaders map[string]string,
+	upstreamBody string,
+	channelType types.OutboundType,
+	firstTokenTimeout int,
+	passthrough bool,
+) (*StreamCompleteInfo, error) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return nil, &ProxyError{Message: "streaming not supported", StatusCode: 500}
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Create upstream request with optional timeout for first token
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if firstTokenTimeout > 0 {
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", upstreamUrl, strings.NewReader(upstreamBody))
+	if err != nil {
+		return nil, &ProxyError{Message: fmt.Sprintf("failed to create request: %v", err), StatusCode: 502}
+	}
+	for k, v := range upstreamHeaders {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, &ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: 502}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		errorText := string(bodyBytes)
+		return nil, &ProxyError{
+			Message:      fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, errorText),
+			StatusCode:   resp.StatusCode,
+			RetryAfterMs: parseRetryDelay(resp, errorText),
+		}
+	}
+
+	startTime := time.Now()
+	state := &streamingState{}
+
+	// First token timeout timer
+	var timeoutTimer *time.Timer
+	timeoutCh := make(chan struct{})
+	if firstTokenTimeout > 0 {
+		timeoutTimer = time.AfterFunc(time.Duration(firstTokenTimeout)*time.Second, func() {
+			close(timeoutCh)
+		})
+		defer timeoutTimer.Stop()
+	}
+
+	markFirstToken := func() {
+		if state.firstTokenReceived {
+			return
+		}
+		state.firstTokenReceived = true
+		state.firstTokenTime = int(time.Since(startTime).Milliseconds())
+		if timeoutTimer != nil {
+			timeoutTimer.Stop()
+		}
+	}
+
+	// Determine converter
+	var convertChunk func(string) *anthropicSSEResult
+	if !passthrough && channelType == types.OutboundAnthropic {
+		convertChunk = createAnthropicSSEConverter()
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		// Check first token timeout
+		if !state.firstTokenReceived {
+			select {
+			case <-timeoutCh:
+				return nil, &ProxyError{Message: "First token timeout exceeded", StatusCode: 504}
+			default:
+			}
+		}
+
+		line := scanner.Text()
+
+		if passthrough && channelType == types.OutboundAnthropic {
+			processAnthropicPassthrough(line, state, markFirstToken)
+			fmt.Fprintf(w, "%s\n", line)
+			flusher.Flush()
+		} else if channelType == types.OutboundAnthropic && convertChunk != nil {
+			processAnthropicConverted(line, convertChunk, state, markFirstToken, w, flusher)
+		} else {
+			processOpenAI(line, state, markFirstToken, w, flusher)
+		}
+	}
+
+	return &StreamCompleteInfo{
+		InputTokens:         state.inputTokens,
+		OutputTokens:        state.outputTokens,
+		CacheReadTokens:     state.cacheReadTokens,
+		CacheCreationTokens: state.cacheCreationTokens,
+		FirstTokenTime:      state.firstTokenTime,
+		StatusCode:          resp.StatusCode,
+		ResponseContent:     state.responseContent,
+	}, nil
+}
+
+// processAnthropicPassthrough handles SSE lines in Anthropic passthrough mode.
+func processAnthropicPassthrough(line string, state *streamingState, markFirstToken func()) {
+	if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+		return
+	}
+
+	var ev map[string]any
+	if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
+		return
+	}
+
+	if !state.firstTokenReceived {
+		evType, _ := ev["type"].(string)
+		if evType == "message_start" || evType == "content_block_start" || evType == "content_block_delta" {
+			markFirstToken()
+		}
+	}
+
+	evType, _ := ev["type"].(string)
+
+	if evType == "message_start" {
+		if msg, ok := ev["message"].(map[string]any); ok {
+			if usage, ok := msg["usage"].(map[string]any); ok {
+				state.cacheReadTokens = toInt(usage["cache_read_input_tokens"])
+				state.cacheCreationTokens = toInt(usage["cache_creation_input_tokens"])
+			}
+		}
+	}
+
+	if evType == "message_delta" {
+		if usage, ok := ev["usage"].(map[string]any); ok {
+			inTok := toInt(usage["input_tokens"])
+			outTok := toInt(usage["output_tokens"])
+			if inTok > 0 || outTok > 0 {
+				if inTok > 0 {
+					state.inputTokens = inTok
+				}
+				if outTok > 0 {
+					state.outputTokens = outTok
+				}
+			}
+		}
+	}
+
+	if evType == "content_block_delta" {
+		if delta, ok := ev["delta"].(map[string]any); ok {
+			if delta["type"] == "text_delta" {
+				if text, ok := delta["text"].(string); ok {
+					state.appendContent(text)
+				}
+			}
+		}
+	}
+}
+
+// processAnthropicConverted handles SSE lines by converting Anthropic → OpenAI format.
+func processAnthropicConverted(
+	line string,
+	convertChunk func(string) *anthropicSSEResult,
+	state *streamingState,
+	markFirstToken func(),
+	w http.ResponseWriter,
+	flusher http.Flusher,
+) {
+	if !strings.HasPrefix(line, "data: ") {
+		return
+	}
+
+	chunk := convertChunk(line[6:])
+	if chunk == nil {
+		return
+	}
+
+	markFirstToken()
+
+	if chunk.cacheReadTokens > 0 {
+		state.cacheReadTokens = chunk.cacheReadTokens
+	}
+	if chunk.cacheCreationTokens > 0 {
+		state.cacheCreationTokens = chunk.cacheCreationTokens
+	}
+
+	if chunk.done {
+		if chunk.inputTokens > 0 || chunk.outputTokens > 0 {
+			state.inputTokens = chunk.inputTokens
+			state.outputTokens = chunk.outputTokens
+		}
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	} else if chunk.data != nil {
+		// Accumulate text content
+		if choices, ok := chunk.data["choices"].([]any); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]any); ok {
+				if delta, ok := choice["delta"].(map[string]any); ok {
+					if content, ok := delta["content"].(string); ok {
+						state.appendContent(content)
+					}
+				}
+			}
+		}
+		dataJSON, _ := json.Marshal(chunk.data)
+		fmt.Fprintf(w, "data: %s\n\n", dataJSON)
+		flusher.Flush()
+	}
+}
+
+// processOpenAI handles SSE lines in OpenAI passthrough mode.
+func processOpenAI(
+	line string,
+	state *streamingState,
+	markFirstToken func(),
+	w http.ResponseWriter,
+	flusher http.Flusher,
+) {
+	if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
+		markFirstToken()
+
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(line[6:]), &obj); err == nil {
+			if usage, ok := obj["usage"].(map[string]any); ok {
+				state.inputTokens = toIntOr(usage["prompt_tokens"], state.inputTokens)
+				state.outputTokens = toIntOr(usage["completion_tokens"], state.outputTokens)
+				if details, ok := usage["prompt_tokens_details"].(map[string]any); ok {
+					if ct := toInt(details["cached_tokens"]); ct > 0 {
+						state.cacheReadTokens = ct
+					}
+				}
+			}
+			// Accumulate text content
+			if choices, ok := obj["choices"].([]any); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]any); ok {
+					if delta, ok := choice["delta"].(map[string]any); ok {
+						if content, ok := delta["content"].(string); ok {
+							state.appendContent(content)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	fmt.Fprintf(w, "%s\n", line)
+	flusher.Flush()
+}
+
+func toIntOr(v any, fallback int) int {
+	n := toInt(v)
+	if n > 0 {
+		return n
+	}
+	return fallback
+}
+
+// ── Anthropic SSE Converter ──────────────────────────────────────
+
+type anthropicSSEResult struct {
+	done                bool
+	data                map[string]any
+	inputTokens         int
+	outputTokens        int
+	cacheReadTokens     int
+	cacheCreationTokens int
+}
+
+func mapStopReason(reason string) *string {
+	var r string
+	switch reason {
+	case "end_turn", "stop_sequence":
+		r = "stop"
+	case "max_tokens":
+		r = "length"
+	default:
+		return nil
+	}
+	return &r
+}
+
+// createAnthropicSSEConverter returns a stateful converter from Anthropic SSE to OpenAI SSE format.
+func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
+	msgId := "chatcmpl-unknown"
+	msgModel := ""
+	toolCallIndex := 0
+	blockMap := make(map[int]struct {
+		blockType    string
+		toolCallIdx int
+	})
+
+	makeChunk := func(choices []any, extra *anthropicSSEResult) *anthropicSSEResult {
+		result := &anthropicSSEResult{
+			data: map[string]any{
+				"id":      msgId,
+				"object":  "chat.completion.chunk",
+				"created": float64(currentUnixSec()),
+				"model":   msgModel,
+				"choices": choices,
+			},
+		}
+		if extra != nil {
+			result.cacheReadTokens = extra.cacheReadTokens
+			result.cacheCreationTokens = extra.cacheCreationTokens
+		}
+		return result
+	}
+
+	return func(jsonStr string) *anthropicSSEResult {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &event); err != nil {
+			return nil
+		}
+
+		evType, _ := event["type"].(string)
+
+		switch evType {
+		case "message_start":
+			msg, _ := event["message"].(map[string]any)
+			if msg != nil {
+				if id, ok := msg["id"].(string); ok {
+					msgId = id
+				}
+				if model, ok := msg["model"].(string); ok {
+					msgModel = model
+				}
+			}
+			var cr, cc int
+			if msg != nil {
+				if usage, ok := msg["usage"].(map[string]any); ok {
+					cr = toInt(usage["cache_read_input_tokens"])
+					cc = toInt(usage["cache_creation_input_tokens"])
+				}
+			}
+			return makeChunk(
+				[]any{map[string]any{
+					"index":         0,
+					"delta":         map[string]any{"role": "assistant", "content": ""},
+					"finish_reason": nil,
+				}},
+				&anthropicSSEResult{cacheReadTokens: cr, cacheCreationTokens: cc},
+			)
+
+		case "content_block_start":
+			idx := toInt(event["index"])
+			block, _ := event["content_block"].(map[string]any)
+			if block == nil {
+				return nil
+			}
+			blockType, _ := block["type"].(string)
+
+			if blockType == "tool_use" {
+				tcIdx := toolCallIndex
+				toolCallIndex++
+				blockMap[idx] = struct {
+					blockType   string
+					toolCallIdx int
+				}{"tool_use", tcIdx}
+
+				return makeChunk([]any{map[string]any{
+					"index": 0,
+					"delta": map[string]any{
+						"tool_calls": []any{map[string]any{
+							"index":    tcIdx,
+							"id":       block["id"],
+							"type":     "function",
+							"function": map[string]any{"name": block["name"], "arguments": ""},
+						}},
+					},
+					"finish_reason": nil,
+				}}, nil)
+			}
+
+			blockMap[idx] = struct {
+				blockType   string
+				toolCallIdx int
+			}{blockType, 0}
+			return nil
+
+		case "content_block_delta":
+			idx := toInt(event["index"])
+			delta, _ := event["delta"].(map[string]any)
+			if delta == nil {
+				return nil
+			}
+			deltaType, _ := delta["type"].(string)
+
+			if deltaType == "text_delta" {
+				text, _ := delta["text"].(string)
+				return makeChunk([]any{map[string]any{
+					"index":         0,
+					"delta":         map[string]any{"content": text},
+					"finish_reason": nil,
+				}}, nil)
+			}
+
+			if deltaType == "input_json_delta" {
+				info, ok := blockMap[idx]
+				if ok && info.blockType == "tool_use" {
+					partialJSON, _ := delta["partial_json"].(string)
+					return makeChunk([]any{map[string]any{
+						"index": 0,
+						"delta": map[string]any{
+							"tool_calls": []any{map[string]any{
+								"index":    info.toolCallIdx,
+								"function": map[string]any{"arguments": partialJSON},
+							}},
+						},
+						"finish_reason": nil,
+					}}, nil)
+				}
+			}
+
+			// thinking_delta — silently drop
+			return nil
+
+		case "message_delta":
+			delta, _ := event["delta"].(map[string]any)
+			usage, _ := event["usage"].(map[string]any)
+
+			stopReason, _ := delta["stop_reason"].(string)
+			var finishReason any
+			if stopReason == "tool_use" {
+				finishReason = "tool_calls"
+			} else if r := mapStopReason(stopReason); r != nil {
+				finishReason = *r
+			}
+
+			result := &anthropicSSEResult{
+				data: map[string]any{
+					"id":      msgId,
+					"object":  "chat.completion.chunk",
+					"created": float64(currentUnixSec()),
+					"model":   msgModel,
+					"choices": []any{map[string]any{
+						"index":         0,
+						"delta":         map[string]any{},
+						"finish_reason": finishReason,
+					}},
+				},
+			}
+
+			if usage != nil {
+				inTok := toInt(usage["input_tokens"])
+				outTok := toInt(usage["output_tokens"])
+				if inTok > 0 || outTok > 0 {
+					result.inputTokens = inTok
+					result.outputTokens = outTok
+				}
+			}
+			return result
+
+		case "message_stop":
+			return &anthropicSSEResult{done: true}
+
+		default:
+			return nil
+		}
+	}
+}

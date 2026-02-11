@@ -1,46 +1,30 @@
-FROM node:22-alpine AS base
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+## Multi-stage Go build — produces ~15MB Alpine image
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
+ARG TARGETOS TARGETARCH
 
-FROM base AS deps
-WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/worker/package.json apps/worker/
-COPY packages/core/package.json packages/core/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN apk add --no-cache git
 
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
-COPY --from=deps /app/packages/core/node_modules ./packages/core/node_modules
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
-RUN pnpm --filter @wheel/core build
-RUN cd apps/worker && npx tsc
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o /wheel ./cmd/worker
 
-FROM base AS runner
+# ── Runtime ──
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates tzdata
+
 WORKDIR /app
-ENV NODE_ENV=production
-RUN addgroup --system --gid 1001 appgroup && adduser --system --uid 1001 appuser
+COPY --from=builder /wheel .
+COPY drizzle/ ./drizzle/
 
-# Copy built output, package.json, and migrations
-COPY --from=builder /app/apps/worker/package.json ./package.json
-COPY --from=builder /app/apps/worker/dist ./dist
-COPY --from=builder /app/apps/worker/drizzle ./drizzle
+RUN mkdir -p /app/data
 
-# Copy node_modules from deps (includes workspace packages)
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
-COPY --from=builder /app/packages/core ./packages/core
+ENV PORT=8787
+ENV DB_PATH=/app/data/wheel.db
 
-# Data directory for SQLite
-RUN mkdir -p /app/data && chown appuser:appgroup /app/data
-VOLUME ["/app/data"]
-
-USER appuser
 EXPOSE 8787
 
-# NODE_PATH so requires resolve from the monorepo node_modules
-ENV NODE_PATH=/app/node_modules:/app/apps/worker/node_modules
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["./wheel"]

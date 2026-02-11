@@ -1,5 +1,3 @@
-"use client"
-
 import {
   DollarSign,
   FileText,
@@ -12,9 +10,8 @@ import {
   Sun,
 } from "lucide-react"
 import { useTheme } from "next-themes"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { useState } from "react"
+import { Link, useLocation } from "react-router"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,7 +37,7 @@ const navItems = [
 ]
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
-  const pathname = usePathname()
+  const { pathname } = useLocation()
 
   return (
     <div className="flex h-full flex-col">
@@ -89,7 +86,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                to={item.href}
                 onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-bold transition-all",

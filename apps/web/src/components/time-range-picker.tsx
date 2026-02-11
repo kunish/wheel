@@ -1,5 +1,3 @@
-"use client"
-
 import type { DateRange } from "react-day-picker"
 import { Calendar as CalendarIcon, Dot, X } from "lucide-react"
 import { useState } from "react"

@@ -1,12 +1,10 @@
 node_modules
 dist
-.next
-.wrangler
 *.tsbuildinfo
 .env
 .env.local
-.dev.vars
 data/
 *.db
 *.db-shm
 *.db-wal
+tmp/

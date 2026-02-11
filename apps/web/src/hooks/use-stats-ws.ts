@@ -1,19 +1,17 @@
-"use client"
-
 import type { QueryClient } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 
 const WS_RECONNECT_INTERVAL = 3000
 
 function getWsUrl() {
-  const wsBase = process.env.NEXT_PUBLIC_API_BASE_URL
+  const wsBase = import.meta.env.VITE_API_BASE_URL
   if (wsBase) {
     const url = new URL(wsBase)
     const proto = url.protocol === "https:" ? "wss:" : "ws:"
     return `${proto}//${url.host}/api/v1/ws`
   }
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-  if (process.env.NODE_ENV === "development") {
+  if (import.meta.env.DEV) {
     return `${proto}//${window.location.hostname}:8787/api/v1/ws`
   }
   return `${proto}//${window.location.host}/api/v1/ws`

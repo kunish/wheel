@@ -1,5 +1,3 @@
-"use client"
-
 import type { ReactNode } from "react"
 import type { ModelMeta } from "@/lib/api"
 import { useMemo, useState } from "react"

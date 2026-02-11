@@ -1,9 +1,11 @@
 node_modules
-.next
 .git
 .gitignore
 *.md
 .env*
-.wrangler
 openspec
 .claude
+
+# Go worker artifacts (not needed in web image)
+apps/worker/bin
+apps/worker/data

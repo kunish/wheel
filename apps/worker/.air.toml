@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o tmp/wheel ./cmd/worker"
+bin = "tmp/wheel"
+delay = 1000
+exclude_dir = ["tmp", "bin", "data", "drizzle"]
+exclude_regex = ["_test\\.go$"]
+kill_delay = 500
+
+[misc]
+clean_on_exit = true

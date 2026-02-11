@@ -237,7 +237,7 @@ export interface StatsHourly extends StatsMetrics {
   date: string
 }
 
-export interface ChannelStatsRow extends StatsMetrics {
+export interface ChannelStatsRow {
   channelId: number
   channelName: string
   totalRequests: number

@@ -1,5 +1,3 @@
-"use client"
-
 import { useState } from "react"
 import { useModelMeta } from "@/hooks/use-model-meta"
 

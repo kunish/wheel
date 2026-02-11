@@ -1,17 +1,14 @@
 :3000 {
 	# /v1/* and /api/* -> worker (direct, no buffering)
 	handle /v1/* {
-		reverse_proxy worker:8787 {
-			flush_interval -1
-		}
-	}
-	handle /api/* {
-		reverse_proxy worker:8787 {
-			flush_interval -1
-		}
+		reverse_proxy worker:8787
 	}
 
-	# Everything else -> Next.js web UI
+	handle /api/* {
+		reverse_proxy worker:8787
+	}
+
+	# Everything else -> Vite SPA static files
 	handle {
 		reverse_proxy web:3000
 	}

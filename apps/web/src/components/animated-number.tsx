@@ -1,5 +1,3 @@
-"use client"
-
 import { useMotionValue, useMotionValueEvent, useSpring } from "motion/react"
 import { useEffect, useRef } from "react"
 
