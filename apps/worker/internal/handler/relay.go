@@ -439,6 +439,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 				}
 				streamInfo, proxyErr := relay.ProxyStreaming(
 					c.Writer,
+					c.Request.Context(),
 					upstream.URL,
 					upstream.Headers,
 					upstream.Body,

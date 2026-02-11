@@ -222,8 +222,11 @@ func (s *streamingState) appendContent(text string) {
 
 // ProxyStreaming performs an SSE streaming proxy, writing directly to the http.ResponseWriter.
 // It handles protocol conversion between Anthropic SSE and OpenAI SSE formats.
+// clientCtx should be the request context (e.g. c.Request.Context()) so that
+// client disconnection automatically cancels the upstream read loop.
 func ProxyStreaming(
 	w http.ResponseWriter,
+	clientCtx context.Context,
 	upstreamUrl string,
 	upstreamHeaders map[string]string,
 	upstreamBody string,
@@ -243,13 +246,10 @@ func ProxyStreaming(
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// Create upstream request with optional timeout for first token
-	ctx := context.Background()
-	var cancel context.CancelFunc
-	if firstTokenTimeout > 0 {
-		ctx, cancel = context.WithCancel(ctx)
-		defer cancel()
-	}
+	// Derive upstream context from the client request context so that
+	// client disconnection (e.g. ESC in Claude Code) cancels the upstream read.
+	ctx, cancel := context.WithCancel(clientCtx)
+	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", upstreamUrl, strings.NewReader(upstreamBody))
 	if err != nil {
@@ -315,6 +315,13 @@ func ProxyStreaming(
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
+		// Check if the client has disconnected
+		select {
+		case <-ctx.Done():
+			return nil, &ProxyError{Message: "Client disconnected", StatusCode: 499}
+		default:
+		}
+
 		// Check first token timeout
 		if !state.firstTokenReceived {
 			select {
@@ -328,7 +335,9 @@ func ProxyStreaming(
 
 		if passthrough && channelType == types.OutboundAnthropic {
 			processAnthropicPassthrough(line, state, markFirstToken)
-			fmt.Fprintf(w, "%s\n", line)
+			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+				return nil, &ProxyError{Message: "Client disconnected", StatusCode: 499}
+			}
 			flusher.Flush()
 		} else if channelType == types.OutboundAnthropic && convertChunk != nil {
 			processAnthropicConverted(line, convertChunk, state, markFirstToken, w, flusher)
