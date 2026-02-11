@@ -961,8 +961,16 @@ function Fmt({ fmt }: { fmt: { value: string; unit: string } }) {
 
 // ───────────── Channel Ranking ─────────────
 
+type ChannelSortKey = "requests" | "cost" | "latency"
+
+const CHANNEL_SORT_OPTIONS: { key: ChannelSortKey; label: string }[] = [
+  { key: "requests", label: "Requests" },
+  { key: "cost", label: "Cost" },
+  { key: "latency", label: "Latency" },
+]
+
 function RankSection({ data }: { data?: ChannelStatsRow[] }) {
-  const [sortBy, setSortBy] = useState<RankSortKey>("requests")
+  const [sortBy, setSortBy] = useState<ChannelSortKey>("requests")
 
   const sorted = useMemo(() => {
     if (!data) return []
@@ -970,12 +978,6 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
       switch (sortBy) {
         case "requests":
           return (b.totalRequests || 0) - (a.totalRequests || 0)
-        case "tokens":
-          return (
-            (b.input_token || 0) +
-            (b.output_token || 0) -
-            ((a.input_token || 0) + (a.output_token || 0))
-          )
         case "cost":
           return (b.totalCost || 0) - (a.totalCost || 0)
         case "latency":
@@ -991,8 +993,6 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
     switch (sortBy) {
       case "requests":
         return sorted[0].totalRequests || 1
-      case "tokens":
-        return (sorted[0].input_token || 0) + (sorted[0].output_token || 0) || 1
       case "cost":
         return sorted[0].totalCost || 1
       case "latency":
@@ -1004,8 +1004,6 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
     switch (sortBy) {
       case "requests":
         return ((ch.totalRequests || 0) / maxVal) * 100
-      case "tokens":
-        return (((ch.input_token || 0) + (ch.output_token || 0)) / maxVal) * 100
       case "cost":
         return ((ch.totalCost || 0) / maxVal) * 100
       case "latency":
@@ -1015,13 +1013,13 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
 
   return (
     <Card>
-      <Tabs value={sortBy} onValueChange={(v) => setSortBy(v as RankSortKey)}>
+      <Tabs value={sortBy} onValueChange={(v) => setSortBy(v as ChannelSortKey)}>
         <CardHeader className="flex flex-col gap-2 pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Channel Ranking</CardTitle>
           </div>
           <TabsList>
-            {RANK_SORT_OPTIONS.map((o) => (
+            {CHANNEL_SORT_OPTIONS.map((o) => (
               <TabsTrigger key={o.key} value={o.key}>
                 {o.label}
               </TabsTrigger>
@@ -1038,8 +1036,6 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
             <div className="max-h-[400px] space-y-1.5 overflow-y-auto">
               {sorted.map((ch) => {
                 const reqFmt = formatCount(ch.totalRequests)
-                const inFmt = formatCount(ch.input_token)
-                const outFmt = formatCount(ch.output_token)
                 const costFmt = formatMoney(ch.totalCost)
                 const latFmt = formatTime(ch.avgLatency)
                 return (
@@ -1048,7 +1044,6 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
                     to={`/logs?channel=${ch.channelId}`}
                     className="hover:bg-muted/50 relative block rounded-md px-3 py-2 transition-colors"
                   >
-                    {/* Background bar */}
                     <div
                       className="absolute inset-y-0 left-0 rounded-md opacity-10 transition-[width] duration-500 ease-out"
                       style={{
@@ -1064,14 +1059,6 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
                         <div>
                           <span className="text-muted-foreground">Req </span>
                           <Fmt fmt={reqFmt} />
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">In </span>
-                          <Fmt fmt={inFmt} />
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Out </span>
-                          <Fmt fmt={outFmt} />
                         </div>
                         <div>
                           <span className="text-muted-foreground">Cost </span>
