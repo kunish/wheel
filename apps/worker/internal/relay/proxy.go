@@ -819,7 +819,11 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 
 		if !started {
 			started = true
-			lines = append(lines, openaiToAnthropicStart(msgId, msgModel)...)
+			inputTokens := 0
+			if usage, ok := obj["usage"].(map[string]any); ok {
+				inputTokens = toInt(usage["prompt_tokens"])
+			}
+			lines = append(lines, openaiToAnthropicStart(msgId, msgModel, inputTokens)...)
 		}
 
 		choices, _ := obj["choices"].([]any)
@@ -915,16 +919,18 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 	}
 }
 
-func openaiToAnthropicStart(id, model string) []string {
+func openaiToAnthropicStart(id, model string, inputTokens int) []string {
 	msg := map[string]any{
 		"type": "message_start",
 		"message": map[string]any{
-			"id":      id,
-			"type":    "message",
-			"role":    "assistant",
-			"model":   model,
-			"content": []any{},
-			"usage":   map[string]any{"input_tokens": 0, "output_tokens": 0},
+			"id":            id,
+			"type":          "message",
+			"role":          "assistant",
+			"model":         model,
+			"content":       []any{},
+			"stop_reason":   nil,
+			"stop_sequence": nil,
+			"usage":         map[string]any{"input_tokens": inputTokens, "output_tokens": 0},
 		},
 	}
 	b, _ := json.Marshal(msg)
