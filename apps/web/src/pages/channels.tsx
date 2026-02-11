@@ -1,4 +1,4 @@
-import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core"
+import type { DragEndEvent, DragOverEvent, DragStartEvent } from "@dnd-kit/core"
 import type { ChannelFormData } from "./channels/channel-dialog"
 import type { GroupFormData, GroupItemForm } from "./channels/group-dialog"
 import {
@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router"
 import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
@@ -75,24 +76,6 @@ import { EMPTY_GROUP_FORM } from "./channels/group-dialog"
 const ChannelDialog = lazy(() => import("./channels/channel-dialog"))
 
 const GroupDialog = lazy(() => import("./channels/group-dialog"))
-
-// ─── Type labels ───────────────────────────────
-
-const TYPE_LABELS: Record<number, string> = {
-  0: "OpenAI Chat",
-  1: "OpenAI",
-  2: "Anthropic",
-  3: "Gemini",
-  4: "Volcengine",
-  5: "OpenAI Embedding",
-}
-
-const MODE_LABELS: Record<number, string> = {
-  1: "RoundRobin",
-  2: "Random",
-  3: "Failover",
-  4: "Weighted",
-}
 
 // ─── Types ─────────────────────────────────────
 
@@ -142,6 +125,7 @@ type DragData = DragDataModel | DragDataChannel | DragDataGroup
 // ─── Main page ─────────────────────────────────
 
 export default function ChannelsAndGroupsPage() {
+  const { t } = useTranslation("channels")
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -165,6 +149,7 @@ export default function ChannelsAndGroupsPage() {
 
   // Drag state
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null)
+  const [hoverGroupId, setHoverGroupId] = useState<number | null>(null)
 
   // Delete confirmation state
   const [deleteChannelConfirm, setDeleteChannelConfirm] = useState<ChannelRecord | null>(null)
@@ -231,7 +216,7 @@ export default function ChannelsAndGroupsPage() {
     mutationFn: deleteChannel,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["channels"] })
-      toast.success("Channel deleted")
+      toast.success(t("toast.channelDeleted"))
     },
   })
 
@@ -245,7 +230,7 @@ export default function ChannelsAndGroupsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["channels"] })
       setChannelDialogOpen(false)
-      toast.success(channelForm.id ? "Channel updated" : "Channel created")
+      toast.success(channelForm.id ? t("toast.channelUpdated") : t("toast.channelCreated"))
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -256,7 +241,7 @@ export default function ChannelsAndGroupsPage() {
     mutationFn: deleteGroup,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] })
-      toast.success("Group deleted")
+      toast.success(t("toast.groupDeleted"))
     },
   })
 
@@ -265,7 +250,7 @@ export default function ChannelsAndGroupsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] })
       setGroupDialogOpen(false)
-      toast.success(groupForm.id ? "Group updated" : "Group created")
+      toast.success(groupForm.id ? t("toast.groupUpdated") : t("toast.groupCreated"))
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -285,7 +270,7 @@ export default function ChannelsAndGroupsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] })
-      toast.success("Channel added to group")
+      toast.success(t("toast.channelAddedToGroup"))
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -301,7 +286,7 @@ export default function ChannelsAndGroupsPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] })
-      toast.success("Group cleared")
+      toast.success(t("toast.groupCleared"))
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -321,11 +306,30 @@ export default function ChannelsAndGroupsPage() {
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDrag(event.active.data.current as DragData)
+    setHoverGroupId(null)
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    const { over } = event
+    if (!over) {
+      setHoverGroupId(null)
+      return
+    }
+    // Match both "group-123" (droppable) and "sortable-group-123" (sortable) ids
+    const overId = String(over.id)
+    let groupId: number | null = null
+    if (overId.startsWith("group-")) {
+      groupId = Number(overId.replace("group-", ""))
+    } else if (overId.startsWith("sortable-group-")) {
+      groupId = Number(overId.replace("sortable-group-", ""))
+    }
+    setHoverGroupId(groupId)
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     setActiveDrag(null)
+    setHoverGroupId(null)
 
     if (!over) return
 
@@ -364,7 +368,7 @@ export default function ChannelsAndGroupsPage() {
         (it) => it.channelId === dragData.channelId && it.modelName === dragData.model,
       )
       if (exists) {
-        toast.info("This model is already in this group")
+        toast.info(t("toast.modelAlreadyInGroup"))
         return
       }
       newItems = [
@@ -379,7 +383,7 @@ export default function ChannelsAndGroupsPage() {
       const ch = dragData.channel
       const modelNames = parseModels(ch.model)
       if (modelNames.length === 0) {
-        toast.error("This channel has no models configured")
+        toast.error(t("toast.channelNoModels"))
         return
       }
       // Filter out duplicates
@@ -394,7 +398,7 @@ export default function ChannelsAndGroupsPage() {
           weight: 1,
         }))
       if (newItems.length === 0) {
-        toast.info("All models from this channel are already in this group")
+        toast.info(t("toast.allModelsAlreadyInGroup"))
         return
       }
     }
@@ -449,13 +453,18 @@ export default function ChannelsAndGroupsPage() {
   // ─── Render ────────────────────────────────────
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
       <div className="flex h-full flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold tracking-tight">Channels & Groups</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{t("pageTitle")}</h2>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setModelListOpen(true)}>
-              <List className="mr-2 h-4 w-4" /> Models
+              <List className="mr-2 h-4 w-4" /> {t("models")}
             </Button>
           </div>
         </div>
@@ -464,7 +473,7 @@ export default function ChannelsAndGroupsPage() {
           {/* ─── Left: Channels ───────────────── */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Channels</h3>
+              <h3 className="text-lg font-semibold">{t("channels")}</h3>
               <div className="flex items-center gap-1">
                 {channels.length > 0 && (
                   <Button
@@ -472,7 +481,7 @@ export default function ChannelsAndGroupsPage() {
                     size="icon"
                     className="h-9 w-9"
                     onClick={() => setChannelsCollapsed((v) => !v)}
-                    title={channelsCollapsed ? "Expand all" : "Collapse all"}
+                    title={channelsCollapsed ? t("expandAll") : t("collapseAll")}
                   >
                     {channelsCollapsed ? (
                       <ChevronsUpDown className="h-4 w-4" />
@@ -482,18 +491,16 @@ export default function ChannelsAndGroupsPage() {
                   </Button>
                 )}
                 <Button size="sm" onClick={openCreateChannel}>
-                  <Plus className="mr-1 h-3 w-3" /> Add
+                  <Plus className="mr-1 h-3 w-3" /> {t("actions.add", { ns: "common" })}
                 </Button>
               </div>
             </div>
 
             <ScrollArea className="flex-1">
               {channelsLoading ? (
-                <p className="text-muted-foreground">Loading...</p>
+                <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
               ) : channels.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  No channels. Create one to get started.
-                </p>
+                <p className="text-muted-foreground text-sm">{t("emptyChannels")}</p>
               ) : (
                 <div className="flex flex-col gap-3">
                   <AnimatePresence initial={false}>
@@ -526,7 +533,7 @@ export default function ChannelsAndGroupsPage() {
           {/* ─── Right: Groups ────────────────── */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Groups</h3>
+              <h3 className="text-lg font-semibold">{t("groups")}</h3>
               <div className="flex items-center gap-1">
                 {groups.length > 0 && (
                   <Button
@@ -534,7 +541,7 @@ export default function ChannelsAndGroupsPage() {
                     size="icon"
                     className="h-9 w-9"
                     onClick={() => setGroupsCollapsed((v) => !v)}
-                    title={groupsCollapsed ? "Expand all" : "Collapse all"}
+                    title={groupsCollapsed ? t("expandAll") : t("collapseAll")}
                   >
                     {groupsCollapsed ? (
                       <ChevronsUpDown className="h-4 w-4" />
@@ -544,18 +551,16 @@ export default function ChannelsAndGroupsPage() {
                   </Button>
                 )}
                 <Button size="sm" onClick={openCreateGroup}>
-                  <Plus className="mr-1 h-3 w-3" /> Add
+                  <Plus className="mr-1 h-3 w-3" /> {t("actions.add", { ns: "common" })}
                 </Button>
               </div>
             </div>
 
             <ScrollArea className="flex-1">
               {groupsLoading ? (
-                <p className="text-muted-foreground">Loading...</p>
+                <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
               ) : groups.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  No groups. Create one, then drag channels or models into it.
-                </p>
+                <p className="text-muted-foreground text-sm">{t("emptyGroups")}</p>
               ) : (
                 <SortableContext items={groupIds} strategy={verticalListSortingStrategy}>
                   <div className="flex flex-col gap-3">
@@ -575,6 +580,7 @@ export default function ChannelsAndGroupsPage() {
                             onDelete={() => setDeleteGroupConfirm(g)}
                             onClear={() => setClearGroupConfirm(g)}
                             isOver={activeDrag !== null}
+                            hoverGroupId={hoverGroupId}
                             forceCollapsed={groupsCollapsed}
                           />
                         </motion.div>
@@ -619,15 +625,12 @@ export default function ChannelsAndGroupsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete channel &ldquo;{deleteChannelConfirm?.name}&rdquo;?
+              {t("deleteChannelTitle", { name: deleteChannelConfirm?.name })}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The channel and its configuration will be permanently
-              removed.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t("deleteChannelDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
@@ -635,7 +638,7 @@ export default function ChannelsAndGroupsPage() {
                 setDeleteChannelConfirm(null)
               }}
             >
-              Delete
+              {t("actions.delete", { ns: "common" })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -648,15 +651,12 @@ export default function ChannelsAndGroupsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete group &ldquo;{deleteGroupConfirm?.name}&rdquo;?
+              {t("deleteGroupTitle", { name: deleteGroupConfirm?.name })}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The group and all its routing rules will be permanently
-              removed.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t("deleteGroupDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
@@ -664,7 +664,7 @@ export default function ChannelsAndGroupsPage() {
                 setDeleteGroupConfirm(null)
               }}
             >
-              Delete
+              {t("actions.delete", { ns: "common" })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -677,14 +677,12 @@ export default function ChannelsAndGroupsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Clear all items from &ldquo;{clearGroupConfirm?.name}&rdquo;?
+              {t("clearGroupTitle", { name: clearGroupConfirm?.name })}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              All channels and models will be removed from this group. The group itself will remain.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t("clearGroupDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
@@ -692,7 +690,7 @@ export default function ChannelsAndGroupsPage() {
                 setClearGroupConfirm(null)
               }}
             >
-              Clear All
+              {t("clearAllAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -733,11 +731,13 @@ export default function ChannelsAndGroupsPage() {
       <Dialog open={modelListOpen} onOpenChange={setModelListOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Available Models</DialogTitle>
+            <DialogTitle>{t("availableModels")}</DialogTitle>
           </DialogHeader>
           <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
             {models.length === 0 ? (
-              <p className="text-muted-foreground py-4 text-center text-sm">No models available.</p>
+              <p className="text-muted-foreground py-4 text-center text-sm">
+                {t("noModelsAvailable")}
+              </p>
             ) : (
               models.map((m) => (
                 <div key={m} className="bg-muted rounded-md px-3 py-2 font-mono text-sm">
@@ -780,6 +780,7 @@ function DraggableChannel({
   enablePending?: boolean
   forceCollapsed?: boolean
 }) {
+  const { t } = useTranslation("channels")
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `channel-${channel.id}`,
     data: { type: "channel", channel } satisfies DragDataChannel,
@@ -838,11 +839,11 @@ function DraggableChannel({
               <CardTitle className="text-sm">{channel.name}</CardTitle>
               <div className="mt-1 flex items-center gap-1.5">
                 <Badge variant="secondary" className="text-xs">
-                  {TYPE_LABELS[channel.type] ?? "Unknown"}
+                  {t(`typeLabels.${channel.type}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {collapsed && modelNames.length > 0 && (
                   <span className="text-muted-foreground text-xs">
-                    {modelNames.length} model{modelNames.length !== 1 ? "s" : ""}
+                    {t("modelCount", { count: modelNames.length })}
                   </span>
                 )}
               </div>
@@ -869,7 +870,7 @@ function DraggableChannel({
           <CardContent className={cn("p-3 pt-1", !channel.enabled && "opacity-50")}>
             <div className="mt-1">
               {modelNames.length === 0 ? (
-                <span className="text-muted-foreground text-xs">No models</span>
+                <span className="text-muted-foreground text-xs">{t("noModels")}</span>
               ) : (
                 <GroupedModelList
                   models={modelNames}
@@ -927,6 +928,7 @@ function SortableGroup({
   onDelete,
   onClear,
   isOver: dragActive,
+  hoverGroupId,
   forceCollapsed,
 }: {
   group: GroupRecord
@@ -935,8 +937,10 @@ function SortableGroup({
   onDelete: () => void
   onClear: () => void
   isOver: boolean
+  hoverGroupId: number | null
   forceCollapsed?: boolean
 }) {
+  const { t } = useTranslation("channels")
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `sortable-group-${group.id}`,
     data: { type: "group", groupId: group.id } satisfies DragDataGroup,
@@ -949,6 +953,12 @@ function SortableGroup({
 
   const { data: metaData } = useModelMetadataQuery()
   const [collapsed, setCollapsed] = useState(true)
+  const expandedByDragRef = useRef(false)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
+
+  // Parent-driven hover detection (more reliable than useDroppable isOver
+  // because sortable collision detection can shadow the droppable)
+  const isHovered = hoverGroupId === group.id
 
   // Sync with parent's expand/collapse all toggle
   const prevForceCollapsedRef = useRef(forceCollapsed)
@@ -956,6 +966,32 @@ function SortableGroup({
     prevForceCollapsedRef.current = forceCollapsed
     if (forceCollapsed !== undefined) setCollapsed(forceCollapsed)
   }
+
+  // Auto-expand when dragging over a collapsed group
+  useEffect(() => {
+    if (isHovered && collapsed && dragActive) {
+      hoverTimerRef.current = setTimeout(() => {
+        setCollapsed(false)
+        expandedByDragRef.current = true
+      }, 500)
+    } else if (!isHovered) {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current)
+        hoverTimerRef.current = null
+      }
+    }
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    }
+  }, [isHovered, collapsed, dragActive])
+
+  // Restore collapsed state when drag ends (if we auto-expanded it)
+  useEffect(() => {
+    if (!dragActive && expandedByDragRef.current) {
+      expandedByDragRef.current = false
+      setCollapsed(true)
+    }
+  }, [dragActive])
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -971,8 +1007,8 @@ function SortableGroup({
       style={style}
       className={cn(
         "transition-all",
-        isOver && "ring-primary border-primary ring-2",
-        dragActive && !isOver && "border-dashed",
+        (isOver || isHovered) && "ring-primary border-primary ring-2",
+        dragActive && !isOver && !isHovered && "border-dashed",
         isDragging && "opacity-50",
       )}
     >
@@ -1000,11 +1036,11 @@ function SortableGroup({
               <CardTitle className="text-sm">{group.name}</CardTitle>
               <div className="mt-1 flex items-center gap-1">
                 <Badge variant="secondary" className="text-xs">
-                  {MODE_LABELS[group.mode] ?? "Unknown"}
+                  {t(`modeLabels.${group.mode}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {collapsed && group.items.length > 0 && (
                   <span className="text-muted-foreground text-xs">
-                    {group.items.length} item{group.items.length !== 1 ? "s" : ""}
+                    {t("itemCount", { count: group.items.length })}
                   </span>
                 )}
               </div>
@@ -1018,7 +1054,7 @@ function SortableGroup({
               size="icon"
               className="h-9 w-9"
               onClick={onClear}
-              title="Clear all"
+              title={t("clearAll")}
             >
               <X className="h-3 w-3" />
             </Button>
@@ -1040,7 +1076,7 @@ function SortableGroup({
         <div className="overflow-hidden">
           <CardContent className="p-3 pt-1">
             <div className="text-muted-foreground mb-1 text-xs">
-              Timeout: {group.firstTokenTimeOut}s
+              {t("timeout", { seconds: group.firstTokenTimeOut })}
             </div>
             {group.items.length === 0 ? (
               <div
@@ -1049,7 +1085,7 @@ function SortableGroup({
                   isOver && "bg-primary/5 border-primary",
                 )}
               >
-                {dragActive ? "Drop here to add" : "Drag channels or models here"}
+                {dragActive ? t("dropHere") : t("dragHint")}
               </div>
             ) : (
               <GroupItemList
@@ -1170,7 +1206,7 @@ function GroupItemList({
 
   if (!shouldGroup) {
     return (
-      <div className="flex flex-wrap gap-1.5">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-1.5">
         {modelItems.map((it, i) => renderModelCard(it, i))}
         {allItems.map((it, i) => renderAllBadge(it, i))}
       </div>
@@ -1182,13 +1218,13 @@ function GroupItemList({
       {groupedItems.map((g) => (
         <div key={g.provider}>
           <ProviderHeader logoUrl={g.logoUrl} name={g.providerName} count={g.items.length} />
-          <div className="flex flex-wrap gap-1.5">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-1.5">
             {g.items.map((it, i) => renderModelCard(it, i))}
           </div>
         </div>
       ))}
       {allItems.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-1.5">
           {allItems.map((it, i) => renderAllBadge(it, i))}
         </div>
       )}

@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,7 @@ import { login } from "@/lib/api"
 import { useAuthStore } from "@/lib/store/auth"
 
 export default function LoginPage() {
+  const { t } = useTranslation("login")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -26,7 +28,7 @@ export default function LoginPage() {
         navigate("/dashboard")
       }
     } catch {
-      toast.error("Login failed. Please check your credentials.")
+      toast.error(t("error.loginFailed"))
     } finally {
       setLoading(false)
     }
@@ -67,14 +69,14 @@ export default function LoginPage() {
               </svg>
             </div>
           </div>
-          <CardTitle className="text-2xl">Wheel</CardTitle>
-          <CardDescription>Sign in to manage your LLM gateway</CardDescription>
+          <CardTitle className="text-2xl">{t("title")}</CardTitle>
+          <CardDescription>{t("description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="username" className="text-xs font-bold tracking-wider uppercase">
-                Username
+                {t("username")}
               </Label>
               <Input
                 id="username"
@@ -82,12 +84,12 @@ export default function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 autoFocus
-                placeholder="Enter your username"
+                placeholder={t("usernamePlaceholder")}
               />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="password" className="text-xs font-bold tracking-wider uppercase">
-                Password
+                {t("password")}
               </Label>
               <Input
                 id="password"
@@ -95,17 +97,17 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                placeholder="Enter your password"
+                placeholder={t("passwordPlaceholder")}
               />
             </div>
             <Button type="submit" className="mt-2 w-full" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
+                  {t("submitting")}
                 </>
               ) : (
-                "Sign In"
+                t("submit")
               )}
             </Button>
           </form>

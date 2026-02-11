@@ -9,6 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, Plus, Search, X } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { ModelCard } from "@/components/model-card"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -24,13 +25,6 @@ import {
 import { cn } from "@/lib/utils"
 import ChannelModelPickerDialog from "./channel-model-picker-dialog"
 import ModelPickerDialog from "./model-picker-dialog"
-
-const MODE_LABELS: Record<number, string> = {
-  1: "RoundRobin",
-  2: "Random",
-  3: "Failover",
-  4: "Weighted",
-}
 
 export interface GroupItemForm {
   channelId: number
@@ -75,6 +69,7 @@ function SortableDialogItem({
   onUpdate: (patch: Partial<GroupItemForm>) => void
   onRemove: () => void
 }) {
+  const { t } = useTranslation("channels")
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   })
@@ -98,14 +93,14 @@ function SortableDialogItem({
         <GripVertical className="h-4 w-4" />
       </button>
       <button type="button" onClick={onEdit} className="shrink-0 cursor-pointer">
-        <ModelCard modelId={item.modelName || "(empty)"} />
+        <ModelCard modelId={item.modelName || t("groupDialog.emptyModel")} />
       </button>
       <Select
         value={item.channelId ? String(item.channelId) : ""}
         onValueChange={(v) => onUpdate({ channelId: Number(v) })}
       >
         <SelectTrigger className="w-36">
-          <SelectValue placeholder="Channel" />
+          <SelectValue placeholder={t("groupDialog.channelPlaceholder")} />
         </SelectTrigger>
         <SelectContent>
           {channelOptions.map((ch) => (
@@ -119,7 +114,7 @@ function SortableDialogItem({
         <Input
           className="w-20"
           type="number"
-          placeholder="Priority"
+          placeholder={t("groupDialog.priority")}
           value={item.priority}
           onChange={(e) => onUpdate({ priority: Number(e.target.value) })}
         />
@@ -128,7 +123,7 @@ function SortableDialogItem({
         <Input
           className="w-20"
           type="number"
-          placeholder="Weight"
+          placeholder={t("groupDialog.weight")}
           value={item.weight}
           onChange={(e) => onUpdate({ weight: Number(e.target.value) })}
         />
@@ -159,9 +154,20 @@ export default function GroupDialog({
   onSave: () => void
   isPending: boolean
 }) {
+  const { t } = useTranslation("channels")
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   // null = closed, -1 = adding new item, >= 0 = editing item at index
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null)
+
+  const modeLabels = useMemo(
+    () => ({
+      1: t("modeLabels.1"),
+      2: t("modeLabels.2"),
+      3: t("modeLabels.3"),
+      4: t("modeLabels.4"),
+    }),
+    [t],
+  )
 
   const dialogSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -200,11 +206,13 @@ export default function GroupDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] w-full max-w-2xl max-w-[95vw] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{form.id ? "Edit Group" : "Create Group"}</DialogTitle>
+          <DialogTitle>
+            {form.id ? t("groupDialog.editTitle") : t("groupDialog.createTitle")}
+          </DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-2">
-            <Label>Name</Label>
+            <Label>{t("groupDialog.name")}</Label>
             <div className="relative">
               <Input
                 value={form.name}
@@ -224,7 +232,7 @@ export default function GroupDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Load Balancing Mode</Label>
+            <Label>{t("groupDialog.loadBalancingMode")}</Label>
             <Select
               value={String(form.mode)}
               onValueChange={(v) => setForm({ ...form, mode: Number(v) })}
@@ -233,7 +241,7 @@ export default function GroupDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(MODE_LABELS).map(([val, label]) => (
+                {Object.entries(modeLabels).map(([val, label]) => (
                   <SelectItem key={val} value={val}>
                     {label}
                   </SelectItem>
@@ -243,7 +251,7 @@ export default function GroupDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>First Token Timeout (seconds)</Label>
+            <Label>{t("groupDialog.firstTokenTimeout")}</Label>
             <Input
               type="number"
               value={form.firstTokenTimeOut}
@@ -257,7 +265,7 @@ export default function GroupDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Session Keep Time (seconds)</Label>
+            <Label>{t("groupDialog.sessionKeepTime")}</Label>
             <Input
               type="number"
               value={form.sessionKeepTime}
@@ -267,22 +275,20 @@ export default function GroupDialog({
                   sessionKeepTime: Number(e.target.value),
                 })
               }
-              placeholder="0 = disabled"
+              placeholder={t("groupDialog.sessionKeepTimePlaceholder")}
             />
           </div>
 
           {/* Group Items */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <Label>Models</Label>
+              <Label>{t("groupDialog.models")}</Label>
               <Button variant="outline" size="sm" onClick={() => setEditingItemIndex(-1)}>
-                <Plus className="mr-1 h-3 w-3" /> Add
+                <Plus className="mr-1 h-3 w-3" /> {t("actions.add", { ns: "common" })}
               </Button>
             </div>
             {form.items.length === 0 && (
-              <p className="text-muted-foreground text-sm">
-                No models added yet. Click Add or drag from the left panel.
-              </p>
+              <p className="text-muted-foreground text-sm">{t("groupDialog.emptyItems")}</p>
             )}
             {/* eslint-disable react/no-array-index-key -- items may have duplicate channelId+modelName */}
             <DndContext sensors={dialogSensors} onDragEnd={handleDialogDragEnd}>
@@ -310,7 +316,7 @@ export default function GroupDialog({
           </div>
 
           <Button className="mt-2" onClick={onSave} disabled={isPending || !form.name}>
-            {isPending ? "Saving..." : "Save"}
+            {isPending ? t("groupDialog.saving") : t("actions.save", { ns: "common" })}
           </Button>
         </div>
       </DialogContent>

@@ -1,0 +1,13 @@
+{
+  "title": "Wheel",
+  "description": "Sign in to manage your LLM gateway",
+  "username": "Username",
+  "usernamePlaceholder": "Enter your username",
+  "password": "Password",
+  "passwordPlaceholder": "Enter your password",
+  "submit": "Sign In",
+  "submitting": "Signing in...",
+  "error": {
+    "loginFailed": "Login failed. Please check your credentials."
+  }
+}

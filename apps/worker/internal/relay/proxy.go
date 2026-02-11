@@ -46,6 +46,7 @@ type StreamCompleteInfo struct {
 	FirstTokenTime      int
 	StatusCode          int
 	ResponseContent     string
+	ThinkingContent     string
 }
 
 const maxResponseContent = 10000
@@ -167,15 +168,52 @@ func ProxyNonStreaming(
 	}, nil
 }
 
+// StreamContentCallback is called periodically during streaming with accumulated content.
+type StreamContentCallback func(thinking, response string)
+
 // streamingState tracks state during SSE streaming.
 type streamingState struct {
-	firstTokenReceived bool
-	firstTokenTime     int
-	inputTokens        int
-	outputTokens       int
-	cacheReadTokens    int
+	firstTokenReceived  bool
+	firstTokenTime      int
+	inputTokens         int
+	outputTokens        int
+	cacheReadTokens     int
 	cacheCreationTokens int
-	responseContent    string
+	responseContent     string
+	thinkingContent     string
+	onContent           StreamContentCallback
+	lastNotifyLen       int
+}
+
+const streamNotifyThreshold = 100 // notify every 100 chars of new content
+
+func (s *streamingState) maybeNotify() {
+	if s.onContent == nil {
+		return
+	}
+	totalLen := len(s.thinkingContent) + len(s.responseContent)
+	if totalLen-s.lastNotifyLen >= streamNotifyThreshold {
+		s.lastNotifyLen = totalLen
+		s.onContent(s.thinkingContent, s.responseContent)
+	}
+}
+
+func (s *streamingState) appendThinking(text string) {
+	if len(s.thinkingContent) >= maxResponseContent {
+		return
+	}
+	chunk := text
+	if len(s.thinkingContent) == 0 {
+		chunk = strings.TrimLeft(chunk, " \t\n\r")
+	}
+	if chunk == "" {
+		return
+	}
+	s.thinkingContent += chunk
+	if len(s.thinkingContent) > maxResponseContent {
+		s.thinkingContent = s.thinkingContent[:maxResponseContent]
+	}
+	s.maybeNotify()
 }
 
 func (s *streamingState) appendContent(text string) {
@@ -193,6 +231,7 @@ func (s *streamingState) appendContent(text string) {
 	if len(s.responseContent) > maxResponseContent {
 		s.responseContent = s.responseContent[:maxResponseContent]
 	}
+	s.maybeNotify()
 }
 
 // ProxyStreaming performs an SSE streaming proxy, writing directly to the http.ResponseWriter.
@@ -205,6 +244,7 @@ func ProxyStreaming(
 	channelType types.OutboundType,
 	firstTokenTimeout int,
 	passthrough bool,
+	onContent StreamContentCallback,
 ) (*StreamCompleteInfo, error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -249,7 +289,7 @@ func ProxyStreaming(
 	}
 
 	startTime := time.Now()
-	state := &streamingState{}
+	state := &streamingState{onContent: onContent}
 
 	// First token timeout timer
 	var timeoutTimer *time.Timer
@@ -312,7 +352,29 @@ func ProxyStreaming(
 		FirstTokenTime:      state.firstTokenTime,
 		StatusCode:          resp.StatusCode,
 		ResponseContent:     state.responseContent,
+		ThinkingContent:     state.thinkingContent,
 	}, nil
+}
+
+// extractThinking parses an Anthropic SSE JSON payload and accumulates thinking content.
+func extractThinking(jsonStr string, state *streamingState) {
+	var ev map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &ev); err != nil {
+		return
+	}
+	evType, _ := ev["type"].(string)
+	if evType != "content_block_delta" {
+		return
+	}
+	delta, ok := ev["delta"].(map[string]any)
+	if !ok {
+		return
+	}
+	if delta["type"] == "thinking_delta" {
+		if text, ok := delta["thinking"].(string); ok {
+			state.appendThinking(text)
+		}
+	}
 }
 
 // processAnthropicPassthrough handles SSE lines in Anthropic passthrough mode.
@@ -366,6 +428,11 @@ func processAnthropicPassthrough(line string, state *streamingState, markFirstTo
 					state.appendContent(text)
 				}
 			}
+			if delta["type"] == "thinking_delta" {
+				if text, ok := delta["thinking"].(string); ok {
+					state.appendThinking(text)
+				}
+			}
 		}
 	}
 }
@@ -383,7 +450,12 @@ func processAnthropicConverted(
 		return
 	}
 
-	chunk := convertChunk(line[6:])
+	payload := line[6:]
+
+	// Extract thinking content before conversion (converter drops thinking_delta)
+	extractThinking(payload, state)
+
+	chunk := convertChunk(payload)
 	if chunk == nil {
 		return
 	}
@@ -449,6 +521,9 @@ func processOpenAI(
 					if delta, ok := choice["delta"].(map[string]any); ok {
 						if content, ok := delta["content"].(string); ok {
 							state.appendContent(content)
+						}
+						if reasoning, ok := delta["reasoning_content"].(string); ok {
+							state.appendThinking(reasoning)
 						}
 					}
 				}

@@ -387,6 +387,17 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 			if stream {
 				// ── Streaming path ──
 				// We need to directly write to the response writer for SSE
+				var onContent relay.StreamContentCallback
+				if h.Broadcast != nil {
+					streamKey := fmt.Sprintf("%s/%s/%d", model, targetModel, channel.ID)
+					onContent = func(thinking, response string) {
+						h.Broadcast("log-streaming", map[string]any{
+							"key":              streamKey,
+							"thinkingContent":  thinking,
+							"responseContent":  response,
+						})
+					}
+				}
 				streamInfo, proxyErr := relay.ProxyStreaming(
 					c.Writer,
 					upstream.URL,
@@ -395,6 +406,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					channel.Type,
 					firstTokenTimeout,
 					isAnthropicPassthrough,
+					onContent,
 				)
 
 				if proxyErr != nil {
@@ -610,6 +622,9 @@ func (h *RelayHandler) asyncStreamLog(
 
 	logBody := truncateForLog(body)
 	respContent := streamInfo.ResponseContent
+	if streamInfo.ThinkingContent != "" {
+		respContent = "<|thinking|>" + streamInfo.ThinkingContent + "<|/thinking|>" + respContent
+	}
 	if respContent == "" {
 		respContent = "[streaming]"
 	}

@@ -1,5 +1,6 @@
 import { X } from "lucide-react"
 import { useState } from "react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useModelMeta } from "@/hooks/use-model-meta"
 import { cn } from "@/lib/utils"
 
@@ -24,11 +25,11 @@ export const ModelCard = function ModelCard({
   const displayName = meta?.name ?? modelId
   const showLogo = meta && !logoError
 
-  return (
+  const card = (
     <div
       ref={ref}
       className={cn(
-        "bg-card hover:bg-accent hover:text-accent-foreground inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
+        "bg-card hover:bg-accent hover:text-accent-foreground flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
         disabled && "pointer-events-none opacity-40",
         className,
       )}
@@ -44,15 +45,15 @@ export const ModelCard = function ModelCard({
           onError={() => setLogoError(true)}
         />
       )}
-      <div className="flex min-w-0 flex-col items-start">
-        <span className="truncate text-xs leading-tight font-medium">{displayName}</span>
+      <div className="flex min-w-0 flex-1 flex-col items-start">
+        <span className="w-full truncate text-xs leading-tight font-medium">{displayName}</span>
         {meta && displayName !== modelId && (
-          <span className="text-muted-foreground truncate font-mono text-[10px] leading-tight">
+          <span className="text-muted-foreground w-full truncate font-mono text-[10px] leading-tight">
             {modelId}
           </span>
         )}
         {meta?.providerName && (
-          <span className="text-muted-foreground truncate text-[10px] leading-tight">
+          <span className="text-muted-foreground w-full truncate text-[10px] leading-tight">
             {meta.providerName}
           </span>
         )}
@@ -71,5 +72,21 @@ export const ModelCard = function ModelCard({
         </button>
       )}
     </div>
+  )
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{card}</TooltipTrigger>
+        <TooltipContent>
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium">{displayName}</span>
+            {displayName !== modelId && (
+              <span className="font-mono font-normal opacity-80">{modelId}</span>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

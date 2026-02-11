@@ -10,8 +10,10 @@ import {
   Sun,
 } from "lucide-react"
 import { useTheme } from "next-themes"
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Link, useLocation } from "react-router"
+import { LanguageSwitcher } from "@/components/language-switcher"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,16 +30,22 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { useAuthStore } from "@/lib/store/auth"
 import { cn } from "@/lib/utils"
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/channels", label: "Channels & Groups", icon: Radio },
-  { href: "/prices", label: "Prices", icon: DollarSign },
-  { href: "/logs", label: "Logs", icon: FileText },
-  { href: "/settings", label: "Settings", icon: Settings },
-]
+const navItemDefs = [
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+  { href: "/channels", labelKey: "nav.channels", icon: Radio },
+  { href: "/prices", labelKey: "nav.prices", icon: DollarSign },
+  { href: "/logs", labelKey: "nav.logs", icon: FileText },
+  { href: "/settings", labelKey: "nav.settings", icon: Settings },
+] as const
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation()
+  const { t } = useTranslation()
+
+  const navItems = useMemo(
+    () => navItemDefs.map((item) => ({ ...item, label: t(item.labelKey) })),
+    [t],
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -118,18 +126,14 @@ function TopBar() {
   const { theme, setTheme } = useTheme()
   const logout = useAuthStore((s) => s.logout)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const { t } = useTranslation()
 
   return (
     <header className="border-border bg-background flex h-14 items-center gap-3 border-b-2 px-4 lg:px-6">
       {/* Mobile menu */}
       <Sheet>
         <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden"
-            aria-label="Open navigation menu"
-          >
+          <Button variant="ghost" size="icon" className="lg:hidden" aria-label={t("aria.openNav")}>
             <Menu className="size-5" />
           </Button>
         </SheetTrigger>
@@ -138,17 +142,19 @@ function TopBar() {
           className="bg-sidebar border-sidebar-border w-64 border-r-2 p-0"
           showCloseButton={false}
         >
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SheetTitle className="sr-only">{t("aria.navigation")}</SheetTitle>
           <NavContent />
         </SheetContent>
       </Sheet>
 
       <div className="flex-1" />
 
+      <LanguageSwitcher />
+
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        aria-label={theme === "dark" ? t("theme.light") : t("theme.dark")}
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       >
         <Sun className="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
@@ -158,7 +164,7 @@ function TopBar() {
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Logout"
+        aria-label={t("logout.button")}
         onClick={() => setShowLogoutConfirm(true)}
       >
         <LogOut className="size-4" />
@@ -167,20 +173,18 @@ function TopBar() {
       <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to logout?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You will need to sign in again to access the dashboard.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t("logout.title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("logout.description")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("logout.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 logout()
                 window.location.href = "/login"
               }}
             >
-              Logout
+              {t("logout.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

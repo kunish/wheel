@@ -1,6 +1,7 @@
 import type { DateRange } from "react-day-picker"
 import { Calendar as CalendarIcon, Dot, X } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -37,16 +38,17 @@ export function detectPreset(
   return TIME_RANGE_PRESETS.find((p) => p.seconds === duration) ?? null
 }
 
-/** Format the range summary for display */
+/** Format the range summary for display (i18n-aware) */
 export function formatRangeSummary(
   from: number | undefined,
   to: number | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
   now?: number,
 ): string {
-  if (from === undefined && to === undefined) return "Time Range"
+  if (from === undefined && to === undefined) return t("timeRange.label")
 
   const preset = detectPreset(from, to, now)
-  if (preset) return `Last ${preset.label}`
+  if (preset) return t("timeRange.last", { label: preset.label })
 
   if (from !== undefined && to !== undefined) {
     return `${formatCompactDate(from)} – ${formatCompactDate(to)}`
@@ -84,6 +86,7 @@ interface TimeRangePickerProps {
 }
 
 export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [month, setMonth] = useState(() => (from ? new Date(from * 1000) : new Date()))
@@ -91,7 +94,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
   const [toTime, setToTime] = useState({ hours: "23", minutes: "59" })
 
   const hasRange = from !== undefined || to !== undefined
-  const summary = formatRangeSummary(from, to)
+  const summary = formatRangeSummary(from, to, t)
 
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
@@ -175,7 +178,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
         {/* Presets */}
         <div className="border-border flex flex-col gap-0.5 border-r-2 p-3">
           <span className="text-muted-foreground mb-1 px-2 text-[10px] font-bold tracking-wider uppercase">
-            Presets
+            {t("timeRange.presets")}
           </span>
           {TIME_RANGE_PRESETS.map((preset) => (
             <Button
@@ -206,7 +209,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
                 onClick={() => setMonth(new Date())}
               >
                 <Dot className="h-4 w-4" />
-                Today
+                {t("timeRange.today")}
               </button>
             }
           />
@@ -214,7 +217,9 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
           {/* Time inputs */}
           <div className="border-border flex items-center gap-4 border-t-2 px-4 py-3">
             <div className="flex items-center gap-1.5">
-              <span className="text-muted-foreground text-xs font-medium">From</span>
+              <span className="text-muted-foreground text-xs font-medium">
+                {t("timeRange.from")}
+              </span>
               <input
                 type="text"
                 inputMode="numeric"
@@ -249,7 +254,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
             </div>
 
             <div className="flex items-center gap-1.5">
-              <span className="text-muted-foreground text-xs font-medium">To</span>
+              <span className="text-muted-foreground text-xs font-medium">{t("timeRange.to")}</span>
               <input
                 type="text"
                 inputMode="numeric"
@@ -284,7 +289,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
             </div>
 
             <Button size="xs" className="ml-auto" onClick={handleApply}>
-              Apply
+              {t("timeRange.apply")}
             </Button>
           </div>
         </div>

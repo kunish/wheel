@@ -1,0 +1,116 @@
+{
+  "nav": {
+    "dashboard": "仪表盘",
+    "channels": "渠道与分组",
+    "prices": "价格",
+    "logs": "日志",
+    "settings": "设置"
+  },
+  "actions": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "delete": "删除",
+    "save": "保存",
+    "add": "添加",
+    "edit": "编辑",
+    "retry": "重试",
+    "close": "关闭",
+    "copy": "复制",
+    "search": "搜索",
+    "reset": "重置",
+    "submit": "提交",
+    "back": "返回",
+    "next": "下一步",
+    "create": "创建",
+    "update": "更新",
+    "enable": "启用",
+    "disable": "禁用",
+    "refresh": "刷新",
+    "export": "导出",
+    "import": "导入",
+    "test": "测试",
+    "loading": "加载中...",
+    "copied": "已复制",
+    "selectAll": "全选",
+    "deselectAll": "取消全选"
+  },
+  "logout": {
+    "button": "退出登录",
+    "title": "确定要退出登录吗？",
+    "description": "退出后需要重新登录才能访问管理面板。",
+    "confirm": "退出登录",
+    "cancel": "取消"
+  },
+  "theme": {
+    "light": "切换到亮色模式",
+    "dark": "切换到暗色模式"
+  },
+  "aria": {
+    "openNav": "打开导航菜单",
+    "navigation": "导航"
+  },
+  "language": {
+    "switch": "切换语言",
+    "en": "English",
+    "zhCN": "中文"
+  },
+  "status": {
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "active": "活跃",
+    "inactive": "未活跃",
+    "success": "成功",
+    "error": "错误",
+    "pending": "待处理",
+    "unknown": "未知"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo_one": "{{count}} 分钟前",
+    "minutesAgo_other": "{{count}} 分钟前",
+    "hoursAgo_one": "{{count}} 小时前",
+    "hoursAgo_other": "{{count}} 小时前",
+    "daysAgo_one": "{{count}} 天前",
+    "daysAgo_other": "{{count}} 天前"
+  },
+  "weekdays": {
+    "mon": "周一",
+    "tue": "周二",
+    "wed": "周三",
+    "thu": "周四",
+    "fri": "周五",
+    "sat": "周六",
+    "sun": "周日"
+  },
+  "pagination": {
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "第 {{current}} / {{total}} 页",
+    "rowsPerPage": "每页行数",
+    "showing": "显示 {{from}}-{{to}}，共 {{total}} 条"
+  },
+  "table": {
+    "noResults": "未找到结果。",
+    "empty": "暂无数据。"
+  },
+  "error": {
+    "generic": "出了点问题",
+    "networkError": "网络错误，请重试。",
+    "notFound": "未找到",
+    "unauthorized": "未授权"
+  },
+  "models": {
+    "allModels": "所有模型",
+    "searchPlaceholder": "搜索模型...",
+    "noModelsFound": "未找到模型"
+  },
+  "timeRange": {
+    "label": "时间范围",
+    "presets": "预设",
+    "from": "从",
+    "to": "到",
+    "apply": "应用",
+    "today": "今天",
+    "last": "最近 {{label}}"
+  }
+}

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Pencil, Plus, Trash2 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { lazy, Suspense, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -78,6 +79,7 @@ const EMPTY_FORM: ApiKeyFormData = {
 // ───────────── Account Section ─────────────
 
 function AccountSection() {
+  const { t } = useTranslation("settings")
   const [newUsername, setNewUsername] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -85,27 +87,27 @@ function AccountSection() {
   const usernameMutation = useMutation({
     mutationFn: () => changeUsername(newUsername),
     onSuccess: () => {
-      toast.success("Username updated")
+      toast.success(t("account.usernameUpdated"))
       setNewUsername("")
     },
-    onError: () => toast.error("Failed to update username"),
+    onError: () => toast.error(t("account.usernameUpdateFailed")),
   })
 
   const passwordMutation = useMutation({
     mutationFn: () => changePassword(newPassword),
     onSuccess: () => {
-      toast.success("Password updated")
+      toast.success(t("account.passwordUpdated"))
       setNewPassword("")
       setConfirmPassword("")
     },
-    onError: () => toast.error("Failed to update password"),
+    onError: () => toast.error(t("account.passwordUpdateFailed")),
   })
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Change Username</CardTitle>
+          <CardTitle>{t("account.changeUsername")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form
@@ -117,16 +119,16 @@ function AccountSection() {
             className="flex flex-col gap-4"
           >
             <div className="flex flex-col gap-2">
-              <Label>New Username</Label>
+              <Label>{t("account.newUsername")}</Label>
               <Input
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
-                placeholder="Enter new username"
+                placeholder={t("account.enterNewUsername")}
                 required
               />
             </div>
             <Button type="submit" disabled={usernameMutation.isPending}>
-              Update Username
+              {t("account.updateUsername")}
             </Button>
           </form>
         </CardContent>
@@ -134,18 +136,18 @@ function AccountSection() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Change Password</CardTitle>
+          <CardTitle>{t("account.changePassword")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form
             onSubmit={(e) => {
               e.preventDefault()
               if (newPassword.length < 8) {
-                toast.error("Password must be at least 8 characters")
+                toast.error(t("account.passwordMinLength"))
                 return
               }
               if (newPassword !== confirmPassword) {
-                toast.error("Passwords do not match")
+                toast.error(t("account.passwordsDoNotMatch"))
                 return
               }
               if (!newPassword) return
@@ -154,27 +156,27 @@ function AccountSection() {
             className="flex flex-col gap-4"
           >
             <div className="flex flex-col gap-2">
-              <Label>New Password</Label>
+              <Label>{t("account.newPassword")}</Label>
               <Input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
+                placeholder={t("account.enterNewPassword")}
                 required
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label>Confirm Password</Label>
+              <Label>{t("account.confirmPassword")}</Label>
               <Input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
+                placeholder={t("account.confirmNewPassword")}
                 required
               />
             </div>
             <Button type="submit" disabled={passwordMutation.isPending}>
-              Update Password
+              {t("account.updatePassword")}
             </Button>
           </form>
         </CardContent>
@@ -186,6 +188,7 @@ function AccountSection() {
 // ───────────── API Keys Section ─────────────
 
 function ApiKeysSection() {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
@@ -228,7 +231,7 @@ function ApiKeysSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apikeys"] })
       setEditingKey(null)
-      toast.success("API Key updated")
+      toast.success(t("apiKeys.apiKeyUpdated"))
     },
   })
 
@@ -236,7 +239,7 @@ function ApiKeysSection() {
     mutationFn: deleteApiKey,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apikeys"] })
-      toast.success("API Key deleted")
+      toast.success(t("apiKeys.apiKeyDeleted"))
     },
   })
 
@@ -248,7 +251,7 @@ function ApiKeysSection() {
   }
 
   function formatExpiry(timestamp: number) {
-    if (!timestamp) return "Never"
+    if (!timestamp) return t("apiKeys.never")
     return new Date(timestamp * 1000).toLocaleDateString()
   }
 
@@ -270,12 +273,12 @@ function ApiKeysSection() {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>API Keys</CardTitle>
+        <CardTitle>{t("apiKeys.title")}</CardTitle>
         <Dialog
           open={showCreate}
           onOpenChange={(open) => {
             if (!open && createdKey && !keyCopied) {
-              toast.error("Please copy the key before closing")
+              toast.error(t("apiKeys.copyKeyBeforeClosing"))
               return
             }
             setShowCreate(open)
@@ -288,18 +291,16 @@ function ApiKeysSection() {
         >
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus className="mr-2 h-4 w-4" /> Create Key
+              <Plus className="mr-2 h-4 w-4" /> {t("apiKeys.createKey")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create API Key</DialogTitle>
+              <DialogTitle>{t("apiKeys.createApiKey")}</DialogTitle>
             </DialogHeader>
             {createdKey ? (
               <div className="flex flex-col gap-3">
-                <p className="text-muted-foreground text-sm">
-                  Save this key — it won&apos;t be shown again.
-                </p>
+                <p className="text-muted-foreground text-sm">{t("apiKeys.saveKeyWarning")}</p>
                 <div className="bg-muted flex items-center gap-2 rounded-md p-3">
                   <code className="flex-1 text-sm break-all">{createdKey}</code>
                   <Button
@@ -308,7 +309,7 @@ function ApiKeysSection() {
                     onClick={() => {
                       navigator.clipboard.writeText(createdKey)
                       setKeyCopied(true)
-                      toast.success("Copied!")
+                      toast.success(t("apiKeys.copied"))
                     }}
                   >
                     <Copy className="h-4 w-4" />
@@ -320,7 +321,7 @@ function ApiKeysSection() {
                     setShowCreate(false)
                   }}
                 >
-                  Done
+                  {t("apiKeys.done")}
                 </Button>
               </div>
             ) : (
@@ -329,7 +330,7 @@ function ApiKeysSection() {
                 onChange={setCreateForm}
                 onSubmit={() => createMutation.mutate(createForm)}
                 isPending={createMutation.isPending}
-                submitLabel="Create"
+                submitLabel={t("actions.create", { ns: "common" })}
               />
             )}
           </DialogContent>
@@ -345,7 +346,7 @@ function ApiKeysSection() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit API Key</DialogTitle>
+              <DialogTitle>{t("apiKeys.editApiKey")}</DialogTitle>
             </DialogHeader>
             <ApiKeyForm
               form={editForm}
@@ -356,7 +357,7 @@ function ApiKeysSection() {
                 }
               }}
               isPending={updateMutation.isPending}
-              submitLabel="Save"
+              submitLabel={t("actions.save", { ns: "common" })}
             />
           </DialogContent>
         </Dialog>
@@ -369,15 +370,12 @@ function ApiKeysSection() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                Delete API Key &ldquo;{deleteConfirm?.name}&rdquo;?
+                {t("apiKeys.deleteTitle", { name: deleteConfirm?.name })}
               </AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. Any applications using this key will lose access
-                immediately.
-              </AlertDialogDescription>
+              <AlertDialogDescription>{t("apiKeys.deleteDescription")}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
               <AlertDialogAction
                 variant="destructive"
                 onClick={() => {
@@ -385,24 +383,24 @@ function ApiKeysSection() {
                   setDeleteConfirm(null)
                 }}
               >
-                Delete
+                {t("actions.delete", { ns: "common" })}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
         {isLoading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead>Cost / Limit</TableHead>
+                  <TableHead>{t("apiKeys.table.name")}</TableHead>
+                  <TableHead>{t("apiKeys.table.key")}</TableHead>
+                  <TableHead>{t("apiKeys.table.status")}</TableHead>
+                  <TableHead>{t("apiKeys.table.expires")}</TableHead>
+                  <TableHead>{t("apiKeys.table.costLimit")}</TableHead>
                   <TableHead className="w-24" />
                 </TableRow>
               </TableHeader>
@@ -428,7 +426,7 @@ function ApiKeysSection() {
                             aria-label={`Copy API key ${k.name}`}
                             onClick={() => {
                               navigator.clipboard.writeText(k.apiKey)
-                              toast.success("Copied!")
+                              toast.success(t("apiKeys.copied"))
                             }}
                           >
                             <Copy className="h-3 w-3" />
@@ -437,7 +435,7 @@ function ApiKeysSection() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={k.enabled ? "default" : "secondary"}>
-                          {k.enabled ? "Active" : "Disabled"}
+                          {k.enabled ? t("apiKeys.statusActive") : t("apiKeys.statusDisabled")}
                         </Badge>
                       </TableCell>
                       <TableCell>{formatExpiry(k.expireAt)}</TableCell>
@@ -482,6 +480,7 @@ function ApiKeyForm({
   isPending: boolean
   submitLabel: string
 }) {
+  const { t } = useTranslation("settings")
   return (
     <form
       onSubmit={(e) => {
@@ -491,45 +490,43 @@ function ApiKeyForm({
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-2">
-        <Label>Name</Label>
+        <Label>{t("apiKeys.form.name")}</Label>
         <Input
           value={form.name}
           onChange={(e) => onChange({ ...form, name: e.target.value })}
-          placeholder="My API Key"
+          placeholder={t("apiKeys.form.namePlaceholder")}
           required
         />
       </div>
       <div className="flex flex-col gap-2">
-        <Label>Expire Date</Label>
+        <Label>{t("apiKeys.form.expireDate")}</Label>
         <Input
           type="date"
           value={form.expireAt}
           onChange={(e) => onChange({ ...form, expireAt: e.target.value })}
         />
-        <p className="text-muted-foreground text-xs">Leave empty for no expiry</p>
+        <p className="text-muted-foreground text-xs">{t("apiKeys.form.expireDateHint")}</p>
       </div>
       <div className="flex flex-col gap-2">
-        <Label>Cost Limit ($)</Label>
+        <Label>{t("apiKeys.form.costLimit")}</Label>
         <Input
           type="number"
           step="0.01"
           min="0"
           value={form.maxCost}
           onChange={(e) => onChange({ ...form, maxCost: e.target.value })}
-          placeholder="0 = unlimited"
+          placeholder={t("apiKeys.form.costLimitPlaceholder")}
         />
-        <p className="text-muted-foreground text-xs">0 or empty = unlimited</p>
+        <p className="text-muted-foreground text-xs">{t("apiKeys.form.costLimitHint")}</p>
       </div>
       <div className="flex flex-col gap-2">
-        <Label>Model Whitelist</Label>
+        <Label>{t("apiKeys.form.modelWhitelist")}</Label>
         <Input
           value={form.supportedModels}
           onChange={(e) => onChange({ ...form, supportedModels: e.target.value })}
-          placeholder="gpt-4o, claude-3.5-sonnet (comma-separated)"
+          placeholder={t("apiKeys.form.modelWhitelistPlaceholder")}
         />
-        <p className="text-muted-foreground text-xs">
-          Comma-separated model names. Empty = all models allowed.
-        </p>
+        <p className="text-muted-foreground text-xs">{t("apiKeys.form.modelWhitelistHint")}</p>
       </div>
       <Button type="submit" disabled={isPending}>
         {submitLabel}
@@ -541,15 +538,20 @@ function ApiKeyForm({
 // ───────────── Settings Page ─────────────
 
 export default function SettingsPage() {
+  const { t } = useTranslation("settings")
   return (
     <div className="flex flex-col gap-6">
-      <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
+      <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
       <ApiKeysSection />
       <AccountSection />
-      <Suspense fallback={<p className="text-muted-foreground">Loading...</p>}>
+      <Suspense
+        fallback={<p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>}
+      >
         <SystemConfigSection />
       </Suspense>
-      <Suspense fallback={<p className="text-muted-foreground">Loading...</p>}>
+      <Suspense
+        fallback={<p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>}
+      >
         <BackupSection />
       </Suspense>
     </div>

@@ -14,6 +14,7 @@ import {
   ArrowUp,
   Bot,
   Braces,
+  Brain,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -36,6 +37,7 @@ import {
 import { useTheme } from "next-themes"
 import * as React from "react"
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
@@ -179,6 +181,7 @@ interface LogDetail {
 }
 
 export default function LogsPage() {
+  const { t } = useTranslation("logs")
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -221,7 +224,22 @@ export default function LogsPage() {
   )
 
   const [detailId, setDetailId] = useState<number | null>(null)
+  const detailIdRef = useRef(detailId)
+  detailIdRef.current = detailId
   const [detailTab, setDetailTab] = useState("overview")
+
+  // Streaming overlay: real-time content from log-streaming WS events
+  const [streamingOverlay, setStreamingOverlay] = useState<{
+    thinkingContent: string
+    responseContent: string
+  } | null>(null)
+  // Clear streaming overlay when switching detail panels
+  const prevDetailIdRef = useRef(detailId)
+  if (prevDetailIdRef.current !== detailId) {
+    prevDetailIdRef.current = detailId
+    setStreamingOverlay(null)
+  }
+
   const [pendingCount, setPendingCount] = useState(0)
   const [sorting, setSorting] = useState<SortingState>([])
   const [grouping, setGrouping] = useState<GroupingState>([])
@@ -297,8 +315,39 @@ export default function LogsPage() {
     hasFilters,
   }
 
+  // Listen for log-streaming WS events: real-time content during SSE proxy
+  useWsEvent("log-streaming", (data) => {
+    if (!data?.key) return
+    // Only update if detail panel is open and we can match the streaming key
+    const currentDetailId = detailIdRef.current
+    if (currentDetailId === null) return
+    // Match against the detail data in React Query cache
+    const cached = queryClient.getQueryData(["log-detail", currentDetailId]) as
+      | { data?: LogDetail }
+      | undefined
+    if (!cached?.data) return
+    const d = cached.data
+    // Build the same key as the worker: "requestModel/actualModel/channelId"
+    const detailKey = `${d.requestModelName}/${d.actualModelName}/${d.channelId}`
+    if (data.key !== detailKey) return
+    // Only overlay if the stored response is still a streaming placeholder
+    if (d.responseContent && d.responseContent !== "[streaming]") return
+    setStreamingOverlay({
+      thinkingContent: data.thinkingContent ?? "",
+      responseContent: data.responseContent ?? "",
+    })
+  })
+
   useWsEvent("log-created", (data) => {
     if (!data?.log) return
+
+    // Clear streaming overlay & refresh detail panel if viewing this log
+    const currentDetailId = detailIdRef.current
+    if (currentDetailId !== null && data.log.id === currentDetailId) {
+      setStreamingOverlay(null)
+      queryClient.invalidateQueries({ queryKey: ["log-detail", currentDetailId] })
+    }
+
     const f = filtersRef.current
     if (f.isFirstPage && !f.hasFilters) {
       queryClient.setQueryData(
@@ -359,7 +408,7 @@ export default function LogsPage() {
   const totalPages = Math.ceil(total / pageSize)
   const detail = (detailData?.data ?? null) as LogDetail | null
 
-  const columns = useMemo(() => createLogColumns(setDetailId), [])
+  const columns = useMemo(() => createLogColumns(setDetailId, t), [t])
 
   const table = useReactTable({
     data: logs,
@@ -422,8 +471,8 @@ export default function LogsPage() {
       {/* Header: Title + Total + Pagination */}
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-3">
-          <h2 className="text-2xl font-bold tracking-tight">Logs</h2>
-          <span className="text-muted-foreground text-sm">{total.toLocaleString()} total</span>
+          <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
+          <span className="text-muted-foreground text-sm">{t("totalCount", { count: total })}</span>
           {pendingCount > 0 && (
             <Button
               variant="outline"
@@ -432,7 +481,7 @@ export default function LogsPage() {
               onClick={handleShowNew}
             >
               <ArrowUp className="h-3 w-3" />
-              {pendingCount} new
+              {t("newLogs", { count: pendingCount })}
             </Button>
           )}
         </div>
@@ -446,7 +495,7 @@ export default function LogsPage() {
           <div className="relative min-w-[200px] flex-1">
             <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
             <Input
-              placeholder="Search logs..."
+              placeholder={t("searchPlaceholder")}
               value={keywordInput}
               onChange={(e) => {
                 setKeywordInput(e.target.value)
@@ -480,10 +529,10 @@ export default function LogsPage() {
             }}
           >
             <SelectTrigger className="w-36">
-              <SelectValue placeholder="All Channels" />
+              <SelectValue placeholder={t("filter.allChannels")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Channels</SelectItem>
+              <SelectItem value="all">{t("filter.allChannels")}</SelectItem>
               {channels.map((ch) => (
                 <SelectItem key={ch.id} value={String(ch.id)}>
                   {ch.name}
@@ -501,9 +550,9 @@ export default function LogsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="success">Success</SelectItem>
-              <SelectItem value="error">Error</SelectItem>
+              <SelectItem value="all">{t("filter.all")}</SelectItem>
+              <SelectItem value="success">{t("filter.success")}</SelectItem>
+              <SelectItem value="error">{t("filter.error")}</SelectItem>
             </SelectContent>
           </Select>
           <TimeRangePicker
@@ -518,7 +567,7 @@ export default function LogsPage() {
           <div className="flex flex-wrap gap-1.5">
             {keyword && (
               <Badge variant="secondary" className="gap-1 pr-1">
-                Search: {keyword}
+                {t("chips.search", { value: keyword })}
                 <button
                   onClick={() => {
                     setKeywordInput("")
@@ -531,7 +580,7 @@ export default function LogsPage() {
             )}
             {model && (
               <Badge variant="secondary" className="gap-1 pr-1">
-                Model: {model}
+                {t("chips.model", { value: model })}
                 <button
                   onClick={() => {
                     updateFilter({ model: undefined })
@@ -543,7 +592,9 @@ export default function LogsPage() {
             )}
             {channelId && (
               <Badge variant="secondary" className="gap-1 pr-1">
-                Channel: {channels.find((c) => c.id === channelId)?.name ?? channelId}
+                {t("chips.channel", {
+                  value: channels.find((c) => c.id === channelId)?.name ?? channelId,
+                })}
                 <button onClick={() => updateFilter({ channel: undefined })}>
                   <X className="h-3 w-3" />
                 </button>
@@ -551,7 +602,7 @@ export default function LogsPage() {
             )}
             {status !== "all" && (
               <Badge variant="secondary" className="gap-1 pr-1">
-                Status: {status}
+                {t("chips.status", { value: status })}
                 <button onClick={() => updateFilter({ status: "all" })}>
                   <X className="h-3 w-3" />
                 </button>
@@ -559,7 +610,7 @@ export default function LogsPage() {
             )}
             {(startTime || endTime) && (
               <Badge variant="secondary" className="gap-1 pr-1">
-                Time: {formatRangeSummary(startTime, endTime)}
+                {t("chips.time", { value: formatRangeSummary(startTime, endTime, t) })}
                 <button onClick={() => updateFilter({ from: undefined, to: undefined })}>
                   <X className="h-3 w-3" />
                 </button>
@@ -574,7 +625,7 @@ export default function LogsPage() {
                 setKeywordInput("")
               }}
             >
-              Clear all
+              {t("chips.clearAll")}
             </Button>
           </div>
         )}
@@ -583,10 +634,10 @@ export default function LogsPage() {
       {isError ? (
         <Card className="flex flex-col items-center justify-center gap-3 py-12">
           <AlertCircle className="text-destructive h-8 w-8" />
-          <p className="text-muted-foreground text-sm">Failed to load logs</p>
+          <p className="text-muted-foreground text-sm">{t("loadError")}</p>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetch()}>
             <RefreshCw className="h-3.5 w-3.5" />
-            Retry
+            {t("actions.retry", { ns: "common" })}
           </Button>
         </Card>
       ) : isLoading ? (
@@ -666,7 +717,7 @@ export default function LogsPage() {
                         <div className="flex flex-col items-center gap-2">
                           <FileText className="text-muted-foreground/30 h-10 w-10" />
                           <p className="text-muted-foreground">
-                            {hasFilters ? "No logs match your filters" : "No logs yet"}
+                            {hasFilters ? t("empty.noMatch") : t("empty.noLogs")}
                           </p>
                           {hasFilters && (
                             <Button
@@ -678,7 +729,7 @@ export default function LogsPage() {
                                 setKeywordInput("")
                               }}
                             >
-                              Clear all filters
+                              {t("empty.clearFilters")}
                             </Button>
                           )}
                         </div>
@@ -698,10 +749,10 @@ export default function LogsPage() {
           <SheetHeader>
             <div className="flex items-center justify-between pr-8">
               <SheetTitle className="flex items-center gap-2">
-                Log #{detailId}
+                {t("detail.title", { id: detailId })}
                 {detail && (
                   <Badge variant={detail.error ? "destructive" : "default"} className="text-xs">
-                    {detail.error ? "Error" : "OK"}
+                    {detail.error ? t("detail.error") : t("detail.ok")}
                   </Badge>
                 )}
               </SheetTitle>
@@ -742,7 +793,12 @@ export default function LogsPage() {
             </div>
           </SheetHeader>
           {detail ? (
-            <DetailPanel detail={detail} activeTab={detailTab} onTabChange={setDetailTab} />
+            <DetailPanel
+              detail={detail}
+              activeTab={detailTab}
+              onTabChange={setDetailTab}
+              streamingOverlay={streamingOverlay}
+            />
           ) : (
             <div className="flex flex-col gap-4 px-4 py-4">
               <div className="flex flex-col gap-2">
@@ -766,6 +822,7 @@ export default function LogsPage() {
 }
 
 function CopyableField({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation("logs")
   const [copied, setCopied] = useState(false)
   return (
     <div className="group min-w-0">
@@ -777,7 +834,7 @@ function CopyableField({ label, value }: { label: string; value: string }) {
           onClick={() => {
             navigator.clipboard.writeText(value)
             setCopied(true)
-            toast.success("Copied!")
+            toast.success(t("toast.copied"))
             setTimeout(() => setCopied(false), 2000)
           }}
         >
@@ -796,11 +853,14 @@ function DetailPanel({
   detail,
   activeTab,
   onTabChange,
+  streamingOverlay,
 }: {
   detail: LogDetail
   activeTab: string
   onTabChange: (tab: string) => void
+  streamingOverlay: { thinkingContent: string; responseContent: string } | null
 }) {
+  const { t } = useTranslation("logs")
   const [replayResult, setReplayResult] = useState<string | null>(null)
   const [replaying, setReplaying] = useState(false)
 
@@ -839,19 +899,19 @@ function DetailPanel({
             }
           }
         }
-        setReplayResult(text || "[Empty response]")
+        setReplayResult(text || t("detail.emptyResponse"))
       } else {
         const data = (await resp.json()) as {
           success: boolean
           data?: { response: unknown; truncated: boolean }
           error?: string
         }
-        if (!data.success) throw new Error(data.error ?? "Replay failed")
+        if (!data.success) throw new Error(data.error ?? t("detail.replayFailed"))
         setReplayResult(JSON.stringify(data.data?.response, null, 2))
       }
       setActiveTab("replay")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Replay failed")
+      toast.error(err instanceof Error ? err.message : t("detail.replayFailed"))
     } finally {
       setReplaying(false)
     }
@@ -861,19 +921,19 @@ function DetailPanel({
     <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 px-4">
       <TabsList className="w-full">
         <TabsTrigger value="overview" className="flex-1">
-          Overview
+          {t("detail.overview")}
         </TabsTrigger>
         <TabsTrigger value="messages" className="flex-1">
-          Messages
+          {t("detail.messages")}
         </TabsTrigger>
         {detail.attempts && detail.attempts.length > 0 && (
           <TabsTrigger value="retry" className="flex-1">
-            Retry ({detail.attempts.length})
+            {t("detail.retry", { count: detail.attempts.length })}
           </TabsTrigger>
         )}
         {replayResult !== null && (
           <TabsTrigger value="replay" className="flex-1">
-            Replay
+            {t("detail.replay")}
           </TabsTrigger>
         )}
       </TabsList>
@@ -885,7 +945,7 @@ function DetailPanel({
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <ModelFlowNode modelId={detail.requestModelName} channelId={detail.channelId} />
-              <span className="text-muted-foreground">via</span>
+              <span className="text-muted-foreground">{t("detail.via")}</span>
               {detail.channelId ? (
                 <Link
                   to={`/channels?highlight=${detail.channelId}`}
@@ -907,27 +967,36 @@ function DetailPanel({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <CopyableField
-              label="Time"
+              label={t("detail.field.time")}
               value={new Date(detail.time * 1000).toLocaleString(undefined, { hour12: false })}
             />
             <CopyableField
-              label="Channel"
+              label={t("detail.field.channel")}
               value={`${detail.channelName || "—"} (ID: ${detail.channelId})`}
             />
-            <CopyableField label="Input Tokens" value={detail.inputTokens.toLocaleString()} />
-            <CopyableField label="Output Tokens" value={detail.outputTokens.toLocaleString()} />
             <CopyableField
-              label="Total Tokens"
+              label={t("detail.field.inputTokens")}
+              value={detail.inputTokens.toLocaleString()}
+            />
+            <CopyableField
+              label={t("detail.field.outputTokens")}
+              value={detail.outputTokens.toLocaleString()}
+            />
+            <CopyableField
+              label={t("detail.field.totalTokens")}
               value={(detail.inputTokens + detail.outputTokens).toLocaleString()}
             />
-            <CopyableField label="Cost" value={formatCost(detail.cost)} />
+            <CopyableField label={t("detail.field.cost")} value={formatCost(detail.cost)} />
             <CopyableField
-              label="TTFT"
+              label={t("detail.field.ttft")}
               value={detail.ftut > 0 ? formatDuration(detail.ftut) : "—"}
             />
-            <CopyableField label="Total Latency" value={formatDuration(detail.useTime)} />
             <CopyableField
-              label="Output Speed"
+              label={t("detail.field.totalLatency")}
+              value={formatDuration(detail.useTime)}
+            />
+            <CopyableField
+              label={t("detail.field.outputSpeed")}
               value={
                 detail.outputTokens > 0 && detail.useTime > 0
                   ? `${(detail.outputTokens / (detail.useTime / 1000)).toFixed(1)} tok/s`
@@ -935,21 +1004,21 @@ function DetailPanel({
               }
             />
             {detail.totalAttempts > 1 && (
-              <CopyableField label="Attempts" value={`${detail.totalAttempts}`} />
+              <CopyableField label={t("detail.field.attempts")} value={`${detail.totalAttempts}`} />
             )}
           </div>
 
           {detail.error && (
             <div className="bg-destructive/10 rounded-md p-3">
               <div className="flex items-center justify-between">
-                <p className="text-destructive mb-1 text-xs font-medium">Error</p>
+                <p className="text-destructive mb-1 text-xs font-medium">{t("detail.error")}</p>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-6 px-1"
                   onClick={() => {
                     navigator.clipboard.writeText(detail.error)
-                    toast.success("Copied!")
+                    toast.success(t("toast.copied"))
                   }}
                 >
                   <Copy className="h-3 w-3" />
@@ -962,9 +1031,7 @@ function DetailPanel({
           {/* Replay */}
           <div className="flex flex-col gap-2">
             {isTruncated && (
-              <p className="text-muted-foreground text-xs italic">
-                Request content was truncated during storage. Replay may produce different results.
-              </p>
+              <p className="text-muted-foreground text-xs italic">{t("detail.truncatedNotice")}</p>
             )}
             <Button
               variant="outline"
@@ -978,7 +1045,7 @@ function DetailPanel({
               ) : (
                 <Play className="h-3.5 w-3.5" />
               )}
-              Replay
+              {t("detail.replayBtn")}
             </Button>
           </div>
         </div>
@@ -986,7 +1053,7 @@ function DetailPanel({
 
       {/* Messages Tab (conversation flow + raw JSON toggle) */}
       <TabsContent value="messages" className="mt-4">
-        <MessagesTabContent detail={detail} />
+        <MessagesTabContent detail={detail} streamingOverlay={streamingOverlay} />
       </TabsContent>
 
       {/* Retry Timeline Tab */}
@@ -1012,7 +1079,7 @@ function DetailPanel({
                     <span className="font-mono text-xs">#{attempt.attemptNum}</span>
                     {attempt.sticky && (
                       <Badge variant="outline" className="text-xs">
-                        Sticky
+                        {t("retryTimeline.sticky")}
                       </Badge>
                     )}
                     <Badge
@@ -1026,20 +1093,21 @@ function DetailPanel({
                       className="text-xs"
                     >
                       {attempt.status === "success"
-                        ? "OK"
+                        ? t("retryTimeline.ok")
                         : attempt.status === "circuit_break"
-                          ? "CIRCUIT BREAK"
+                          ? t("retryTimeline.circuitBreak")
                           : attempt.status === "skipped"
-                            ? "SKIPPED"
-                            : "FAIL"}
+                            ? t("retryTimeline.skipped")
+                            : t("retryTimeline.fail")}
                     </Badge>
                     <span className="text-muted-foreground text-xs">
                       {formatDuration(attempt.duration)}
                     </span>
                   </div>
                   <p className="mt-1 text-xs">
-                    <span className="text-muted-foreground">Channel:</span> {attempt.channelName}{" "}
-                    <span className="text-muted-foreground">Model:</span>{" "}
+                    <span className="text-muted-foreground">{t("retryTimeline.channel")}</span>{" "}
+                    {attempt.channelName}{" "}
+                    <span className="text-muted-foreground">{t("retryTimeline.model")}</span>{" "}
                     <ModelBadge modelId={attempt.modelName} />
                   </p>
                   {attempt.msg && (
@@ -1055,7 +1123,7 @@ function DetailPanel({
       {/* Replay Result Tab */}
       {replayResult !== null && (
         <TabsContent value="replay" className="mt-4">
-          <CodeBlock label="Replay Result" content={replayResult} />
+          <CodeBlock label={t("detail.replayResult")} content={replayResult} />
         </TabsContent>
       )}
     </Tabs>
@@ -1063,6 +1131,7 @@ function DetailPanel({
 }
 
 function ModelFlowNode({ modelId, channelId }: { modelId: string; channelId: number }) {
+  const { t } = useTranslation("logs")
   const meta = useModelMeta(modelId)
   const displayName = meta?.name ?? modelId
   const showActualId = displayName !== modelId
@@ -1081,7 +1150,7 @@ function ModelFlowNode({ modelId, channelId }: { modelId: string; channelId: num
           className="text-muted-foreground hover:text-foreground max-w-[200px] truncate text-left font-mono text-xs transition-colors"
           onClick={() => {
             navigator.clipboard.writeText(modelId)
-            toast.success("Copied!")
+            toast.success(t("toast.copied"))
           }}
           title={modelId}
         >
@@ -1108,6 +1177,7 @@ interface ParsedMessage {
 
 interface ParsedResponse {
   assistantContent: string | null
+  thinkingContent: string | null
   toolCalls: ParsedMessage["tool_calls"]
   finishReason: string | null
   raw: unknown
@@ -1130,21 +1200,42 @@ function parseMessages(content: string): ParsedMessage[] | null {
   return null
 }
 
+function extractThinking(content: string): { thinking: string | null; rest: string } {
+  const match = content.match(/^<\|thinking\|>([\s\S]*?)<\|\/thinking\|>([\s\S]*)$/)
+  if (match) {
+    return { thinking: match[1] || null, rest: match[2] }
+  }
+  return { thinking: null, rest: content }
+}
+
 function parseResponseContent(content: string): ParsedResponse | null {
+  if (!content || content === "[streaming]") return null
+
+  const { thinking, rest } = extractThinking(content)
+
   try {
-    const parsed = JSON.parse(content)
+    const parsed = JSON.parse(rest)
     const choice = parsed?.choices?.[0]
     if (choice) {
       return {
         assistantContent:
           typeof choice.message?.content === "string" ? choice.message.content : null,
+        thinkingContent: thinking,
         toolCalls: choice.message?.tool_calls ?? null,
         finishReason: choice.finish_reason ?? null,
         raw: parsed,
       }
     }
   } catch {
-    /* not parseable */
+    // Not valid JSON — likely plain text accumulated from a streaming response
+    const text = rest || null
+    return {
+      assistantContent: text,
+      thinkingContent: thinking,
+      toolCalls: undefined,
+      finishReason: null,
+      raw: null,
+    }
   }
   return null
 }
@@ -1163,11 +1254,12 @@ function getMessageTextContent(content: ParsedMessage["content"]): {
   return { text: String(content), hasImages: false }
 }
 
-const ROLE_CONFIG: Record<
+// ROLE_CONFIG keeps icon/style references at module level (no labels — those use t())
+const ROLE_STYLE_CONFIG: Record<
   string,
   {
     icon: React.ComponentType<{ className?: string }>
-    label: string
+    labelKey: string
     bgClass: string
     borderClass: string
     avatarClass: string
@@ -1175,44 +1267,44 @@ const ROLE_CONFIG: Record<
 > = {
   system: {
     icon: Settings2,
-    label: "System",
+    labelKey: "roles.system",
     bgClass: "bg-nb-lavender/15 dark:bg-nb-lavender/10",
     borderClass: "border-l-nb-lavender",
     avatarClass: "bg-nb-lavender text-foreground",
   },
   user: {
     icon: User,
-    label: "User",
+    labelKey: "roles.user",
     bgClass: "bg-nb-sky/15 dark:bg-nb-sky/10",
     borderClass: "border-l-nb-sky",
     avatarClass: "bg-nb-sky text-foreground",
   },
   assistant: {
     icon: Bot,
-    label: "Assistant",
+    labelKey: "roles.assistant",
     bgClass: "bg-nb-lime/15 dark:bg-nb-lime/10",
     borderClass: "border-l-nb-lime",
     avatarClass: "bg-nb-lime text-foreground",
   },
   tool: {
     icon: Wrench,
-    label: "Tool",
+    labelKey: "roles.tool",
     bgClass: "bg-nb-orange/15 dark:bg-nb-orange/10",
     borderClass: "border-l-nb-orange",
     avatarClass: "bg-nb-orange text-foreground",
   },
   function: {
     icon: Code2,
-    label: "Function",
+    labelKey: "roles.function",
     bgClass: "bg-nb-pink/15 dark:bg-nb-pink/10",
     borderClass: "border-l-nb-pink",
     avatarClass: "bg-nb-pink text-foreground",
   },
 }
 
-const DEFAULT_ROLE_CONFIG = {
+const DEFAULT_ROLE_STYLE_CONFIG = {
   icon: MessageSquare,
-  label: "Unknown",
+  labelKey: "roles.unknown",
   bgClass: "bg-muted/30",
   borderClass: "border-l-muted-foreground",
   avatarClass: "bg-muted text-muted-foreground",
@@ -1259,8 +1351,9 @@ function detectTruncation(text: string): {
 }
 
 function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
+  const { t } = useTranslation("logs")
   const [expanded, setExpanded] = useState(false)
-  const config = ROLE_CONFIG[msg.role] ?? DEFAULT_ROLE_CONFIG
+  const config = ROLE_STYLE_CONFIG[msg.role] ?? DEFAULT_ROLE_STYLE_CONFIG
   const Icon = config.icon
   const { text, hasImages } = getMessageTextContent(msg.content)
   const { isTruncated, cleanText, notice } = detectTruncation(text)
@@ -1278,7 +1371,7 @@ function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
         >
           <Icon className="h-3.5 w-3.5" />
         </div>
-        <span className="text-xs font-bold tracking-wide uppercase">{config.label}</span>
+        <span className="text-xs font-bold tracking-wide uppercase">{t(config.labelKey)}</span>
         {msg.name && (
           <span className="bg-background rounded border px-1.5 py-0.5 font-mono text-[10px]">
             {msg.name}
@@ -1291,13 +1384,13 @@ function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
         )}
         {hasImages && (
           <span className="text-muted-foreground inline-flex items-center gap-1 text-[10px]">
-            <Image className="h-3 w-3" /> image
+            <Image className="h-3 w-3" /> {t("messagesTab.image")}
           </span>
         )}
         {isTruncated && (
           <Badge variant="ghost" className="gap-1 text-[10px]">
             <AlertCircle className="h-2.5 w-2.5" />
-            Truncated
+            {t("messagesTab.truncated")}
           </Badge>
         )}
         <span className="text-muted-foreground ml-auto font-mono text-[10px]">#{index}</span>
@@ -1329,7 +1422,9 @@ function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
               className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
               onClick={() => setExpanded(!expanded)}
             >
-              {expanded ? "Show less" : `Show all (${displaySource.length.toLocaleString()} chars)`}
+              {expanded
+                ? t("messagesTab.showLess")
+                : t("messagesTab.showAll", { chars: displaySource.length.toLocaleString() })}
             </button>
           )}
         </div>
@@ -1339,7 +1434,7 @@ function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
       {msg.tool_calls && msg.tool_calls.length > 0 && (
         <div className="border-border/50 border-t px-3 py-2">
           <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
-            Tool Calls
+            {t("messagesTab.toolCalls")}
           </p>
           <div className="flex flex-col gap-1.5">
             {msg.tool_calls.map((tc) => (
@@ -1352,7 +1447,7 @@ function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
       {/* Empty content indicator */}
       {!displaySource && !isTruncated && !msg.tool_calls?.length && (
         <div className="border-border/50 border-t px-3 py-2">
-          <span className="text-muted-foreground text-xs italic">No content</span>
+          <span className="text-muted-foreground text-xs italic">{t("messagesTab.noContent")}</span>
         </div>
       )}
     </div>
@@ -1364,6 +1459,7 @@ function ToolCallBlock({
 }: {
   toolCall: NonNullable<ParsedMessage["tool_calls"]>[number]
 }) {
+  const { t } = useTranslation("logs")
   const [expanded, setExpanded] = useState(false)
   let args = toolCall.function.arguments
   try {
@@ -1390,7 +1486,7 @@ function ToolCallBlock({
               className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
               onClick={() => setExpanded(!expanded)}
             >
-              {expanded ? "Collapse" : "Expand"}
+              {expanded ? t("messagesTab.collapse") : t("messagesTab.expand")}
             </button>
           )}
         </div>
@@ -1399,9 +1495,17 @@ function ToolCallBlock({
   )
 }
 
-function ResponseBlock({ response }: { response: ParsedResponse }) {
+function ResponseBlock({
+  response,
+  isStreaming = false,
+}: {
+  response: ParsedResponse
+  isStreaming?: boolean
+}) {
+  const { t } = useTranslation("logs")
   const { text } = getMessageTextContent(response.assistantContent)
   const [expanded, setExpanded] = useState(false)
+  const [thinkingOpen, setThinkingOpen] = useState(false)
   const isLong = text.length > 800
   const displayText = isLong && !expanded ? text.slice(0, 800) : text
 
@@ -1411,13 +1515,50 @@ function ResponseBlock({ response }: { response: ParsedResponse }) {
         <div className="border-border bg-nb-lime text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2">
           <Bot className="h-3.5 w-3.5" />
         </div>
-        <span className="text-xs font-bold tracking-wide uppercase">Response</span>
+        <span className="text-xs font-bold tracking-wide uppercase">
+          {t("messagesTab.response")}
+        </span>
+        {isStreaming && (
+          <Badge variant="ghost" className="animate-pulse gap-1 text-[10px]">
+            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            {t("messagesTab.streaming")}
+          </Badge>
+        )}
         {response.finishReason && (
           <Badge variant="ghost" className="text-[10px]">
             {response.finishReason}
           </Badge>
         )}
       </div>
+
+      {response.thinkingContent && (
+        <div className="border-border/50 border-t">
+          <button
+            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
+            onClick={() => setThinkingOpen(!thinkingOpen)}
+          >
+            <Brain className="text-muted-foreground h-3 w-3 shrink-0" />
+            <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
+              {t("messagesTab.thinking")}
+            </span>
+            <span className="text-muted-foreground/60 text-[10px]">
+              {t("messagesTab.thinkingChars", {
+                chars: response.thinkingContent.length.toLocaleString(),
+              })}
+            </span>
+            <ChevronDown
+              className={`text-muted-foreground ml-auto h-3 w-3 transition-transform ${thinkingOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {thinkingOpen && (
+            <div className="border-border/50 border-t px-3 py-2">
+              <pre className="text-muted-foreground max-h-64 overflow-auto text-[11px] leading-relaxed whitespace-pre-wrap">
+                {response.thinkingContent}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
 
       {text && (
         <div className="border-border/50 border-t px-3 py-2">
@@ -1437,7 +1578,9 @@ function ResponseBlock({ response }: { response: ParsedResponse }) {
               className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
               onClick={() => setExpanded(!expanded)}
             >
-              {expanded ? "Show less" : `Show all (${text.length.toLocaleString()} chars)`}
+              {expanded
+                ? t("messagesTab.showLess")
+                : t("messagesTab.showAll", { chars: text.length.toLocaleString() })}
             </button>
           )}
         </div>
@@ -1446,7 +1589,7 @@ function ResponseBlock({ response }: { response: ParsedResponse }) {
       {response.toolCalls && response.toolCalls.length > 0 && (
         <div className="border-border/50 border-t px-3 py-2">
           <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
-            Tool Calls
+            {t("messagesTab.toolCalls")}
           </p>
           <div className="flex flex-col gap-1.5">
             {response.toolCalls.map((tc) => (
@@ -1459,13 +1602,29 @@ function ResponseBlock({ response }: { response: ParsedResponse }) {
   )
 }
 
-function MessagesTabContent({ detail }: { detail: LogDetail }) {
+function MessagesTabContent({
+  detail,
+  streamingOverlay,
+}: {
+  detail: LogDetail
+  streamingOverlay: { thinkingContent: string; responseContent: string } | null
+}) {
+  const { t } = useTranslation("logs")
   const [viewMode, setViewMode] = useState<"conversation" | "raw">("conversation")
 
   const messages = useMemo(() => parseMessages(detail.requestContent), [detail.requestContent])
+
+  // Use streaming overlay content when available (real-time during SSE proxy),
+  // otherwise fall back to the stored response content from the DB.
+  const effectiveResponseContent = streamingOverlay
+    ? (streamingOverlay.thinkingContent
+        ? `<|thinking|>${streamingOverlay.thinkingContent}<|/thinking|>`
+        : "") + streamingOverlay.responseContent
+    : detail.responseContent
+
   const response = useMemo(
-    () => parseResponseContent(detail.responseContent),
-    [detail.responseContent],
+    () => parseResponseContent(effectiveResponseContent),
+    [effectiveResponseContent],
   )
 
   const canShowConversation = messages !== null
@@ -1476,8 +1635,8 @@ function MessagesTabContent({ detail }: { detail: LogDetail }) {
       {canShowConversation && (
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground text-xs">
-            {messages.length} message{messages.length !== 1 ? "s" : ""}
-            {response ? " + response" : ""}
+            {t("messagesTab.count", { count: messages.length })}
+            {response ? t("messagesTab.plusResponse") : ""}
           </span>
           <div className="border-border flex items-center rounded-md border-2">
             <button
@@ -1489,7 +1648,7 @@ function MessagesTabContent({ detail }: { detail: LogDetail }) {
               onClick={() => setViewMode("conversation")}
             >
               <MessageSquare className="h-3 w-3" />
-              Chat
+              {t("messagesTab.chat")}
             </button>
             <button
               className={`border-border flex items-center gap-1 border-l-2 px-2 py-1 text-xs font-bold transition-colors ${
@@ -1498,7 +1657,7 @@ function MessagesTabContent({ detail }: { detail: LogDetail }) {
               onClick={() => setViewMode("raw")}
             >
               <Braces className="h-3 w-3" />
-              Raw
+              {t("messagesTab.raw")}
             </button>
           </div>
         </div>
@@ -1509,23 +1668,27 @@ function MessagesTabContent({ detail }: { detail: LogDetail }) {
           {messages.map((msg, i) => (
             <MessageBubble key={`msg-${i.toString()}`} msg={msg} index={i} />
           ))}
-          {response && <ResponseBlock response={response} />}
+          {response && <ResponseBlock response={response} isStreaming={!!streamingOverlay} />}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           <CollapsibleCodeBlock
-            label="Request (Original)"
+            label={t("messagesTab.requestOriginal")}
             content={detail.requestContent}
             defaultOpen
           />
           {detail.upstreamContent && (
             <CollapsibleCodeBlock
-              label="Request (Upstream)"
+              label={t("messagesTab.requestUpstream")}
               content={detail.upstreamContent}
               defaultOpen={false}
             />
           )}
-          <CollapsibleCodeBlock label="Response" content={detail.responseContent} defaultOpen />
+          <CollapsibleCodeBlock
+            label={t("messagesTab.response")}
+            content={detail.responseContent}
+            defaultOpen
+          />
         </div>
       )}
     </div>
@@ -1586,6 +1749,7 @@ function HighlightedText({ text, search }: { text: string; search: string }) {
 }
 
 function CodeBlock({ label, content }: { label: string; content: string }) {
+  const { t } = useTranslation("logs")
   const [copied, setCopied] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const { resolvedTheme } = useTheme()
@@ -1615,7 +1779,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
   if (!displayContent) {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-muted-foreground text-sm">No content available.</p>
+        <p className="text-muted-foreground text-sm">{t("codeBlock.noContent")}</p>
       </div>
     )
   }
@@ -1623,7 +1787,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
   const handleCopy = () => {
     navigator.clipboard.writeText(plainText)
     setCopied(true)
-    toast.success("Copied!")
+    toast.success(t("toast.copied"))
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -1633,13 +1797,15 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
         <p className="text-muted-foreground text-xs font-medium">{label}</p>
         <Button variant="ghost" size="sm" className="h-7 gap-1" onClick={handleCopy}>
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          <span className="text-xs">{copied ? "Copied" : "Copy"}</span>
+          <span className="text-xs">
+            {copied ? t("actions.copied", { ns: "common" }) : t("actions.copy", { ns: "common" })}
+          </span>
         </Button>
       </div>
       <div className="relative">
         <Search className="text-muted-foreground absolute top-2 left-2.5 h-3.5 w-3.5" />
         <Input
-          placeholder="Search in content..."
+          placeholder={t("codeBlock.searchPlaceholder")}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="h-8 pr-16 pl-8 text-xs"
@@ -1647,7 +1813,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
         {searchTerm && (
           <div className="absolute top-1.5 right-2 flex items-center gap-1">
             <span className="text-muted-foreground text-xs">
-              {matchCount} {matchCount === 1 ? "match" : "matches"}
+              {t("codeBlock.match", { count: matchCount })}
             </span>
             <button onClick={() => setSearchTerm("")}>
               <X className="text-muted-foreground h-3 w-3" />
@@ -1670,7 +1836,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
         <div className="flex flex-col gap-2">
           {parsed.truncated && (
             <p className="text-muted-foreground text-xs italic">
-              Content was truncated and partially recovered.
+              {t("codeBlock.truncatedRecovered")}
             </p>
           )}
           <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-md border p-3">
@@ -1717,20 +1883,21 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
 }
 
 function LogTableSkeleton({ rows = 8 }: { rows?: number }) {
+  const { t } = useTranslation("logs")
   const skeletonRows = rows > 8 ? SKELETON_ROWS_10 : SKELETON_ROWS_8
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Time</TableHead>
-          <TableHead>Model</TableHead>
-          <TableHead>Channel</TableHead>
-          <TableHead className="text-right">Input</TableHead>
-          <TableHead className="text-right">Output</TableHead>
-          <TableHead className="text-right">TTFT</TableHead>
-          <TableHead className="text-right">Latency</TableHead>
-          <TableHead className="text-right">Cost</TableHead>
-          <TableHead>Status</TableHead>
+          <TableHead>{t("columns.time")}</TableHead>
+          <TableHead>{t("columns.model")}</TableHead>
+          <TableHead>{t("columns.channel")}</TableHead>
+          <TableHead className="text-right">{t("columns.input")}</TableHead>
+          <TableHead className="text-right">{t("columns.output")}</TableHead>
+          <TableHead className="text-right">{t("columns.ttft")}</TableHead>
+          <TableHead className="text-right">{t("columns.latency")}</TableHead>
+          <TableHead className="text-right">{t("columns.cost")}</TableHead>
+          <TableHead>{t("columns.status")}</TableHead>
           <TableHead className="w-10" />
         </TableRow>
       </TableHeader>

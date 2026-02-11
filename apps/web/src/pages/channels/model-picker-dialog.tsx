@@ -1,5 +1,6 @@
 import { Loader2, Search } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -14,6 +15,7 @@ export default function ModelPickerDialog({
   onOpenChange: (open: boolean) => void
   onSelect: (modelId: string) => void
 }) {
+  const { t } = useTranslation("channels")
   const { data, isLoading } = useModelMetadataQuery()
   const [search, setSearch] = useState("")
 
@@ -52,13 +54,13 @@ export default function ModelPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Select Model from models.dev</DialogTitle>
+          <DialogTitle>{t("modelPicker.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">
           <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
           <Input
-            placeholder="Search models..."
+            placeholder={t("modelPicker.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -71,7 +73,9 @@ export default function ModelPickerDialog({
               <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
             </div>
           ) : totalCount === 0 ? (
-            <p className="text-muted-foreground py-8 text-center text-sm">No models found</p>
+            <p className="text-muted-foreground py-8 text-center text-sm">
+              {t("modelPicker.noModelsFound")}
+            </p>
           ) : (
             <div className="flex flex-col gap-3 pr-3">
               {providerKeys.map((provider) => (

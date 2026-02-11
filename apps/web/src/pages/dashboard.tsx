@@ -20,6 +20,7 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { lazy, Suspense, useCallback, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Link, useNavigate } from "react-router"
 import { AnimatedNumber } from "@/components/animated-number"
 import { ModelBadge } from "@/components/model-badge"
@@ -41,13 +42,14 @@ const LazyChartSection = lazy(() => import("@/components/chart-section"))
 // ───────────── Inline Error ─────────────
 
 function InlineError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { t } = useTranslation("common")
   return (
     <Card className="flex flex-col items-center justify-center gap-3 py-10">
       <AlertCircle className="text-destructive h-8 w-8" />
       <p className="text-muted-foreground text-sm">{message}</p>
       <Button variant="outline" size="sm" className="gap-1.5" onClick={onRetry}>
         <RefreshCw className="h-3.5 w-3.5" />
-        Retry
+        {t("actions.retry")}
       </Button>
     </Card>
   )
@@ -56,88 +58,93 @@ function InlineError({ message, onRetry }: { message: string; onRetry: () => voi
 // ───────────── Total (4 stat cards) ─────────────
 
 function TotalSection({ data, isLoading }: { data?: StatsMetrics; isLoading?: boolean }) {
-  const cards = [
-    {
-      title: "Request Stats",
-      headerIcon: Activity,
-      items: [
-        {
-          label: "Requests",
-          raw: (data?.request_success ?? 0) + (data?.request_failed ?? 0),
-          format: formatCount,
-          icon: MessageSquare,
-          bg: "bg-blue-500/10",
-        },
-        {
-          label: "Time Used",
-          raw: data?.wait_time ?? 0,
-          format: formatTime,
-          icon: Clock,
-          bg: "bg-blue-500/10",
-        },
-      ],
-    },
-    {
-      title: "Overview",
-      headerIcon: ChartColumnBig,
-      items: [
-        {
-          label: "Total Tokens",
-          raw: (data?.input_token ?? 0) + (data?.output_token ?? 0),
-          format: formatCount,
-          icon: Bot,
-          bg: "bg-emerald-500/10",
-        },
-        {
-          label: "Total Cost",
-          raw: (data?.input_cost ?? 0) + (data?.output_cost ?? 0),
-          format: formatMoney,
-          icon: DollarSign,
-          bg: "bg-emerald-500/10",
-        },
-      ],
-    },
-    {
-      title: "Input",
-      headerIcon: ArrowDownToLine,
-      items: [
-        {
-          label: "Input Tokens",
-          raw: data?.input_token ?? 0,
-          format: formatCount,
-          icon: Bot,
-          bg: "bg-orange-500/10",
-        },
-        {
-          label: "Input Cost",
-          raw: data?.input_cost ?? 0,
-          format: formatMoney,
-          icon: DollarSign,
-          bg: "bg-orange-500/10",
-        },
-      ],
-    },
-    {
-      title: "Output",
-      headerIcon: ArrowUpFromLine,
-      items: [
-        {
-          label: "Output Tokens",
-          raw: data?.output_token ?? 0,
-          format: formatCount,
-          icon: Bot,
-          bg: "bg-violet-500/10",
-        },
-        {
-          label: "Output Cost",
-          raw: data?.output_cost ?? 0,
-          format: formatMoney,
-          icon: DollarSign,
-          bg: "bg-violet-500/10",
-        },
-      ],
-    },
-  ]
+  const { t } = useTranslation("dashboard")
+
+  const cards = useMemo(
+    () => [
+      {
+        title: t("stats.requestStats"),
+        headerIcon: Activity,
+        items: [
+          {
+            label: t("stats.requests"),
+            raw: (data?.request_success ?? 0) + (data?.request_failed ?? 0),
+            format: formatCount,
+            icon: MessageSquare,
+            bg: "bg-blue-500/10",
+          },
+          {
+            label: t("stats.timeUsed"),
+            raw: data?.wait_time ?? 0,
+            format: formatTime,
+            icon: Clock,
+            bg: "bg-blue-500/10",
+          },
+        ],
+      },
+      {
+        title: t("stats.overview"),
+        headerIcon: ChartColumnBig,
+        items: [
+          {
+            label: t("stats.totalTokens"),
+            raw: (data?.input_token ?? 0) + (data?.output_token ?? 0),
+            format: formatCount,
+            icon: Bot,
+            bg: "bg-emerald-500/10",
+          },
+          {
+            label: t("stats.totalCost"),
+            raw: (data?.input_cost ?? 0) + (data?.output_cost ?? 0),
+            format: formatMoney,
+            icon: DollarSign,
+            bg: "bg-emerald-500/10",
+          },
+        ],
+      },
+      {
+        title: t("stats.input"),
+        headerIcon: ArrowDownToLine,
+        items: [
+          {
+            label: t("stats.inputTokens"),
+            raw: data?.input_token ?? 0,
+            format: formatCount,
+            icon: Bot,
+            bg: "bg-orange-500/10",
+          },
+          {
+            label: t("stats.inputCost"),
+            raw: data?.input_cost ?? 0,
+            format: formatMoney,
+            icon: DollarSign,
+            bg: "bg-orange-500/10",
+          },
+        ],
+      },
+      {
+        title: t("stats.output"),
+        headerIcon: ArrowUpFromLine,
+        items: [
+          {
+            label: t("stats.outputTokens"),
+            raw: data?.output_token ?? 0,
+            format: formatCount,
+            icon: Bot,
+            bg: "bg-violet-500/10",
+          },
+          {
+            label: t("stats.outputCost"),
+            raw: data?.output_cost ?? 0,
+            format: formatMoney,
+            icon: DollarSign,
+            bg: "bg-violet-500/10",
+          },
+        ],
+      },
+    ],
+    [t, data],
+  )
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -231,8 +238,6 @@ const LEVEL_COLORS = [
   "var(--primary)",
 ]
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
 function buildDayData(d: Date, map: Map<string, StatsDaily>, today: Date): DayData {
   const dateStr =
     d.getFullYear().toString() +
@@ -256,6 +261,8 @@ function toDateStr(d: Date): string {
 }
 
 function ActivitySection({ data }: { data?: StatsDaily[] }) {
+  const { t } = useTranslation("dashboard")
+  const { t: tc } = useTranslation("common")
   const [view, setViewRaw] = useState<HeatmapView>(getStoredView)
   const setView = useCallback((v: HeatmapView) => {
     setViewRaw(v)
@@ -277,6 +284,43 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
   })
 
   const dataMap = useMemo(() => new Map((data ?? []).map((d) => [d.date, d])), [data])
+
+  const weekdayLabels = useMemo(
+    () => [
+      tc("weekdays.sun"),
+      tc("weekdays.mon"),
+      tc("weekdays.tue"),
+      tc("weekdays.wed"),
+      tc("weekdays.thu"),
+      tc("weekdays.fri"),
+      tc("weekdays.sat"),
+    ],
+    [tc],
+  )
+
+  const weekdaysFull = useMemo(
+    () => [
+      t("weekdaysFull.sunday"),
+      t("weekdaysFull.monday"),
+      t("weekdaysFull.tuesday"),
+      t("weekdaysFull.wednesday"),
+      t("weekdaysFull.thursday"),
+      t("weekdaysFull.friday"),
+      t("weekdaysFull.saturday"),
+    ],
+    [t],
+  )
+
+  const viewLabels = useMemo(
+    () =>
+      ({
+        day: t("activity.day"),
+        week: t("activity.week"),
+        month: t("activity.month"),
+        year: t("activity.year"),
+      }) as Record<HeatmapView, string>,
+    [t],
+  )
 
   // ── Year view: 53 weeks × 7 days, column-first grid ──
   const yearDays = useMemo(() => {
@@ -359,10 +403,8 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       Number.parseInt(ds.slice(4, 6)) - 1,
       Number.parseInt(ds.slice(6, 8)),
     )
-    return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][
-      d.getDay()
-    ]
-  }, [selectedDayDateStr])
+    return weekdaysFull[d.getDay()]
+  }, [selectedDayDateStr, weekdaysFull])
 
   const handleMouseEnter = useCallback(
     (e: React.MouseEvent, tooltip: HeatmapTooltip) => {
@@ -447,7 +489,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
   return (
     <Card className="gap-0">
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <span className="text-sm font-bold">Activity</span>
+        <span className="text-sm font-bold">{t("activity.title")}</span>
         <div className="flex gap-1">
           {(["day", "week", "month", "year"] as const).map((v) => (
             <button
@@ -459,7 +501,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                   : "text-muted-foreground hover:text-foreground border-transparent"
               }`}
             >
-              {v === "year" ? "Year" : v === "month" ? "Month" : v === "week" ? "Week" : "Day"}
+              {viewLabels[v]}
             </button>
           ))}
         </div>
@@ -536,7 +578,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                     onClick={() => navigateToDay(selectedDayDateStr)}
                     className="text-muted-foreground hover:text-foreground ml-auto text-xs font-medium underline-offset-2 hover:underline"
                   >
-                    View logs →
+                    {t("activity.viewLogs")}
                   </button>
                 </div>
 
@@ -544,25 +586,25 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                 <div className="grid grid-cols-4 gap-2">
                   {[
                     {
-                      label: "Requests",
+                      label: t("stats.requests"),
                       value: formatCount(reqCount),
                       icon: MessageSquare,
                       bg: "bg-blue-500/10",
                     },
                     {
-                      label: "Input Tokens",
+                      label: t("stats.inputTokens"),
                       value: formatCount(inTokens),
                       icon: ArrowDownToLine,
                       bg: "bg-orange-500/10",
                     },
                     {
-                      label: "Output Tokens",
+                      label: t("stats.outputTokens"),
                       value: formatCount(outTokens),
                       icon: ArrowUpFromLine,
                       bg: "bg-violet-500/10",
                     },
                     {
-                      label: "Cost",
+                      label: t("stats.cost"),
                       value: formatMoney(totalCost),
                       icon: DollarSign,
                       bg: "bg-emerald-500/10",
@@ -658,7 +700,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
         {view === "month" && (
           <div>
             <div className="mb-1 grid grid-cols-7 gap-[3px]">
-              {WEEKDAY_LABELS.map((label) => (
+              {weekdayLabels.map((label) => (
                 <div
                   key={label}
                   className="text-muted-foreground py-0.5 text-center text-xs font-medium"
@@ -706,7 +748,7 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                   className="text-muted-foreground py-0.5 text-center text-xs font-medium"
                 >
                   {
-                    WEEKDAY_LABELS[
+                    weekdayLabels[
                       new Date(
                         Number.parseInt(day.dateStr.slice(0, 4)),
                         Number.parseInt(day.dateStr.slice(4, 6)) - 1,
@@ -726,12 +768,12 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 
       {/* Legend */}
       <div className="text-muted-foreground flex items-center justify-end gap-1 px-4 pb-3 text-xs">
-        <span>Less</span>
+        <span>{t("activity.less")}</span>
         {LEVEL_COLORS.map((c, i) => (
           // eslint-disable-next-line react/no-array-index-key -- static array of CSS color strings used as legend; index is stable
           <div key={i} className="h-3 w-3 rounded-sm" style={{ backgroundColor: c }} />
         ))}
-        <span>More</span>
+        <span>{t("activity.more")}</span>
       </div>
 
       {/* Floating tooltip */}
@@ -752,26 +794,26 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                 <p className="mb-1 font-bold">{activeTooltip.label}</p>
                 {m ? (
                   <div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                    <span>Requests</span>
+                    <span>{t("stats.requests")}</span>
                     <span className="text-foreground text-right font-medium">
                       {reqCount!.value}
                       {reqCount!.unit}
                     </span>
-                    <span>Input Tokens</span>
+                    <span>{t("stats.inputTokens")}</span>
                     <span className="text-foreground text-right font-medium">
                       {inputTokens!.value}
                       {inputTokens!.unit}
                     </span>
-                    <span>Output Tokens</span>
+                    <span>{t("stats.outputTokens")}</span>
                     <span className="text-foreground text-right font-medium">
                       {outputTokens!.value}
                       {outputTokens!.unit}
                     </span>
-                    <span>Cost</span>
+                    <span>{t("stats.cost")}</span>
                     <span className="text-foreground text-right font-medium">{cost!.value}</span>
                   </div>
                 ) : (
-                  <p className="text-muted-foreground">No data</p>
+                  <p className="text-muted-foreground">{t("activity.noData")}</p>
                 )}
               </div>
             </FloatingPortal>
@@ -784,13 +826,6 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
 // ───────────── Shared sort type for ranking sections ─────────────
 
 type RankSortKey = "requests" | "tokens" | "cost" | "latency"
-
-const RANK_SORT_OPTIONS: { key: RankSortKey; label: string }[] = [
-  { key: "requests", label: "Requests" },
-  { key: "tokens", label: "Tokens" },
-  { key: "cost", label: "Cost" },
-  { key: "latency", label: "Latency" },
-]
 
 /** Render a formatted value with its unit (if any) */
 function Fmt({ fmt }: { fmt: { value: string; unit: string } }) {
@@ -806,14 +841,18 @@ function Fmt({ fmt }: { fmt: { value: string; unit: string } }) {
 
 type ChannelSortKey = "requests" | "cost" | "latency"
 
-const CHANNEL_SORT_OPTIONS: { key: ChannelSortKey; label: string }[] = [
-  { key: "requests", label: "Requests" },
-  { key: "cost", label: "Cost" },
-  { key: "latency", label: "Latency" },
-]
-
 function RankSection({ data }: { data?: ChannelStatsRow[] }) {
+  const { t } = useTranslation("dashboard")
   const [sortBy, setSortBy] = useState<ChannelSortKey>("requests")
+
+  const channelSortOptions = useMemo(
+    () => [
+      { key: "requests" as const, label: t("sort.requests") },
+      { key: "cost" as const, label: t("sort.cost") },
+      { key: "latency" as const, label: t("sort.latency") },
+    ],
+    [t],
+  )
 
   const sorted = useMemo(() => {
     if (!data) return []
@@ -859,10 +898,10 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
       <Tabs value={sortBy} onValueChange={(v) => setSortBy(v as ChannelSortKey)}>
         <CardHeader className="flex flex-col gap-2 pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Channel Ranking</CardTitle>
+            <CardTitle className="text-base">{t("channelRanking.title")}</CardTitle>
           </div>
           <TabsList>
-            {CHANNEL_SORT_OPTIONS.map((o) => (
+            {channelSortOptions.map((o) => (
               <TabsTrigger key={o.key} value={o.key}>
                 {o.label}
               </TabsTrigger>
@@ -873,7 +912,7 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
           {sorted.length === 0 ? (
             <div className="text-muted-foreground flex flex-col items-center justify-center py-8">
               <Bot className="mb-3 h-12 w-12 opacity-30" />
-              <p className="text-sm">No data yet</p>
+              <p className="text-sm">{t("channelRanking.noData")}</p>
             </div>
           ) : (
             <div className="max-h-[400px] space-y-1.5 overflow-y-auto">
@@ -896,19 +935,20 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
                     />
                     <div className="relative flex flex-col gap-1">
                       <div className="min-w-0 truncate text-sm font-medium">
-                        {ch.channelName || `Channel ${ch.channelId}`}
+                        {ch.channelName ||
+                          t("channelRanking.channelFallback", { id: ch.channelId })}
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums">
                         <div>
-                          <span className="text-muted-foreground">Req </span>
+                          <span className="text-muted-foreground">{t("inline.req")} </span>
                           <Fmt fmt={reqFmt} />
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Cost </span>
+                          <span className="text-muted-foreground">{t("inline.cost")} </span>
                           <Fmt fmt={costFmt} />
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Avg </span>
+                          <span className="text-muted-foreground">{t("inline.avg")} </span>
                           <Fmt fmt={latFmt} />
                         </div>
                       </div>
@@ -927,7 +967,18 @@ function RankSection({ data }: { data?: ChannelStatsRow[] }) {
 // ───────────── Model Usage Stats ─────────────
 
 function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
+  const { t } = useTranslation("dashboard")
   const [sortBy, setSortBy] = useState<RankSortKey>("requests")
+
+  const rankSortOptions = useMemo(
+    () => [
+      { key: "requests" as const, label: t("sort.requests") },
+      { key: "tokens" as const, label: t("sort.tokens") },
+      { key: "cost" as const, label: t("sort.cost") },
+      { key: "latency" as const, label: t("sort.latency") },
+    ],
+    [t],
+  )
 
   const sorted = useMemo(() => {
     if (!data) return []
@@ -979,10 +1030,10 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
       <Tabs value={sortBy} onValueChange={(v) => setSortBy(v as RankSortKey)}>
         <CardHeader className="flex flex-col gap-2 pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Model Usage</CardTitle>
+            <CardTitle className="text-base">{t("modelUsage.title")}</CardTitle>
           </div>
           <TabsList>
-            {RANK_SORT_OPTIONS.map((o) => (
+            {rankSortOptions.map((o) => (
               <TabsTrigger key={o.key} value={o.key}>
                 {o.label}
               </TabsTrigger>
@@ -993,7 +1044,7 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
           {sorted.length === 0 ? (
             <div className="text-muted-foreground flex flex-col items-center justify-center py-8">
               <Bot className="mb-3 h-12 w-12 opacity-30" />
-              <p className="text-sm">No data yet</p>
+              <p className="text-sm">{t("modelUsage.noData")}</p>
             </div>
           ) : (
             <div className="max-h-[400px] space-y-1.5 overflow-y-auto">
@@ -1023,23 +1074,23 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums">
                         <div>
-                          <span className="text-muted-foreground">Req </span>
+                          <span className="text-muted-foreground">{t("inline.req")} </span>
                           <Fmt fmt={reqFmt} />
                         </div>
                         <div>
-                          <span className="text-muted-foreground">In </span>
+                          <span className="text-muted-foreground">{t("inline.in")} </span>
                           <Fmt fmt={inFmt} />
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Out </span>
+                          <span className="text-muted-foreground">{t("inline.out")} </span>
                           <Fmt fmt={outFmt} />
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Cost </span>
+                          <span className="text-muted-foreground">{t("inline.cost")} </span>
                           <Fmt fmt={costFmt} />
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Avg </span>
+                          <span className="text-muted-foreground">{t("inline.avg")} </span>
                           <Fmt fmt={latFmt} />
                         </div>
                       </div>
@@ -1058,6 +1109,8 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
 // ───────────── Page ─────────────
 
 export default function DashboardPage() {
+  const { t } = useTranslation("dashboard")
+
   const {
     data: totalData,
     isError: isTotalError,
@@ -1113,7 +1166,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       {isStatsError ? (
-        <InlineError message="Failed to load dashboard stats" onRetry={refetchStats} />
+        <InlineError message={t("errors.dashboardStats")} onRetry={refetchStats} />
       ) : (
         <>
           <TotalSection data={totalData?.data} />
@@ -1125,12 +1178,12 @@ export default function DashboardPage() {
       )}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {isModelError ? (
-          <InlineError message="Failed to load model stats" onRetry={() => refetchModel()} />
+          <InlineError message={t("errors.modelStats")} onRetry={() => refetchModel()} />
         ) : (
           <ModelStatsSection data={modelData?.data} />
         )}
         {isChannelError ? (
-          <InlineError message="Failed to load channel stats" onRetry={() => refetchChannel()} />
+          <InlineError message={t("errors.channelStats")} onRetry={() => refetchChannel()} />
         ) : (
           <RankSection data={channelData?.data} />
         )}
