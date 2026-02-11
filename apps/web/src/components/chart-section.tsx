@@ -1,5 +1,6 @@
 import type { StatsDaily, StatsHourly } from "@/lib/api"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import {
   Area,
   AreaChart,
@@ -22,6 +23,7 @@ export default function ChartSection({
   dailyData?: StatsDaily[]
   hourlyData?: StatsHourly[]
 }) {
+  const { t } = useTranslation("dashboard")
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1")
 
   const sortedDaily = useMemo(() => {
@@ -61,11 +63,14 @@ export default function ChartSection({
     return { requests, cost, inputTokens, outputTokens }
   }, [sortedDaily, hourlyData, period])
 
-  const periodLabel: Record<string, string> = {
-    "1": "Today",
-    "7": "Last 7 Days",
-    "30": "Last 30 Days",
-  }
+  const periodLabel: Record<string, string> = useMemo(
+    () => ({
+      "1": t("chart.today"),
+      "7": t("chart.last7Days"),
+      "30": t("chart.last30Days"),
+    }),
+    [t],
+  )
 
   const handlePeriodClick = () => {
     const idx = PERIODS.indexOf(period)
@@ -77,7 +82,7 @@ export default function ChartSection({
       <CardHeader className="flex flex-col gap-4 pb-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-wrap gap-x-6 gap-y-2">
           <div>
-            <p className="text-muted-foreground text-xs">Total Requests</p>
+            <p className="text-muted-foreground text-xs">{t("chart.totalRequests")}</p>
             <p className="text-xl font-semibold">
               <AnimatedNumber value={totals.requests} formatter={(n) => formatCount(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
@@ -87,7 +92,7 @@ export default function ChartSection({
           </div>
           <div className="bg-border hidden w-px self-stretch sm:block" />
           <div>
-            <p className="text-muted-foreground text-xs">Input Tokens</p>
+            <p className="text-muted-foreground text-xs">{t("chart.inputTokens")}</p>
             <p className="text-xl font-semibold">
               <AnimatedNumber value={totals.inputTokens} formatter={(n) => formatCount(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
@@ -97,7 +102,7 @@ export default function ChartSection({
           </div>
           <div className="bg-border hidden w-px self-stretch sm:block" />
           <div>
-            <p className="text-muted-foreground text-xs">Output Tokens</p>
+            <p className="text-muted-foreground text-xs">{t("chart.outputTokens")}</p>
             <p className="text-xl font-semibold">
               <AnimatedNumber value={totals.outputTokens} formatter={(n) => formatCount(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
@@ -107,7 +112,7 @@ export default function ChartSection({
           </div>
           <div className="bg-border hidden w-px self-stretch sm:block" />
           <div>
-            <p className="text-muted-foreground text-xs">Total Cost</p>
+            <p className="text-muted-foreground text-xs">{t("chart.totalCost")}</p>
             <p className="text-xl font-semibold">
               <AnimatedNumber value={totals.cost} formatter={(n) => formatMoney(n).value} />
               <span className="text-muted-foreground ml-0.5 text-sm">
@@ -120,7 +125,7 @@ export default function ChartSection({
           className="shrink-0 cursor-pointer text-left transition-opacity hover:opacity-80 sm:text-right"
           onClick={handlePeriodClick}
         >
-          <p className="text-muted-foreground text-xs">Period</p>
+          <p className="text-muted-foreground text-xs">{t("chart.period")}</p>
           <p className="text-xl font-semibold">{periodLabel[period]}</p>
         </button>
       </CardHeader>
@@ -145,7 +150,7 @@ export default function ChartSection({
               }}
             />
             <Tooltip
-              formatter={(v: unknown) => [formatMoney(Number(v ?? 0)).value, "Cost"]}
+              formatter={(v: unknown) => [formatMoney(Number(v ?? 0)).value, t("chart.cost")]}
               labelClassName="text-foreground"
             />
             <Area type="monotone" dataKey="cost" stroke="var(--primary)" fill="url(#fillCost)" />

@@ -1,5 +1,5 @@
 // Extracted log filter utilities for testability
-import { formatRangeSummary } from "@/components/time-range-picker"
+import { detectPreset, formatCompactDate } from "@/components/time-range-picker"
 
 export interface LogFilters {
   page: number
@@ -32,6 +32,17 @@ export interface FilterChip {
   value: string
 }
 
+/** Format time range for filter chip display (non-React context) */
+function formatTimeChipValue(from: number | undefined, to: number | undefined): string {
+  if (from === undefined && to === undefined) return ""
+  const preset = detectPreset(from, to)
+  if (preset) return preset.label
+  if (from !== undefined && to !== undefined)
+    return `${formatCompactDate(from)} – ${formatCompactDate(to)}`
+  if (from !== undefined) return formatCompactDate(from)
+  return formatCompactDate(to!)
+}
+
 /** Generate active filter chips from current filter state */
 export function getActiveFilterChips(filters: LogFilters, channelName?: string): FilterChip[] {
   const chips: FilterChip[] = []
@@ -49,7 +60,7 @@ export function getActiveFilterChips(filters: LogFilters, channelName?: string):
     chips.push({
       key: "time",
       label: "Time",
-      value: formatRangeSummary(filters.startTime, filters.endTime),
+      value: formatTimeChipValue(filters.startTime, filters.endTime),
     })
   return chips
 }

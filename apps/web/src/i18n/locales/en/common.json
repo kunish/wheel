@@ -1,0 +1,116 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "channels": "Channels & Groups",
+    "prices": "Prices",
+    "logs": "Logs",
+    "settings": "Settings"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "save": "Save",
+    "add": "Add",
+    "edit": "Edit",
+    "retry": "Retry",
+    "close": "Close",
+    "copy": "Copy",
+    "search": "Search",
+    "reset": "Reset",
+    "submit": "Submit",
+    "back": "Back",
+    "next": "Next",
+    "create": "Create",
+    "update": "Update",
+    "enable": "Enable",
+    "disable": "Disable",
+    "refresh": "Refresh",
+    "export": "Export",
+    "import": "Import",
+    "test": "Test",
+    "loading": "Loading...",
+    "copied": "Copied",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All"
+  },
+  "logout": {
+    "button": "Logout",
+    "title": "Are you sure you want to logout?",
+    "description": "You will need to sign in again to access the dashboard.",
+    "confirm": "Logout",
+    "cancel": "Cancel"
+  },
+  "theme": {
+    "light": "Switch to light mode",
+    "dark": "Switch to dark mode"
+  },
+  "aria": {
+    "openNav": "Open navigation menu",
+    "navigation": "Navigation"
+  },
+  "language": {
+    "switch": "Switch language",
+    "en": "English",
+    "zhCN": "中文"
+  },
+  "status": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "active": "Active",
+    "inactive": "Inactive",
+    "success": "Success",
+    "error": "Error",
+    "pending": "Pending",
+    "unknown": "Unknown"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo_one": "{{count}} minute ago",
+    "minutesAgo_other": "{{count}} minutes ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago"
+  },
+  "weekdays": {
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun"
+  },
+  "pagination": {
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {{current}} of {{total}}",
+    "rowsPerPage": "Rows per page",
+    "showing": "Showing {{from}}-{{to}} of {{total}}"
+  },
+  "table": {
+    "noResults": "No results found.",
+    "empty": "No data available."
+  },
+  "error": {
+    "generic": "Something went wrong",
+    "networkError": "Network error. Please try again.",
+    "notFound": "Not found",
+    "unauthorized": "Unauthorized"
+  },
+  "models": {
+    "allModels": "All Models",
+    "searchPlaceholder": "Search models...",
+    "noModelsFound": "No models found"
+  },
+  "timeRange": {
+    "label": "Time Range",
+    "presets": "Presets",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply",
+    "today": "Today",
+    "last": "Last {{label}}"
+  }
+}

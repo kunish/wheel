@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Search } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { ModelBadge } from "@/components/model-badge"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -9,7 +10,7 @@ interface ModelComboboxProps {
   models: string[]
   value: string
   onChange: (value: string) => void
-  /** Text shown when no model is selected. Defaults to "All Models". */
+  /** Text shown when no model is selected. If not provided, uses i18n default. */
   placeholder?: string
   /** If true, shows an "All" option that clears the selection. Defaults to true. */
   allowAll?: boolean
@@ -20,12 +21,15 @@ export function ModelCombobox({
   models,
   value,
   onChange,
-  placeholder = "All Models",
+  placeholder,
   allowAll = true,
   className,
 }: ModelComboboxProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
+
+  const resolvedPlaceholder = placeholder ?? t("models.allModels")
 
   const filtered = useMemo(() => {
     if (!search) return models
@@ -47,7 +51,7 @@ export function ModelCombobox({
               <ModelBadge modelId={value} />
             </span>
           ) : (
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span className="text-muted-foreground">{resolvedPlaceholder}</span>
           )}
           <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </button>
@@ -57,7 +61,7 @@ export function ModelCombobox({
           <div className="relative">
             <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
             <Input
-              placeholder="Search models..."
+              placeholder={t("models.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-8 pl-8 text-xs"
@@ -78,7 +82,7 @@ export function ModelCombobox({
               }}
             >
               <Check className={`h-3.5 w-3.5 ${!value ? "opacity-100" : "opacity-0"}`} />
-              <span className="text-muted-foreground">{placeholder}</span>
+              <span className="text-muted-foreground">{resolvedPlaceholder}</span>
             </button>
           )}
           {filtered.map((m) => (
@@ -102,7 +106,9 @@ export function ModelCombobox({
             </button>
           ))}
           {filtered.length === 0 && (
-            <p className="text-muted-foreground py-4 text-center text-xs">No models found</p>
+            <p className="text-muted-foreground py-4 text-center text-xs">
+              {t("models.noModelsFound")}
+            </p>
           )}
         </div>
       </PopoverContent>

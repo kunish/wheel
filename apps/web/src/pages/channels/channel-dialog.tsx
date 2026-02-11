@@ -1,5 +1,6 @@
 import { Download, Eye, EyeOff, Loader2 } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
@@ -16,15 +17,6 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { fetchChannelModelsPreview } from "@/lib/api"
-
-const TYPE_LABELS: Record<number, string> = {
-  0: "OpenAI Chat",
-  1: "OpenAI",
-  2: "Anthropic",
-  3: "Gemini",
-  4: "Volcengine",
-  5: "OpenAI Embedding",
-}
 
 export interface ChannelFormData {
   id?: number
@@ -58,6 +50,7 @@ function ModelTagInput({
   value: string[]
   onChange: (value: string[]) => void
 }) {
+  const { t } = useTranslation("channels")
   const [input, setInput] = useState("")
   const tags = value ?? []
 
@@ -102,11 +95,11 @@ function ModelTagInput({
           onBlur={() => {
             if (input.trim()) addTags(input)
           }}
-          placeholder="Type model name, press Enter to add"
+          placeholder={t("channelDialog.modelInputPlaceholder")}
           className="flex-1"
         />
         <span className="text-muted-foreground text-xs whitespace-nowrap">
-          {tags.length} model{tags.length !== 1 ? "s" : ""}
+          {t("modelCount", { count: tags.length })}
         </span>
       </div>
       {tags.length > 0 && (
@@ -132,6 +125,7 @@ function FetchModelsButton({
   form: ChannelFormData
   setForm: (f: ChannelFormData) => void
 }) {
+  const { t } = useTranslation("channels")
   const [loading, setLoading] = useState(false)
 
   const baseUrl = form.baseUrls[0]?.url?.trim()
@@ -140,7 +134,7 @@ function FetchModelsButton({
 
   async function handleFetch() {
     if (!canFetch) {
-      toast.error("Please fill in Base URL and API Key first")
+      toast.error(t("channelDialog.fetchFillFirst"))
       return
     }
     setLoading(true)
@@ -152,13 +146,13 @@ function FetchModelsButton({
       })
       const models = res.data.models
       if (models.length === 0) {
-        toast.info("No models found from this provider")
+        toast.info(t("channelDialog.fetchNoModels"))
         return
       }
       setForm({ ...form, model: models })
-      toast.success(`Fetched ${models.length} models`)
+      toast.success(t("channelDialog.fetchSuccess", { count: models.length }))
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to fetch models")
+      toast.error(err instanceof Error ? err.message : t("channelDialog.fetchError"))
     } finally {
       setLoading(false)
     }
@@ -171,7 +165,7 @@ function FetchModelsButton({
       ) : (
         <Download className="mr-1 h-3 w-3" />
       )}
-      {loading ? "Fetching..." : "Fetch Models"}
+      {loading ? t("channelDialog.fetching") : t("channelDialog.fetchModels")}
     </Button>
   )
 }
@@ -193,22 +187,37 @@ export default function ChannelDialog({
   onSave: () => void
   isPending: boolean
 }) {
+  const { t } = useTranslation("channels")
   const [showKey, setShowKey] = useState(false)
+
+  const typeLabels = useMemo(
+    () => ({
+      0: t("typeLabels.0"),
+      1: t("typeLabels.1"),
+      2: t("typeLabels.2"),
+      3: t("typeLabels.3"),
+      4: t("typeLabels.4"),
+      5: t("typeLabels.5"),
+    }),
+    [t],
+  )
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] w-full max-w-2xl max-w-[95vw] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{form.id ? "Edit Channel" : "Create Channel"}</DialogTitle>
+          <DialogTitle>
+            {form.id ? t("channelDialog.editTitle") : t("channelDialog.createTitle")}
+          </DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-2">
-            <Label>Name</Label>
+            <Label>{t("channelDialog.name")}</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Provider Type</Label>
+            <Label>{t("channelDialog.providerType")}</Label>
             <Select
               value={String(form.type)}
               onValueChange={(v) => setForm({ ...form, type: Number(v) })}
@@ -217,7 +226,7 @@ export default function ChannelDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(TYPE_LABELS).map(([val, label]) => (
+                {Object.entries(typeLabels).map(([val, label]) => (
                   <SelectItem key={val} value={val}>
                     {label}
                   </SelectItem>
@@ -227,7 +236,7 @@ export default function ChannelDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Base URL</Label>
+            <Label>{t("channelDialog.baseUrl")}</Label>
             <Input
               placeholder="https://api.openai.com"
               value={form.baseUrls[0]?.url ?? ""}
@@ -241,7 +250,7 @@ export default function ChannelDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>API Key</Label>
+            <Label>{t("channelDialog.apiKey")}</Label>
             <div className="relative">
               <Input
                 type={showKey ? "text" : "password"}
@@ -261,7 +270,7 @@ export default function ChannelDialog({
                 size="icon"
                 className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
                 onClick={() => setShowKey(!showKey)}
-                aria-label={showKey ? "Hide API key" : "Show API key"}
+                aria-label={showKey ? t("channelDialog.hideApiKey") : t("channelDialog.showApiKey")}
               >
                 {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </Button>
@@ -270,33 +279,33 @@ export default function ChannelDialog({
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <Label>Models</Label>
+              <Label>{t("channelDialog.models")}</Label>
               <FetchModelsButton form={form} setForm={setForm} />
             </div>
             <ModelTagInput value={form.model} onChange={(model) => setForm({ ...form, model })} />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Custom Models</Label>
+            <Label>{t("channelDialog.customModels")}</Label>
             <Input
               value={form.customModel}
               onChange={(e) => setForm({ ...form, customModel: e.target.value })}
-              placeholder="model-alias:actual-model, ..."
+              placeholder={t("channelDialog.customModelsPlaceholder")}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Parameter Override (JSON)</Label>
+            <Label>{t("channelDialog.paramOverride")}</Label>
             <Textarea
               value={form.paramOverride}
               onChange={(e) => setForm({ ...form, paramOverride: e.target.value })}
-              placeholder='{"temperature": 0.7}'
+              placeholder={t("channelDialog.paramOverridePlaceholder")}
               rows={3}
             />
           </div>
 
           <Button className="mt-2" onClick={onSave} disabled={isPending || !form.name}>
-            {isPending ? "Saving..." : "Save"}
+            {isPending ? t("channelDialog.saving") : t("actions.save", { ns: "common" })}
           </Button>
         </div>
       </DialogContent>

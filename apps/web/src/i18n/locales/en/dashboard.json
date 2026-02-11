@@ -1,0 +1,75 @@
+{
+  "stats": {
+    "requestStats": "Request Stats",
+    "overview": "Overview",
+    "input": "Input",
+    "output": "Output",
+    "requests": "Requests",
+    "timeUsed": "Time Used",
+    "totalTokens": "Total Tokens",
+    "totalCost": "Total Cost",
+    "inputTokens": "Input Tokens",
+    "inputCost": "Input Cost",
+    "outputTokens": "Output Tokens",
+    "outputCost": "Output Cost",
+    "cost": "Cost"
+  },
+  "activity": {
+    "title": "Activity",
+    "day": "Day",
+    "week": "Week",
+    "month": "Month",
+    "year": "Year",
+    "viewLogs": "View logs →",
+    "less": "Less",
+    "more": "More",
+    "noData": "No data"
+  },
+  "weekdaysFull": {
+    "sunday": "Sunday",
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday"
+  },
+  "channelRanking": {
+    "title": "Channel Ranking",
+    "channelFallback": "Channel {{id}}",
+    "noData": "No data yet"
+  },
+  "modelUsage": {
+    "title": "Model Usage",
+    "noData": "No data yet"
+  },
+  "sort": {
+    "requests": "Requests",
+    "tokens": "Tokens",
+    "cost": "Cost",
+    "latency": "Latency"
+  },
+  "inline": {
+    "req": "Req",
+    "cost": "Cost",
+    "avg": "Avg",
+    "in": "In",
+    "out": "Out"
+  },
+  "errors": {
+    "dashboardStats": "Failed to load dashboard stats",
+    "modelStats": "Failed to load model stats",
+    "channelStats": "Failed to load channel stats"
+  },
+  "chart": {
+    "totalRequests": "Total Requests",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "totalCost": "Total Cost",
+    "period": "Period",
+    "today": "Today",
+    "last7Days": "Last 7 Days",
+    "last30Days": "Last 30 Days",
+    "cost": "Cost"
+  }
+}

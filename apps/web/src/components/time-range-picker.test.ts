@@ -6,6 +6,13 @@ import {
   TIME_RANGE_PRESETS,
 } from "./time-range-picker"
 
+// Mock t function for tests
+const mockT = (key: string, options?: Record<string, unknown>) => {
+  if (key === "timeRange.label") return "Time Range"
+  if (key === "timeRange.last") return `Last ${options?.label}`
+  return key
+}
+
 // ── 5.1: Range Summary Formatting ──────────────────────────────────
 
 describe("formatCompactDate", () => {
@@ -89,44 +96,44 @@ describe("formatRangeSummary", () => {
   const NOW = 1700000000
 
   it("returns placeholder when no range is set", () => {
-    expect(formatRangeSummary(undefined, undefined)).toBe("Time Range")
+    expect(formatRangeSummary(undefined, undefined, mockT)).toBe("Time Range")
   })
 
   it("shows 'Last 1h' for 1h preset", () => {
-    expect(formatRangeSummary(NOW - 3600, NOW, NOW)).toBe("Last 1h")
+    expect(formatRangeSummary(NOW - 3600, NOW, mockT, NOW)).toBe("Last 1h")
   })
 
   it("shows 'Last 6h' for 6h preset", () => {
-    expect(formatRangeSummary(NOW - 21600, NOW, NOW)).toBe("Last 6h")
+    expect(formatRangeSummary(NOW - 21600, NOW, mockT, NOW)).toBe("Last 6h")
   })
 
   it("shows 'Last 24h' for 24h preset", () => {
-    expect(formatRangeSummary(NOW - 86400, NOW, NOW)).toBe("Last 24h")
+    expect(formatRangeSummary(NOW - 86400, NOW, mockT, NOW)).toBe("Last 24h")
   })
 
   it("shows 'Last 7d' for 7d preset", () => {
-    expect(formatRangeSummary(NOW - 604800, NOW, NOW)).toBe("Last 7d")
+    expect(formatRangeSummary(NOW - 604800, NOW, mockT, NOW)).toBe("Last 7d")
   })
 
   it("shows 'Last 30d' for 30d preset", () => {
-    expect(formatRangeSummary(NOW - 2592000, NOW, NOW)).toBe("Last 30d")
+    expect(formatRangeSummary(NOW - 2592000, NOW, mockT, NOW)).toBe("Last 30d")
   })
 
   it("shows compact range for custom from+to", () => {
     // A range that doesn't match any preset
     const from = NOW - 5000
     const to = NOW - 2000
-    const result = formatRangeSummary(from, to, NOW)
+    const result = formatRangeSummary(from, to, mockT, NOW)
     expect(result).toMatch(/^\d{2}\/\d{2} \d{2}:\d{2} – \d{2}\/\d{2} \d{2}:\d{2}$/)
   })
 
   it("shows 'After MM/DD HH:mm' for from-only", () => {
-    const result = formatRangeSummary(NOW - 3600, undefined, NOW)
+    const result = formatRangeSummary(NOW - 3600, undefined, mockT, NOW)
     expect(result).toMatch(/^After \d{2}\/\d{2} \d{2}:\d{2}$/)
   })
 
   it("shows 'Before MM/DD HH:mm' for to-only", () => {
-    const result = formatRangeSummary(undefined, NOW, NOW)
+    const result = formatRangeSummary(undefined, NOW, mockT, NOW)
     expect(result).toMatch(/^Before \d{2}\/\d{2} \d{2}:\d{2}$/)
   })
 
@@ -134,7 +141,7 @@ describe("formatRangeSummary", () => {
     // Duration matches 1h but `to` is far in the past
     const to = NOW - 7200
     const from = to - 3600
-    const result = formatRangeSummary(from, to, NOW)
+    const result = formatRangeSummary(from, to, mockT, NOW)
     expect(result).toMatch(/^\d{2}\/\d{2} \d{2}:\d{2} – \d{2}\/\d{2} \d{2}:\d{2}$/)
   })
 })

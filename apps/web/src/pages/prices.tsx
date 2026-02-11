@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
 import {
@@ -84,6 +85,7 @@ function PriceForm({
   submitLabel: string
   nameReadonly?: boolean
 }) {
+  const { t } = useTranslation("prices")
   return (
     <form
       onSubmit={(e) => {
@@ -93,7 +95,7 @@ function PriceForm({
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-2">
-        <Label>Model Name</Label>
+        <Label>{t("form.modelName")}</Label>
         <Input
           value={form.name}
           onChange={(e) => onChange({ ...form, name: e.target.value })}
@@ -104,7 +106,7 @@ function PriceForm({
         />
       </div>
       <div className="flex flex-col gap-2">
-        <Label>Input Price ($ / M tokens)</Label>
+        <Label>{t("form.inputPrice")}</Label>
         <Input
           type="number"
           step="0.000001"
@@ -116,7 +118,7 @@ function PriceForm({
         />
       </div>
       <div className="flex flex-col gap-2">
-        <Label>Output Price ($ / M tokens)</Label>
+        <Label>{t("form.outputPrice")}</Label>
         <Input
           type="number"
           step="0.000001"
@@ -137,6 +139,7 @@ function PriceForm({
 // ───────────── Prices Page ─────────────
 
 export default function PricesPage() {
+  const { t } = useTranslation("prices")
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [showCreate, setShowCreate] = useState(false)
@@ -166,9 +169,9 @@ export default function PricesPage() {
       queryClient.invalidateQueries({ queryKey: ["model-prices"] })
       setCreateForm(EMPTY_FORM)
       setShowCreate(false)
-      toast.success("Price created")
+      toast.success(t("toast.priceCreated"))
     },
-    onError: () => toast.error("Failed to create price"),
+    onError: () => toast.error(t("toast.createFailed")),
   })
 
   const updateMutation = useMutation({
@@ -182,18 +185,18 @@ export default function PricesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["model-prices"] })
       setEditingPrice(null)
-      toast.success("Price updated")
+      toast.success(t("toast.priceUpdated"))
     },
-    onError: () => toast.error("Failed to update price"),
+    onError: () => toast.error(t("toast.updateFailed")),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (name: string) => deleteModelPrice({ name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["model-prices"] })
-      toast.success("Price deleted")
+      toast.success(t("toast.priceDeleted"))
     },
-    onError: () => toast.error("Failed to delete price"),
+    onError: () => toast.error(t("toast.deleteFailed")),
   })
 
   const syncMutation = useMutation({
@@ -201,9 +204,9 @@ export default function PricesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["model-prices"] })
       queryClient.invalidateQueries({ queryKey: ["price-update-time"] })
-      toast.success("Prices synced successfully")
+      toast.success(t("toast.syncSuccess"))
     },
-    onError: () => toast.error("Failed to sync prices"),
+    onError: () => toast.error(t("toast.syncFailed")),
   })
 
   const models = useMemo(() => (data?.data?.models ?? []) as ModelPrice[], [data])
@@ -237,8 +240,8 @@ export default function PricesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Prices</h2>
-        <p className="text-muted-foreground text-sm">Manage model pricing for cost calculation</p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
+        <p className="text-muted-foreground text-sm">{t("description")}</p>
       </div>
 
       {/* Toolbar */}
@@ -246,11 +249,11 @@ export default function PricesPage() {
         <div className="relative max-w-sm flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <label htmlFor="price-search" className="sr-only">
-            Search models
+            {t("searchModels")}
           </label>
           <Input
             id="price-search"
-            placeholder="Search models..."
+            placeholder={t("searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -258,7 +261,9 @@ export default function PricesPage() {
         </div>
         <div className="flex items-center gap-2">
           {lastSync && (
-            <span className="text-muted-foreground text-xs">Last synced: {lastSync}</span>
+            <span className="text-muted-foreground text-xs">
+              {t("lastSynced", { time: lastSync })}
+            </span>
           )}
           <Button
             variant="outline"
@@ -267,7 +272,7 @@ export default function PricesPage() {
             disabled={syncMutation.isPending}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-            Sync Prices
+            {t("syncPrices")}
           </Button>
           <Dialog
             open={showCreate}
@@ -278,19 +283,19 @@ export default function PricesPage() {
           >
             <DialogTrigger asChild>
               <Button size="sm">
-                <Plus className="mr-2 h-4 w-4" /> Add Price
+                <Plus className="mr-2 h-4 w-4" /> {t("addPrice")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Model Price</DialogTitle>
+                <DialogTitle>{t("addModelPrice")}</DialogTitle>
               </DialogHeader>
               <PriceForm
                 form={createForm}
                 onChange={setCreateForm}
                 onSubmit={() => createMutation.mutate(createForm)}
                 isPending={createMutation.isPending}
-                submitLabel="Create"
+                submitLabel={t("actions.create", { ns: "common" })}
               />
             </DialogContent>
           </Dialog>
@@ -306,7 +311,7 @@ export default function PricesPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Model Price</DialogTitle>
+            <DialogTitle>{t("editModelPrice")}</DialogTitle>
           </DialogHeader>
           <PriceForm
             form={editForm}
@@ -317,7 +322,7 @@ export default function PricesPage() {
               }
             }}
             isPending={updateMutation.isPending}
-            submitLabel="Save"
+            submitLabel={t("actions.save", { ns: "common" })}
             nameReadonly
           />
         </DialogContent>
@@ -328,15 +333,12 @@ export default function PricesPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete price for &ldquo;{deleteConfirm?.name}&rdquo;?
+              {t("deleteDialog.title", { name: deleteConfirm?.name })}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove the pricing data for this model. Historical cost calculations that
-              used this price will not be affected.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t("deleteDialog.description")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
@@ -344,7 +346,7 @@ export default function PricesPage() {
                 setDeleteConfirm(null)
               }}
             >
-              Delete
+              {t("actions.delete", { ns: "common" })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -352,7 +354,7 @@ export default function PricesPage() {
 
       {/* Table */}
       {isLoading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
       ) : (
         <Card>
           <CardContent className="p-0">
@@ -360,11 +362,11 @@ export default function PricesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Model Name</TableHead>
-                    <TableHead>Input ($/M tokens)</TableHead>
-                    <TableHead>Output ($/M tokens)</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Updated</TableHead>
+                    <TableHead>{t("table.modelName")}</TableHead>
+                    <TableHead>{t("table.input")}</TableHead>
+                    <TableHead>{t("table.output")}</TableHead>
+                    <TableHead>{t("table.source")}</TableHead>
+                    <TableHead>{t("table.updated")}</TableHead>
                     <TableHead className="w-24" />
                   </TableRow>
                 </TableHeader>
@@ -372,7 +374,7 @@ export default function PricesPage() {
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-muted-foreground text-center">
-                        No models found.
+                        {t("table.noModels")}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -402,7 +404,7 @@ export default function PricesPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                aria-label={`Edit price for ${m.name}`}
+                                aria-label={t("aria.editPrice", { name: m.name })}
                                 onClick={() => openEdit(m)}
                               >
                                 <Pencil className="h-4 w-4" />
@@ -410,7 +412,7 @@ export default function PricesPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                aria-label={`Delete price for ${m.name}`}
+                                aria-label={t("aria.deletePrice", { name: m.name })}
                                 onClick={() => setDeleteConfirm(m)}
                               >
                                 <Trash2 className="text-destructive h-4 w-4" />

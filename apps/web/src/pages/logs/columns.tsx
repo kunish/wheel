@@ -1,4 +1,5 @@
 import type { HeaderContext } from "@tanstack/react-table"
+import type { TFunction } from "i18next"
 import type { ReactNode } from "react"
 import { createColumnHelper } from "@tanstack/react-table"
 import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Layers } from "lucide-react"
@@ -94,17 +95,19 @@ function GroupableHeader({
 
 const columnHelper = createColumnHelper<LogEntry>()
 
-export function createLogColumns(onViewDetail: (id: number) => void) {
+export function createLogColumns(onViewDetail: (id: number) => void, t: TFunction) {
   return [
     columnHelper.accessor("time", {
-      header: "Time",
+      header: t("columns.time"),
       enableSorting: false,
       cell: (info) => (
         <span className="font-mono text-xs whitespace-nowrap">{formatTime(info.getValue())}</span>
       ),
     }),
     columnHelper.accessor("requestModelName", {
-      header: ({ column }) => <GroupableHeader column={column}>Model</GroupableHeader>,
+      header: ({ column }) => (
+        <GroupableHeader column={column}>{t("columns.model")}</GroupableHeader>
+      ),
       enableSorting: false,
       enableGrouping: true,
       cell: (info) => {
@@ -139,7 +142,9 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
       },
     }),
     columnHelper.accessor("channelName", {
-      header: ({ column }) => <GroupableHeader column={column}>Channel</GroupableHeader>,
+      header: ({ column }) => (
+        <GroupableHeader column={column}>{t("columns.channel")}</GroupableHeader>
+      ),
       enableSorting: false,
       enableGrouping: true,
       cell: (info) => {
@@ -164,7 +169,9 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
                     R{row.totalAttempts}
                   </Badge>
                 </TooltipTrigger>
-                <TooltipContent>{row.totalAttempts} attempts</TooltipContent>
+                <TooltipContent>
+                  {t("columns.attempts", { count: row.totalAttempts })}
+                </TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -172,7 +179,7 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
       },
     }),
     columnHelper.accessor("inputTokens", {
-      header: ({ column }) => <SortableHeader column={column}>Input</SortableHeader>,
+      header: ({ column }) => <SortableHeader column={column}>{t("columns.input")}</SortableHeader>,
       enableSorting: true,
       cell: (info) => (
         <span className="text-right font-mono text-xs">{info.getValue().toLocaleString()}</span>
@@ -180,7 +187,9 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
       meta: { className: "text-right" },
     }),
     columnHelper.accessor("outputTokens", {
-      header: ({ column }) => <SortableHeader column={column}>Output</SortableHeader>,
+      header: ({ column }) => (
+        <SortableHeader column={column}>{t("columns.output")}</SortableHeader>
+      ),
       enableSorting: true,
       cell: (info) => (
         <span className="text-right font-mono text-xs">{info.getValue().toLocaleString()}</span>
@@ -188,7 +197,7 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
       meta: { className: "text-right" },
     }),
     columnHelper.accessor("ftut", {
-      header: ({ column }) => <SortableHeader column={column}>TTFT</SortableHeader>,
+      header: ({ column }) => <SortableHeader column={column}>{t("columns.ttft")}</SortableHeader>,
       enableSorting: true,
       cell: (info) => (
         <span className="text-muted-foreground text-right font-mono text-xs">
@@ -198,7 +207,9 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
       meta: { className: "text-right" },
     }),
     columnHelper.accessor("useTime", {
-      header: ({ column }) => <SortableHeader column={column}>Latency</SortableHeader>,
+      header: ({ column }) => (
+        <SortableHeader column={column}>{t("columns.latency")}</SortableHeader>
+      ),
       enableSorting: true,
       cell: (info) => (
         <span className="text-right font-mono text-xs">{formatDuration(info.getValue())}</span>
@@ -206,7 +217,7 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
       meta: { className: "text-right" },
     }),
     columnHelper.accessor("cost", {
-      header: ({ column }) => <SortableHeader column={column}>Cost</SortableHeader>,
+      header: ({ column }) => <SortableHeader column={column}>{t("columns.cost")}</SortableHeader>,
       enableSorting: true,
       cell: (info) => (
         <span className="text-right font-mono text-xs">{formatCost(info.getValue())}</span>
@@ -215,13 +226,13 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
     }),
     columnHelper.display({
       id: "status",
-      header: "Status",
+      header: t("columns.status"),
       cell: (info) => {
         const row = info.row.original
         return row.error ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="destructive">Error</Badge>
+              <Badge variant="destructive">{t("columns.error")}</Badge>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p className="text-xs break-all whitespace-pre-wrap">
@@ -230,7 +241,7 @@ export function createLogColumns(onViewDetail: (id: number) => void) {
             </TooltipContent>
           </Tooltip>
         ) : (
-          <Badge variant="default">OK</Badge>
+          <Badge variant="default">{t("columns.ok")}</Badge>
         )
       },
     }),

@@ -1,5 +1,6 @@
 import { Search } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -29,6 +30,7 @@ export default function ChannelModelPickerDialog({
   channelModels: ChannelModelEntry[]
   onSelect: (channelId: number, modelId: string) => void
 }) {
+  const { t } = useTranslation("channels")
   const { data } = useModelMetadataQuery()
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState<number | null>(null)
@@ -91,14 +93,14 @@ export default function ChannelModelPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Select Model</DialogTitle>
+          <DialogTitle>{t("channelModelPicker.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
             <Input
-              placeholder="Search models..."
+              placeholder={t("channelModelPicker.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -109,10 +111,10 @@ export default function ChannelModelPickerDialog({
             onValueChange={(v) => setChannelFilter(v === "all" ? null : Number(v))}
           >
             <SelectTrigger className="w-40">
-              <SelectValue placeholder="All Channels" />
+              <SelectValue placeholder={t("channelModelPicker.allChannels")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Channels</SelectItem>
+              <SelectItem value="all">{t("channelModelPicker.allChannels")}</SelectItem>
               {channelModels.map((ch) => (
                 <SelectItem key={ch.channelId} value={String(ch.channelId)}>
                   {ch.channelName}
@@ -126,8 +128,8 @@ export default function ChannelModelPickerDialog({
           {totalCount === 0 ? (
             <p className="text-muted-foreground py-8 text-center text-sm">
               {channelModels.length === 0
-                ? "No channels have models configured"
-                : "No models found"}
+                ? t("channelModelPicker.noChannelsConfigured")
+                : t("channelModelPicker.noModelsFound")}
             </p>
           ) : (
             <div className="flex flex-col gap-3 pr-3">

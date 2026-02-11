@@ -33,7 +33,9 @@ export function GroupedModelList({ models, renderModel, className }: GroupedMode
   // Flat list for few models
   if (models.length < GROUP_THRESHOLD) {
     return (
-      <div className={cn("flex flex-wrap gap-1.5", className)}>
+      <div
+        className={cn("grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-1.5", className)}
+      >
         {models.map((m) => (
           <div key={m}>{renderModel(m)}</div>
         ))}
@@ -77,7 +79,7 @@ function ProviderSection({
           {group.providerName} ({group.models.length})
         </span>
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-1.5">
         {group.models.map((m) => (
           <div key={m}>{renderModel(m)}</div>
         ))}

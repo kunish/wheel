@@ -1,5 +1,6 @@
 import { Download, FileUp, Upload } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +23,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function BackupSection() {
+  const { t } = useTranslation("settings")
   const [includeLogs, setIncludeLogs] = useState(false)
   const [includeStats, setIncludeStats] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -48,9 +50,9 @@ export default function BackupSection() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      toast.success("Export downloaded")
+      toast.success(t("backup.exportDownloaded"))
     } catch {
-      toast.error("Failed to export data")
+      toast.error(t("backup.exportFailed"))
     } finally {
       setExporting(false)
     }
@@ -64,25 +66,28 @@ export default function BackupSection() {
       const result = await importData(selectedFile)
       if (result.success) {
         setImportResult(result.data as ImportResult)
-        toast.success("Import completed")
+        toast.success(t("backup.importCompleted"))
       } else {
-        toast.error(result.error ?? "Import failed")
+        toast.error(result.error ?? t("backup.importFailed"))
       }
     } catch {
-      toast.error("Failed to import data")
+      toast.error(t("backup.importDataFailed"))
     } finally {
       setImporting(false)
     }
   }
 
-  const handleFileSelect = useCallback((file: File) => {
-    if (!file.name.endsWith(".json")) {
-      toast.error("Only .json files are supported")
-      return
-    }
-    setSelectedFile(file)
-    setImportResult(null)
-  }, [])
+  const handleFileSelect = useCallback(
+    (file: File) => {
+      if (!file.name.endsWith(".json")) {
+        toast.error(t("backup.onlyJsonSupported"))
+        return
+      }
+      setSelectedFile(file)
+      setImportResult(null)
+    },
+    [t],
+  )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -109,27 +114,25 @@ export default function BackupSection() {
       {/* Export */}
       <Card>
         <CardHeader>
-          <CardTitle>Export Data</CardTitle>
+          <CardTitle>{t("backup.exportTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">
-            Export all configuration data as a JSON file.
-          </p>
+          <p className="text-muted-foreground text-sm">{t("backup.exportDescription")}</p>
 
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Switch id="include-logs" checked={includeLogs} onCheckedChange={setIncludeLogs} />
-              <Label htmlFor="include-logs">Include request logs</Label>
+              <Label htmlFor="include-logs">{t("backup.includeRequestLogs")}</Label>
             </div>
             <div className="flex items-center gap-2">
               <Switch id="include-stats" checked={includeStats} onCheckedChange={setIncludeStats} />
-              <Label htmlFor="include-stats">Include statistics data</Label>
+              <Label htmlFor="include-stats">{t("backup.includeStatisticsData")}</Label>
             </div>
           </div>
 
           <Button onClick={handleExport} disabled={exporting} className="w-fit">
             <Download className="mr-2 h-4 w-4" />
-            {exporting ? "Exporting..." : "Download Export"}
+            {exporting ? t("backup.exporting") : t("backup.downloadExport")}
           </Button>
         </CardContent>
       </Card>
@@ -137,12 +140,10 @@ export default function BackupSection() {
       {/* Import */}
       <Card>
         <CardHeader>
-          <CardTitle>Import Data</CardTitle>
+          <CardTitle>{t("backup.importTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">
-            Import configuration from a JSON file. Existing data will not be overwritten.
-          </p>
+          <p className="text-muted-foreground text-sm">{t("backup.importDescription")}</p>
 
           <div
             className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors ${
@@ -156,8 +157,8 @@ export default function BackupSection() {
             onDrop={handleDrop}
           >
             <FileUp className="text-muted-foreground h-8 w-8" />
-            <p className="text-muted-foreground text-sm">Drop file here or click to select</p>
-            <p className="text-muted-foreground text-xs">Supports .json files</p>
+            <p className="text-muted-foreground text-sm">{t("backup.dropFileHere")}</p>
+            <p className="text-muted-foreground text-xs">{t("backup.supportsJson")}</p>
             <input
               ref={fileInputRef}
               type="file"
@@ -172,23 +173,25 @@ export default function BackupSection() {
 
           {selectedFile && (
             <p className="text-muted-foreground text-sm">
-              Selected: <span className="text-foreground font-medium">{selectedFile.name}</span> (
+              {t("backup.selected")}{" "}
+              <span className="text-foreground font-medium">{selectedFile.name}</span> (
               {formatFileSize(selectedFile.size)})
             </p>
           )}
 
           <Button onClick={handleImport} disabled={!selectedFile || importing} className="w-fit">
             <Upload className="mr-2 h-4 w-4" />
-            {importing ? "Importing..." : "Import Data"}
+            {importing ? t("backup.importing") : t("backup.importData")}
           </Button>
 
           {importResult && (
             <div className="rounded-md border p-4">
-              <p className="mb-2 text-sm font-medium">Import Result:</p>
+              <p className="mb-2 text-sm font-medium">{t("backup.importResult")}</p>
               <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
                 {Object.entries(importResult).map(([key, value]) => (
                   <li key={key}>
-                    {key}: {value.added} added, {value.skipped} skipped
+                    {key}: {t("backup.added", { count: value.added })},{" "}
+                    {t("backup.skipped", { count: value.skipped })}
                   </li>
                 ))}
               </ul>

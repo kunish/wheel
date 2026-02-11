@@ -1,0 +1,100 @@
+{
+  "title": "Settings",
+  "account": {
+    "changeUsername": "Change Username",
+    "newUsername": "New Username",
+    "enterNewUsername": "Enter new username",
+    "updateUsername": "Update Username",
+    "usernameUpdated": "Username updated",
+    "usernameUpdateFailed": "Failed to update username",
+    "changePassword": "Change Password",
+    "newPassword": "New Password",
+    "enterNewPassword": "Enter new password",
+    "confirmPassword": "Confirm Password",
+    "confirmNewPassword": "Confirm new password",
+    "updatePassword": "Update Password",
+    "passwordUpdated": "Password updated",
+    "passwordUpdateFailed": "Failed to update password",
+    "passwordMinLength": "Password must be at least 8 characters",
+    "passwordsDoNotMatch": "Passwords do not match"
+  },
+  "apiKeys": {
+    "title": "API Keys",
+    "createKey": "Create Key",
+    "createApiKey": "Create API Key",
+    "editApiKey": "Edit API Key",
+    "saveKeyWarning": "Save this key \u2014 it won\u2019t be shown again.",
+    "copied": "Copied!",
+    "done": "Done",
+    "copyKeyBeforeClosing": "Please copy the key before closing",
+    "apiKeyUpdated": "API Key updated",
+    "apiKeyDeleted": "API Key deleted",
+    "deleteTitle": "Delete API Key \u201c{{name}}\u201d?",
+    "deleteDescription": "This action cannot be undone. Any applications using this key will lose access immediately.",
+    "table": {
+      "name": "Name",
+      "key": "Key",
+      "status": "Status",
+      "expires": "Expires",
+      "costLimit": "Cost / Limit"
+    },
+    "statusActive": "Active",
+    "statusDisabled": "Disabled",
+    "never": "Never",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "My API Key",
+      "expireDate": "Expire Date",
+      "expireDateHint": "Leave empty for no expiry",
+      "costLimit": "Cost Limit ($)",
+      "costLimitPlaceholder": "0 = unlimited",
+      "costLimitHint": "0 or empty = unlimited",
+      "modelWhitelist": "Model Whitelist",
+      "modelWhitelistPlaceholder": "gpt-4o, claude-3.5-sonnet (comma-separated)",
+      "modelWhitelistHint": "Comma-separated model names. Empty = all models allowed."
+    }
+  },
+  "systemConfig": {
+    "title": "System Configuration",
+    "description": "Configure system behavior. Changes take effect immediately.",
+    "settingsSaved": "Settings saved",
+    "noSettings": "No settings configured yet.",
+    "saveChanges": "Save Changes",
+    "labels": {
+      "log_retention_days": "Log Retention Days",
+      "circuit_breaker_threshold": "Circuit Breaker Threshold",
+      "circuit_breaker_cooldown": "Circuit Breaker Cooldown (s)",
+      "circuit_breaker_max_cooldown": "Circuit Breaker Max Cooldown (s)"
+    },
+    "descriptions": {
+      "log_retention_days": "Days to keep relay logs (0 = unlimited)",
+      "circuit_breaker_threshold": "Consecutive failures before tripping (default: 5)",
+      "circuit_breaker_cooldown": "Base cooldown in seconds (default: 60)",
+      "circuit_breaker_max_cooldown": "Maximum cooldown in seconds after exponential backoff (default: 600)"
+    }
+  },
+  "backup": {
+    "exportTitle": "Export Data",
+    "exportDescription": "Export all configuration data as a JSON file.",
+    "includeRequestLogs": "Include request logs",
+    "includeStatisticsData": "Include statistics data",
+    "exporting": "Exporting...",
+    "downloadExport": "Download Export",
+    "exportDownloaded": "Export downloaded",
+    "exportFailed": "Failed to export data",
+    "importTitle": "Import Data",
+    "importDescription": "Import configuration from a JSON file. Existing data will not be overwritten.",
+    "dropFileHere": "Drop file here or click to select",
+    "supportsJson": "Supports .json files",
+    "selected": "Selected:",
+    "importing": "Importing...",
+    "importData": "Import Data",
+    "importCompleted": "Import completed",
+    "importFailed": "Import failed",
+    "importDataFailed": "Failed to import data",
+    "onlyJsonSupported": "Only .json files are supported",
+    "importResult": "Import Result:",
+    "added": "{{count}} added",
+    "skipped": "{{count}} skipped"
+  }
+}
