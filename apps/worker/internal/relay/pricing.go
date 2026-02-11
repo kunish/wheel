@@ -57,6 +57,40 @@ var fallbackPrices = map[string]fallbackPrice{
 
 var suffixPattern = regexp.MustCompile(`-(thinking|latest|online)$`)
 
+// ModelPrice holds per-million-token pricing for a model.
+type ModelPrice struct {
+	InputPrice  float64
+	OutputPrice float64
+}
+
+// LookupModelPrice returns the input/output price (per million tokens) for a model.
+// Returns nil if no pricing is found.
+func LookupModelPrice(modelName string, ctx context.Context, db *bun.DB) *ModelPrice {
+	// DB lookup first
+	price, err := dal.GetLLMPriceByName(ctx, db, modelName)
+	if err == nil && price != nil {
+		return &ModelPrice{InputPrice: price.InputPrice, OutputPrice: price.OutputPrice}
+	}
+
+	// Fallback to built-in prices
+	if fp, ok := fallbackPrices[modelName]; ok {
+		return &ModelPrice{InputPrice: fp.Input, OutputPrice: fp.Output}
+	}
+
+	// Strip common suffixes
+	base := suffixPattern.ReplaceAllString(modelName, "")
+	if base != modelName {
+		return LookupModelPrice(base, ctx, db)
+	}
+
+	// Strip provider prefix after last colon
+	if idx := strings.LastIndex(modelName, ":"); idx >= 0 {
+		return LookupModelPrice(modelName[idx+1:], ctx, db)
+	}
+
+	return nil
+}
+
 // CalculateCost computes the cost of a request in dollars.
 func CalculateCost(modelName string, inputTokens, outputTokens int, ctx context.Context, db *bun.DB, cacheTokens *CacheTokens) float64 {
 	// DB lookup first

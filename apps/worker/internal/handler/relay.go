@@ -396,13 +396,27 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 				streamId := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), channel.ID, apiKeyId)
 				lastStreamId = streamId
 
+				// Estimate input tokens from request body size
+				bodyJSON, _ := json.Marshal(body)
+				estimatedInputTokens := len(bodyJSON) / 3
+
+				// Lookup model pricing for real-time cost estimation
+				var inputPrice, outputPrice float64
+				if mp := relay.LookupModelPrice(targetModel, context.Background(), h.DB); mp != nil {
+					inputPrice = mp.InputPrice
+					outputPrice = mp.OutputPrice
+				}
+
 				streamStartPayload := map[string]any{
-					"streamId":         streamId,
-					"requestModelName": model,
-					"actualModelName":  targetModel,
-					"channelId":        channel.ID,
-					"channelName":      channel.Name,
-					"time":             time.Now().Unix(),
+					"streamId":             streamId,
+					"requestModelName":     model,
+					"actualModelName":      targetModel,
+					"channelId":            channel.ID,
+					"channelName":          channel.Name,
+					"time":                 time.Now().Unix(),
+					"estimatedInputTokens": estimatedInputTokens,
+					"inputPrice":           inputPrice,
+					"outputPrice":          outputPrice,
 				}
 				if h.Broadcast != nil {
 					h.Broadcast("log-stream-start", streamStartPayload)
@@ -418,6 +432,8 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 							"streamId":        streamId,
 							"thinkingContent": thinking,
 							"responseContent": response,
+							"thinkingLength":  len(thinking),
+							"responseLength":  len(response),
 						})
 					}
 				}

@@ -19,7 +19,7 @@ import {
   MessageSquare,
   RefreshCw,
 } from "lucide-react"
-import { lazy, Suspense, useCallback, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useNavigate } from "react-router"
 import { AnimatedNumber } from "@/components/animated-number"
@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useWsEvent } from "@/hooks/use-stats-ws"
 import {
   getChannelStats,
   getDailyStats,
@@ -57,8 +58,25 @@ function InlineError({ message, onRetry }: { message: string; onRetry: () => voi
 
 // ───────────── Total (4 stat cards) ─────────────
 
-function TotalSection({ data, isLoading }: { data?: StatsMetrics; isLoading?: boolean }) {
+interface StreamingDelta {
+  inputTokens: number
+  outputTokens: number
+  inputCost: number
+  outputCost: number
+}
+
+function TotalSection({
+  data,
+  isLoading,
+  streamingDelta,
+}: {
+  data?: StatsMetrics
+  isLoading?: boolean
+  streamingDelta?: StreamingDelta
+}) {
   const { t } = useTranslation("dashboard")
+
+  const d = streamingDelta ?? { inputTokens: 0, outputTokens: 0, inputCost: 0, outputCost: 0 }
 
   const cards = useMemo(
     () => [
@@ -88,14 +106,15 @@ function TotalSection({ data, isLoading }: { data?: StatsMetrics; isLoading?: bo
         items: [
           {
             label: t("stats.totalTokens"),
-            raw: (data?.input_token ?? 0) + (data?.output_token ?? 0),
+            raw:
+              (data?.input_token ?? 0) + (data?.output_token ?? 0) + d.inputTokens + d.outputTokens,
             format: formatCount,
             icon: Bot,
             bg: "bg-emerald-500/10",
           },
           {
             label: t("stats.totalCost"),
-            raw: (data?.input_cost ?? 0) + (data?.output_cost ?? 0),
+            raw: (data?.input_cost ?? 0) + (data?.output_cost ?? 0) + d.inputCost + d.outputCost,
             format: formatMoney,
             icon: DollarSign,
             bg: "bg-emerald-500/10",
@@ -108,14 +127,14 @@ function TotalSection({ data, isLoading }: { data?: StatsMetrics; isLoading?: bo
         items: [
           {
             label: t("stats.inputTokens"),
-            raw: data?.input_token ?? 0,
+            raw: (data?.input_token ?? 0) + d.inputTokens,
             format: formatCount,
             icon: Bot,
             bg: "bg-orange-500/10",
           },
           {
             label: t("stats.inputCost"),
-            raw: data?.input_cost ?? 0,
+            raw: (data?.input_cost ?? 0) + d.inputCost,
             format: formatMoney,
             icon: DollarSign,
             bg: "bg-orange-500/10",
@@ -128,14 +147,14 @@ function TotalSection({ data, isLoading }: { data?: StatsMetrics; isLoading?: bo
         items: [
           {
             label: t("stats.outputTokens"),
-            raw: data?.output_token ?? 0,
+            raw: (data?.output_token ?? 0) + d.outputTokens,
             format: formatCount,
             icon: Bot,
             bg: "bg-violet-500/10",
           },
           {
             label: t("stats.outputCost"),
-            raw: data?.output_cost ?? 0,
+            raw: (data?.output_cost ?? 0) + d.outputCost,
             format: formatMoney,
             icon: DollarSign,
             bg: "bg-violet-500/10",
@@ -143,7 +162,7 @@ function TotalSection({ data, isLoading }: { data?: StatsMetrics; isLoading?: bo
         ],
       },
     ],
-    [t, data],
+    [t, data, d.inputTokens, d.outputTokens, d.inputCost, d.outputCost],
   )
 
   return (
@@ -1910,8 +1929,77 @@ function ModelStatsSection({ data }: { data?: ModelStatsItem[] }) {
 
 // ───────────── Page ─────────────
 
+// Streaming increment entry for real-time dashboard updates
+interface StreamIncrement {
+  estimatedInputTokens: number
+  outputTokens: number
+  cost: number
+  inputPrice: number
+  outputPrice: number
+}
+
 export default function DashboardPage() {
   const { t } = useTranslation("dashboard")
+
+  // Track streaming request increments for real-time stat updates
+  const streamIncrementsRef = useRef(new Map<string, StreamIncrement>())
+  const [incrementVersion, setIncrementVersion] = useState(0)
+
+  useWsEvent("log-stream-start", (data) => {
+    if (!data?.streamId) return
+    streamIncrementsRef.current.set(data.streamId, {
+      estimatedInputTokens: data.estimatedInputTokens ?? 0,
+      outputTokens: 0,
+      cost: 0,
+      inputPrice: data.inputPrice ?? 0,
+      outputPrice: data.outputPrice ?? 0,
+    })
+    setIncrementVersion((v) => v + 1)
+  })
+
+  useWsEvent("log-streaming", (data) => {
+    if (!data?.streamId) return
+    const entry = streamIncrementsRef.current.get(data.streamId)
+    if (!entry) return
+    const contentLen = (data.responseLength ?? 0) + (data.thinkingLength ?? 0)
+    const outputTokens = Math.floor(contentLen / 3)
+    const cost =
+      (entry.estimatedInputTokens * entry.inputPrice + outputTokens * entry.outputPrice) / 1_000_000
+    streamIncrementsRef.current.set(data.streamId, {
+      ...entry,
+      outputTokens,
+      cost,
+    })
+    setIncrementVersion((v) => v + 1)
+  })
+
+  useWsEvent("log-created", (data) => {
+    if (!data?.streamId) return
+    streamIncrementsRef.current.delete(data.streamId)
+    setIncrementVersion((v) => v + 1)
+  })
+
+  useWsEvent("log-stream-end", (data) => {
+    if (!data?.streamId) return
+    streamIncrementsRef.current.delete(data.streamId)
+    setIncrementVersion((v) => v + 1)
+  })
+
+  // Compute aggregate streaming increments
+  const streamingDelta = useMemo(() => {
+    void incrementVersion // depend on version to recompute
+    let inputTokens = 0
+    let outputTokens = 0
+    let inputCost = 0
+    let outputCost = 0
+    for (const entry of streamIncrementsRef.current.values()) {
+      inputTokens += entry.estimatedInputTokens
+      outputTokens += entry.outputTokens
+      inputCost += (entry.estimatedInputTokens * entry.inputPrice) / 1_000_000
+      outputCost += (entry.outputTokens * entry.outputPrice) / 1_000_000
+    }
+    return { inputTokens, outputTokens, inputCost, outputCost }
+  }, [incrementVersion])
 
   const {
     data: totalData,
@@ -1971,7 +2059,7 @@ export default function DashboardPage() {
         <InlineError message={t("errors.dashboardStats")} onRetry={refetchStats} />
       ) : (
         <>
-          <TotalSection data={totalData?.data} />
+          <TotalSection data={totalData?.data} streamingDelta={streamingDelta} />
           <ActivitySection data={dailyData?.data} />
           <Suspense fallback={<Skeleton className="h-[280px] w-full rounded-xl" />}>
             <LazyChartSection dailyData={dailyData?.data} hourlyData={hourlyData?.data} />

@@ -335,15 +335,19 @@ export default function LogsPage() {
         actualModelName: data.actualModelName ?? "",
         channelId: data.channelId ?? 0,
         channelName: data.channelName ?? "",
-        inputTokens: 0,
+        inputTokens: data.estimatedInputTokens ?? 0,
         outputTokens: 0,
         ftut: 0,
         useTime: 0,
+        cost: 0,
         error: "",
         totalAttempts: 0,
         _streaming: true,
         _streamId: data.streamId,
         _startedAt: Date.now(),
+        _inputPrice: data.inputPrice ?? 0,
+        _outputPrice: data.outputPrice ?? 0,
+        _estimatedInputTokens: data.estimatedInputTokens ?? 0,
       })
       return next
     })
@@ -353,14 +357,23 @@ export default function LogsPage() {
   useWsEvent("log-streaming", (data) => {
     if (!data?.streamId) return
 
-    // Update pending entry useTime
+    // Update pending entry useTime, estimated tokens, and cost
     setPendingStreams((prev) => {
       const entry = prev.get(data.streamId)
       if (!entry) return prev
       const next = new Map(prev)
+      const contentLen = (data.responseLength ?? 0) + (data.thinkingLength ?? 0)
+      const estimatedOutputTokens = Math.floor(contentLen / 3)
+      const inputPrice = (entry as any)._inputPrice ?? 0
+      const outputPrice = (entry as any)._outputPrice ?? 0
+      const estimatedInputTokens = (entry as any)._estimatedInputTokens ?? 0
+      const estimatedCost =
+        (estimatedInputTokens * inputPrice + estimatedOutputTokens * outputPrice) / 1_000_000
       next.set(data.streamId, {
         ...entry,
         useTime: Date.now() - (entry._startedAt ?? Date.now()),
+        outputTokens: estimatedOutputTokens,
+        cost: estimatedCost,
       })
       return next
     })

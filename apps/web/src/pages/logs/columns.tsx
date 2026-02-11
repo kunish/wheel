@@ -26,6 +26,9 @@ export interface LogEntry {
   _streaming?: boolean
   _streamId?: string
   _startedAt?: number
+  _inputPrice?: number
+  _outputPrice?: number
+  _estimatedInputTokens?: number
 }
 
 function formatDuration(ms: number): string {
@@ -185,7 +188,11 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       header: ({ column }) => <SortableHeader column={column}>{t("columns.input")}</SortableHeader>,
       enableSorting: true,
       cell: (info) => (
-        <span className="text-right font-mono text-xs">{info.getValue().toLocaleString()}</span>
+        <span
+          className={`text-right font-mono text-xs${info.row.original._streaming ? "opacity-50" : ""}`}
+        >
+          {info.getValue().toLocaleString()}
+        </span>
       ),
       meta: { className: "text-right" },
     }),
@@ -195,7 +202,11 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       ),
       enableSorting: true,
       cell: (info) => (
-        <span className="text-right font-mono text-xs">{info.getValue().toLocaleString()}</span>
+        <span
+          className={`text-right font-mono text-xs${info.row.original._streaming ? "opacity-50" : ""}`}
+        >
+          {info.getValue().toLocaleString()}
+        </span>
       ),
       meta: { className: "text-right" },
     }),
@@ -223,7 +234,11 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       header: ({ column }) => <SortableHeader column={column}>{t("columns.cost")}</SortableHeader>,
       enableSorting: true,
       cell: (info) => (
-        <span className="text-right font-mono text-xs">{formatCost(info.getValue())}</span>
+        <span
+          className={`text-right font-mono text-xs${info.row.original._streaming ? "opacity-50" : ""}`}
+        >
+          {formatCost(info.getValue())}
+        </span>
       ),
       meta: { className: "text-right" },
     }),
