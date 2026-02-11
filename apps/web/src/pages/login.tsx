@@ -1,10 +1,11 @@
-import { Loader2 } from "lucide-react"
+import { motion } from "motion/react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GearOutline, GearSpinner } from "@/components/ui/gear-spinner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { login } from "@/lib/api"
@@ -36,17 +37,30 @@ export default function LoginPage() {
 
   return (
     <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      {/* Decorative background shapes */}
+      {/* Decorative gear background */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="bg-nb-lime/20 border-border/10 absolute top-[10%] left-[5%] size-32 rotate-12 rounded-md border-2" />
-        <div className="bg-nb-pink/20 border-border/10 absolute right-[8%] bottom-[15%] size-24 -rotate-6 rounded-md border-2" />
-        <div className="bg-nb-sky/20 border-border/10 absolute top-[60%] left-[15%] size-16 rotate-45 rounded-md border-2" />
-        <div className="bg-nb-orange/20 border-border/10 absolute top-[20%] right-[20%] size-20 -rotate-12 rounded-md border-2" />
+        <div className="animate-gear-spin-slow absolute top-[10%] left-[5%]">
+          <GearOutline size={128} className="text-nb-lime/15" />
+        </div>
+        <div className="animate-gear-spin-reverse absolute right-[8%] bottom-[15%]">
+          <GearOutline size={96} className="text-nb-pink/15" />
+        </div>
+        <div className="animate-gear-spin-slow absolute top-[60%] left-[15%]">
+          <GearOutline size={64} className="text-nb-sky/15" />
+        </div>
+        <div className="animate-gear-spin-reverse absolute top-[20%] right-[20%]">
+          <GearOutline size={80} className="text-nb-orange/15" />
+        </div>
       </div>
 
       <Card className="relative z-10 w-full max-w-sm shadow-[6px_6px_0_var(--nb-shadow)]">
         <CardHeader className="pb-2 text-center">
-          <div className="mb-4 flex justify-center">
+          <motion.div
+            className="mb-4 flex justify-center"
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ duration: 0.6, ease: "backOut" }}
+          >
             <div className="bg-nb-lime border-border flex size-14 items-center justify-center rounded-lg border-2 shadow-[3px_3px_0_var(--nb-shadow)]">
               <svg
                 className="size-7"
@@ -68,7 +82,7 @@ export default function LoginPage() {
                 <line x1="9.88" y1="14.12" x2="5.64" y2="18.36" />
               </svg>
             </div>
-          </div>
+          </motion.div>
           <CardTitle className="text-2xl">{t("title")}</CardTitle>
           <CardDescription>{t("description")}</CardDescription>
         </CardHeader>
@@ -103,7 +117,7 @@ export default function LoginPage() {
             <Button type="submit" className="mt-2 w-full" disabled={loading}>
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <GearSpinner size="sm" speed="fast" className="mr-2" />
                   {t("submitting")}
                 </>
               ) : (

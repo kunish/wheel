@@ -19,7 +19,8 @@ import {
   MessageSquare,
   RefreshCw,
 } from "lucide-react"
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react"
+import { motion } from "motion/react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useNavigate } from "react-router"
 import { AnimatedNumber } from "@/components/animated-number"
@@ -28,7 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useWsEvent } from "@/hooks/use-stats-ws"
+import { subscribe, useWsEvent } from "@/hooks/use-stats-ws"
 import {
   getChannelStats,
   getDailyStats,
@@ -39,6 +40,24 @@ import {
 import { formatCount, formatMoney, formatTime } from "@/lib/format"
 
 const LazyChartSection = lazy(() => import("@/components/chart-section"))
+
+// ───────────── Gear rotation on data events ─────────────
+
+/** Returns a cumulative rotation angle (deg) that ticks forward on every WS data event. */
+function useGearRotation(): number {
+  const [angle, setAngle] = useState(0)
+
+  useEffect(() => {
+    const unsub = subscribe(() => {
+      setAngle((a) => a + 15)
+    })
+    return () => {
+      unsub()
+    }
+  }, [])
+
+  return angle
+}
 
 // ───────────── Inline Error ─────────────
 
@@ -167,44 +186,54 @@ function TotalSection({
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {cards.map((card) => (
-        <Card key={card.title} className="gap-3 p-4">
-          <div className="flex items-center gap-2 px-0">
-            <card.headerIcon className="text-muted-foreground h-4 w-4 shrink-0" />
-            <span className="text-sm font-bold">{card.title}</span>
-          </div>
-          <div className="flex flex-col gap-2 px-0">
-            {card.items.map((item) => {
-              const formatted = item.format(item.raw)
-              return (
-                <div key={item.label} className="flex items-center gap-2">
-                  <div
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${item.bg}`}
-                  >
-                    <item.icon className="text-primary h-3.5 w-3.5" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-muted-foreground text-xs leading-tight">
-                      {item.label}
-                    </span>
-                    {isLoading ? (
-                      <Skeleton className="mt-1 h-5 w-16" />
-                    ) : (
-                      <span className="text-lg leading-tight font-bold tabular-nums">
-                        <AnimatedNumber value={item.raw} formatter={(n) => item.format(n).value} />
-                        {formatted.unit && (
-                          <span className="text-muted-foreground ml-0.5 text-xs font-medium">
-                            {formatted.unit}
-                          </span>
-                        )}
+      {cards.map((card, index) => (
+        <motion.div
+          key={card.title}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: index * 0.08, ease: [0.33, 1, 0.68, 1] }}
+        >
+          <Card className="gap-3 p-4">
+            <div className="flex items-center gap-2 px-0">
+              <card.headerIcon className="text-muted-foreground h-4 w-4 shrink-0" />
+              <span className="text-sm font-bold">{card.title}</span>
+            </div>
+            <div className="flex flex-col gap-2 px-0">
+              {card.items.map((item) => {
+                const formatted = item.format(item.raw)
+                return (
+                  <div key={item.label} className="flex items-center gap-2">
+                    <div
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${item.bg}`}
+                    >
+                      <item.icon className="text-primary h-3.5 w-3.5" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-muted-foreground text-xs leading-tight">
+                        {item.label}
                       </span>
-                    )}
+                      {isLoading ? (
+                        <Skeleton className="mt-1 h-5 w-16" />
+                      ) : (
+                        <span className="text-lg leading-tight font-bold tabular-nums">
+                          <AnimatedNumber
+                            value={item.raw}
+                            formatter={(n) => item.format(n).value}
+                          />
+                          {formatted.unit && (
+                            <span className="text-muted-foreground ml-0.5 text-xs font-medium">
+                              {formatted.unit}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </Card>
+                )
+              })}
+            </div>
+          </Card>
+        </motion.div>
       ))}
     </div>
   )
@@ -297,9 +326,578 @@ function toDateStr(d: Date): string {
   )
 }
 
+// ───────────── Hero Gear Clock ─────────────
+
+const GEAR_CX = 200
+const GEAR_CY = 200
+const GEAR_GAP = 1.5
+const GEAR_ARC_SPAN = 30 - GEAR_GAP * 2
+const GEAR_BASE = -90 - 15
+const GEAR_PM_OUTER = 172
+const GEAR_PM_INNER = 134
+const GEAR_AM_OUTER = 128
+const GEAR_AM_INNER = 90
+const GEAR_HUB_R = 83
+const GEAR_RING_R = 176
+const GEAR_TOOTH_H = 10
+const GEAR_OUTER_R = GEAR_RING_R + GEAR_TOOTH_H
+
+function gearArcPath(startDeg: number, spanDeg: number, rIn: number, rOut: number) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const a1 = toRad(startDeg)
+  const a2 = toRad(startDeg + spanDeg)
+  const x1 = GEAR_CX + rOut * Math.cos(a1)
+  const y1 = GEAR_CY + rOut * Math.sin(a1)
+  const x2 = GEAR_CX + rOut * Math.cos(a2)
+  const y2 = GEAR_CY + rOut * Math.sin(a2)
+  const x3 = GEAR_CX + rIn * Math.cos(a2)
+  const y3 = GEAR_CY + rIn * Math.sin(a2)
+  const x4 = GEAR_CX + rIn * Math.cos(a1)
+  const y4 = GEAR_CY + rIn * Math.sin(a1)
+  return `M ${x1} ${y1} A ${rOut} ${rOut} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${rIn} ${rIn} 0 0 0 ${x4} ${y4} Z`
+}
+
+interface HeroGearClockProps {
+  dayHourlyMap: Map<number, StatsHourly>
+  isToday: boolean
+  nowHour: number
+  now: Date
+  reqCount: number
+  inTokens: number
+  outTokens: number
+  totalCost: number
+  selectedDayDateStr: string
+  selectedDisplayDate: string
+  gearAngle: number
+  t: (key: string) => string
+  navigateToHour: (dateStr: string, hour: number) => void
+  handleMouseEnter: (e: React.MouseEvent, tooltip: HeatmapTooltip) => void
+  handleMouseLeave: () => void
+}
+
+function HeroGearClock({
+  dayHourlyMap,
+  isToday,
+  nowHour,
+  now,
+  reqCount,
+  inTokens,
+  outTokens,
+  totalCost,
+  selectedDayDateStr,
+  selectedDisplayDate,
+  gearAngle,
+  t,
+  navigateToHour,
+  handleMouseEnter,
+  handleMouseLeave,
+}: HeroGearClockProps) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+
+  // Count active hours for reactor energy intensity
+  const activeHours = Array.from({ length: 24 }, (_, h) => {
+    const hourly = dayHourlyMap.get(h)
+    return hourly ? (hourly.request_success ?? 0) + (hourly.request_failed ?? 0) : 0
+  }).filter((c) => c > 0).length
+
+  const energyIntensity = Math.min(1, activeHours / 12)
+
+  return (
+    <motion.div
+      className="relative flex items-center justify-center py-4"
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {/* ── Arc Reactor background glow ── */}
+      <div
+        className="pointer-events-none absolute rounded-full"
+        style={{
+          width: "420px",
+          height: "420px",
+          background: `radial-gradient(circle, color-mix(in srgb, var(--nb-lime) ${Math.round(8 + energyIntensity * 10)}%, transparent) 0%, transparent 70%)`,
+          animation: "reactor-core-pulse 3s ease-in-out infinite",
+        }}
+      />
+
+      {/* ── Decorative outer reactor rings — slow rotating, breathing ── */}
+      <svg
+        viewBox="0 0 400 400"
+        className="pointer-events-none absolute w-full max-w-[520px]"
+        style={{ animation: "reactor-ring-breathe 4s ease-in-out infinite" }}
+      >
+        {/* Outermost energy ring */}
+        <circle
+          cx="200"
+          cy="200"
+          r="198"
+          fill="none"
+          stroke="var(--nb-lime)"
+          strokeWidth="0.5"
+          opacity={0.3}
+        />
+        {/* Outer dashed containment ring */}
+        <circle
+          cx="200"
+          cy="200"
+          r="194"
+          fill="none"
+          stroke="var(--nb-lime)"
+          strokeWidth="0.3"
+          strokeDasharray="2 6"
+          opacity={0.2}
+          style={{ animation: "reactor-spin-slow 60s linear infinite" }}
+        />
+      </svg>
+
+      {/* ── Counter-rotating decorative gear (behind main) ── */}
+      <svg
+        viewBox="0 0 400 400"
+        className="pointer-events-none absolute w-full max-w-[520px] opacity-[0.04]"
+        style={{
+          transform: `rotate(${-gearAngle * 0.5}deg)`,
+          transition: "transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        }}
+      >
+        {Array.from({ length: 32 }, (_, i) => {
+          const angle = i * (360 / 32)
+          const rad = toRad(angle)
+          const perp = rad + Math.PI / 2
+          const hw = 5
+          const iR = 185
+          const oR = 198
+          return (
+            <path
+              key={i}
+              d={`M ${200 + iR * Math.cos(rad) + hw * Math.cos(perp)} ${200 + iR * Math.sin(rad) + hw * Math.sin(perp)} L ${200 + oR * Math.cos(rad) + (hw - 1) * Math.cos(perp)} ${200 + oR * Math.sin(rad) + (hw - 1) * Math.sin(perp)} L ${200 + oR * Math.cos(rad) - (hw - 1) * Math.cos(perp)} ${200 + oR * Math.sin(rad) - (hw - 1) * Math.sin(perp)} L ${200 + iR * Math.cos(rad) - hw * Math.cos(perp)} ${200 + iR * Math.sin(rad) - hw * Math.sin(perp)} Z`}
+              fill="var(--foreground)"
+            />
+          )
+        })}
+        <circle cx="200" cy="200" r="185" fill="none" stroke="var(--foreground)" strokeWidth="3" />
+      </svg>
+
+      {/* ── Main gear SVG ── */}
+      <svg viewBox="-15 -15 430 430" className="relative w-full max-w-[520px]">
+        <defs>
+          {/* Reactor core gradient for hub */}
+          <radialGradient id="reactor-core-grad" cx="50%" cy="50%" r="50%">
+            <stop
+              offset="0%"
+              stopColor="var(--nb-lime)"
+              stopOpacity={0.12 + energyIntensity * 0.08}
+            />
+            <stop offset="60%" stopColor="var(--nb-lime)" stopOpacity={0.04} />
+            <stop offset="100%" stopColor="var(--nb-lime)" stopOpacity="0" />
+          </radialGradient>
+          {/* Energy channel gradient for spokes */}
+          <linearGradient id="spoke-energy" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="var(--nb-lime)" stopOpacity="0.3" />
+            <stop offset="50%" stopColor="var(--nb-lime)" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="var(--nb-lime)" stopOpacity="0.3" />
+          </linearGradient>
+        </defs>
+
+        {/* ── Rotating gear teeth ring ── */}
+        <g
+          style={{
+            transformOrigin: `${GEAR_CX}px ${GEAR_CY}px`,
+            filter: "drop-shadow(2px 2px 0 color-mix(in srgb, var(--nb-shadow) 25%, transparent))",
+            transform: `rotate(${gearAngle}deg)`,
+            transition: "transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          }}
+        >
+          {Array.from({ length: 24 }, (_, i) => {
+            const seg = Math.floor(i / 2)
+            const sub = i % 2
+            const segCenter = seg * 30 - 90
+            const toothAngle = segCenter + (sub === 0 ? -7 : 7)
+            const hw = 4.5
+            const mid = toRad(toothAngle)
+            const perp = mid + Math.PI / 2
+            const ix1 = GEAR_CX + GEAR_RING_R * Math.cos(mid) + hw * Math.cos(perp)
+            const iy1 = GEAR_CY + GEAR_RING_R * Math.sin(mid) + hw * Math.sin(perp)
+            const ix2 = GEAR_CX + GEAR_RING_R * Math.cos(mid) - hw * Math.cos(perp)
+            const iy2 = GEAR_CY + GEAR_RING_R * Math.sin(mid) - hw * Math.sin(perp)
+            const ox1 = GEAR_CX + GEAR_OUTER_R * Math.cos(mid) + (hw - 1) * Math.cos(perp)
+            const oy1 = GEAR_CY + GEAR_OUTER_R * Math.sin(mid) + (hw - 1) * Math.sin(perp)
+            const ox2 = GEAR_CX + GEAR_OUTER_R * Math.cos(mid) - (hw - 1) * Math.cos(perp)
+            const oy2 = GEAR_CY + GEAR_OUTER_R * Math.sin(mid) - (hw - 1) * Math.sin(perp)
+            return (
+              <path
+                key={`tooth-${i}`}
+                d={`M ${ix1} ${iy1} L ${ox1} ${oy1} L ${ox2} ${oy2} L ${ix2} ${iy2} Z`}
+                fill="var(--primary)"
+                opacity={0.25}
+              />
+            )
+          })}
+          {/* Outer gear ring */}
+          <circle
+            cx={GEAR_CX}
+            cy={GEAR_CY}
+            r={GEAR_RING_R}
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth="2.5"
+          />
+        </g>
+
+        {/* ── PM ring (outer): hours 12-23 ── */}
+        {Array.from({ length: 12 }, (_, i) => {
+          const h = i + 12
+          const isFutureHour = isToday && h > nowHour
+          const hourly = dayHourlyMap.get(h)
+          const hCount = isFutureHour
+            ? 0
+            : (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+          const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
+          const startDeg = i * 30 + GEAR_BASE + GEAR_GAP
+          const isCurrentHour = isToday && h === nowHour
+
+          return (
+            <path
+              key={`pm-${h}`}
+              d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_PM_INNER, GEAR_PM_OUTER)}
+              fill={hLevel === -1 ? "none" : LEVEL_COLORS[hLevel]}
+              stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
+              strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
+              strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
+              opacity={hLevel === -1 ? 0.3 : 1}
+              className="cursor-pointer transition-all hover:opacity-80"
+              style={isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined}
+              onClick={() => navigateToHour(selectedDayDateStr, h)}
+              onMouseEnter={(e) =>
+                handleMouseEnter(e, {
+                  label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
+                  metrics: hourly ?? null,
+                })
+              }
+              onMouseLeave={handleMouseLeave}
+            />
+          )
+        })}
+
+        {/* ── Divider ring between AM / PM — reactor containment ring ── */}
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r={131}
+          fill="none"
+          stroke="var(--border)"
+          strokeWidth="1.5"
+        />
+        {/* Energy trace on divider */}
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r={131}
+          fill="none"
+          stroke="var(--nb-lime)"
+          strokeWidth="0.5"
+          opacity={0.15}
+          strokeDasharray="8 20"
+          style={{
+            transformOrigin: `${GEAR_CX}px ${GEAR_CY}px`,
+            animation: "reactor-spin-slow 30s linear infinite",
+          }}
+        />
+
+        {/* ── AM ring (inner): hours 0-11 ── */}
+        {Array.from({ length: 12 }, (_, i) => {
+          const h = i
+          const isFutureHour = isToday && h > nowHour
+          const hourly = dayHourlyMap.get(h)
+          const hCount = isFutureHour
+            ? 0
+            : (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+          const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
+          const startDeg = i * 30 + GEAR_BASE + GEAR_GAP
+          const isCurrentHour = isToday && h === nowHour
+
+          return (
+            <path
+              key={`am-${h}`}
+              d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_AM_INNER, GEAR_AM_OUTER)}
+              fill={hLevel === -1 ? "none" : LEVEL_COLORS[hLevel]}
+              stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
+              strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
+              strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
+              opacity={hLevel === -1 ? 0.3 : 1}
+              className="cursor-pointer transition-all hover:opacity-80"
+              style={isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined}
+              onClick={() => navigateToHour(selectedDayDateStr, h)}
+              onMouseEnter={(e) =>
+                handleMouseEnter(e, {
+                  label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
+                  metrics: hourly ?? null,
+                })
+              }
+              onMouseLeave={handleMouseLeave}
+            />
+          )
+        })}
+
+        {/* ── Reactor core hub ── */}
+        {/* Outer glow ring around hub */}
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r={GEAR_HUB_R + 2}
+          fill="none"
+          stroke="var(--nb-lime)"
+          strokeWidth="0.8"
+          opacity={0.2}
+          style={{ animation: "reactor-core-pulse 3s ease-in-out infinite" }}
+        />
+        {/* Hub fill */}
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r={GEAR_HUB_R}
+          fill="var(--card)"
+          stroke="var(--border)"
+          strokeWidth="2.5"
+        />
+        {/* Reactor energy fill inside hub */}
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r={GEAR_HUB_R - 1}
+          fill="url(#reactor-core-grad)"
+          style={{ animation: "reactor-core-pulse 3s ease-in-out infinite" }}
+        />
+
+        {/* ── Energy channel spokes ── */}
+        {Array.from({ length: 12 }, (_, i) => {
+          const angle = toRad(i * 30 + GEAR_BASE + 15)
+          const x1 = GEAR_CX + GEAR_HUB_R * Math.cos(angle)
+          const y1 = GEAR_CY + GEAR_HUB_R * Math.sin(angle)
+          const x2 = GEAR_CX + GEAR_RING_R * Math.cos(angle)
+          const y2 = GEAR_CY + GEAR_RING_R * Math.sin(angle)
+          return (
+            <g key={`spoke-${i}`}>
+              {/* Energy glow line */}
+              <line
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="var(--nb-lime)"
+                strokeWidth="2.5"
+                opacity={0.06}
+                strokeLinecap="round"
+              />
+              {/* Structural spoke */}
+              <line
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="var(--border)"
+                strokeWidth="1.2"
+                opacity={0.1}
+              />
+            </g>
+          )
+        })}
+
+        {/* ── Inner reactor rings (decorative concentric circles) ── */}
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r={GEAR_HUB_R - 6}
+          fill="none"
+          stroke="var(--nb-lime)"
+          strokeWidth="0.4"
+          opacity={0.12}
+        />
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r="12"
+          fill="none"
+          stroke="var(--nb-lime)"
+          strokeWidth="0.6"
+          opacity={0.2}
+          style={{ animation: "reactor-core-pulse 2.5s ease-in-out infinite" }}
+        />
+        <circle cx={GEAR_CX} cy={GEAR_CY} r="8" fill="var(--border)" opacity={0.1} />
+        {/* Core dot — energy center */}
+        <circle
+          cx={GEAR_CX}
+          cy={GEAR_CY}
+          r="3"
+          fill="var(--nb-lime)"
+          opacity={0.3}
+          style={{ animation: "reactor-core-pulse 2s ease-in-out infinite" }}
+        />
+
+        {/* ── Clock hour labels ── */}
+        {Array.from({ length: 12 }, (_, i) => {
+          const displayHour = i === 0 ? 12 : i
+          const midAngle = i * 30 - 90
+          const labelR = GEAR_RING_R + GEAR_TOOTH_H / 2 + 12
+          const x = GEAR_CX + labelR * Math.cos(toRad(midAngle))
+          const y = GEAR_CY + labelR * Math.sin(toRad(midAngle))
+          const isCardinal = i % 3 === 0
+          return (
+            <text
+              key={`label-${i}`}
+              x={x}
+              y={y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="var(--foreground)"
+              fontSize={isCardinal ? "13" : "9"}
+              fontWeight={isCardinal ? "900" : "700"}
+              fontFamily="inherit"
+              opacity={isCardinal ? 1 : 0.5}
+            >
+              {displayHour}
+            </text>
+          )
+        })}
+
+        {/* ── AM / PM labels ── */}
+        <text
+          x={GEAR_CX}
+          y={GEAR_CY - (GEAR_PM_INNER + GEAR_PM_OUTER) / 2}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="var(--muted-foreground)"
+          fontSize="7"
+          fontWeight="800"
+          fontFamily="inherit"
+          letterSpacing="2"
+          opacity={0.45}
+        >
+          PM
+        </text>
+        <text
+          x={GEAR_CX}
+          y={GEAR_CY - (GEAR_AM_INNER + GEAR_AM_OUTER) / 2}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="var(--muted-foreground)"
+          fontSize="7"
+          fontWeight="800"
+          fontFamily="inherit"
+          letterSpacing="2"
+          opacity={0.45}
+        >
+          AM
+        </text>
+
+        {/* ── Current hour hand (today only) ── */}
+        {isToday &&
+          (() => {
+            const minuteFraction = now.getMinutes() / 60
+            const clockPos = (nowHour % 12) + minuteFraction
+            const handAngle = clockPos * 30 - 90
+            const isPM = nowHour >= 12
+            const handLen = isPM ? GEAR_PM_OUTER : GEAR_AM_OUTER
+            const hx = GEAR_CX + handLen * Math.cos(toRad(handAngle))
+            const hy = GEAR_CY + handLen * Math.sin(toRad(handAngle))
+            return (
+              <>
+                {/* Hand glow */}
+                <line
+                  x1={GEAR_CX}
+                  y1={GEAR_CY}
+                  x2={hx}
+                  y2={hy}
+                  stroke="var(--nb-lime)"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  opacity={0.15}
+                />
+                {/* Hand line */}
+                <line
+                  x1={GEAR_CX}
+                  y1={GEAR_CY}
+                  x2={hx}
+                  y2={hy}
+                  stroke="var(--destructive)"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+                <circle cx={GEAR_CX} cy={GEAR_CY} r="5" fill="var(--destructive)" />
+                <circle cx={hx} cy={hy} r="3.5" fill="var(--destructive)" />
+              </>
+            )
+          })()}
+
+        {/* ── Center stats — big bold request count ── */}
+        <text
+          x={GEAR_CX}
+          y={GEAR_CY - 22}
+          textAnchor="middle"
+          fill="var(--foreground)"
+          fontSize="28"
+          fontWeight="900"
+          fontFamily="inherit"
+        >
+          {formatCount(reqCount).value}
+        </text>
+        <text
+          x={GEAR_CX}
+          y={GEAR_CY - 6}
+          textAnchor="middle"
+          fill="var(--muted-foreground)"
+          fontSize="8"
+          fontWeight="700"
+          fontFamily="inherit"
+          letterSpacing="1.5"
+        >
+          {t("stats.requests").toUpperCase()}
+        </text>
+
+        {/* ── Bottom stats row inside hub ── */}
+        {[
+          { label: "IN", value: formatCount(inTokens) },
+          { label: "OUT", value: formatCount(outTokens) },
+          { label: "$", value: formatMoney(totalCost) },
+        ].map((s, si) => {
+          const xPos = GEAR_CX - 36 + si * 36
+          return (
+            <g key={s.label}>
+              <text
+                x={xPos}
+                y={GEAR_CY + 14}
+                textAnchor="middle"
+                fill="var(--muted-foreground)"
+                fontSize="6"
+                fontWeight="700"
+                fontFamily="inherit"
+                letterSpacing="0.5"
+              >
+                {s.label}
+              </text>
+              <text
+                x={xPos}
+                y={GEAR_CY + 25}
+                textAnchor="middle"
+                fill="var(--foreground)"
+                fontSize="10"
+                fontWeight="900"
+                fontFamily="inherit"
+              >
+                {s.value.value}
+                {s.value.unit && s.value.unit}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+    </motion.div>
+  )
+}
+
 function ActivitySection({ data }: { data?: StatsDaily[] }) {
   const { t, i18n } = useTranslation("dashboard")
   const { t: tc } = useTranslation("common")
+  const gearAngle = useGearRotation()
   const firstDay = useMemo(() => getFirstDayOfWeek(i18n.language), [i18n.language])
   const [view, setViewRaw] = useState<HeatmapView>(getStoredView)
   const setView = useCallback((v: HeatmapView) => {
@@ -751,360 +1349,24 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                   ))}
                 </div>
 
-                {/* 12-hour dual-ring clock heatmap with wheel/gear motif */}
-                <div className="flex items-center justify-center py-2">
-                  <svg
-                    viewBox="-10 -10 360 360"
-                    className="w-full max-w-[380px]"
-                    style={{ filter: "drop-shadow(2px 2px 0 var(--nb-shadow))" }}
-                  >
-                    {(() => {
-                      const CX = 170
-                      const CY = 170
-                      const toRad = (deg: number) => (deg * Math.PI) / 180
-                      // Arc segment geometry — 12 segments of 30° each
-                      // Each segment is CENTERED on its clock tick (12 at top = -90°)
-                      // so it spans from tick-15° to tick+15°, with GAP padding on each side
-                      const GAP = 1.5
-                      const ARC_SPAN = 30 - GAP * 2 // 27° per arc
-                      // Base offset: i=0 tick is at -90°, arc center at -90°, arc starts at -90°-15°+GAP
-                      const BASE = -90 - 15
-                      // Radii
-                      const PM_OUTER = 155
-                      const PM_INNER = 120
-                      const AM_OUTER = 114
-                      const AM_INNER = 80
-                      const HUB_R = 74
-                      const GEAR_RING_R = 158
-                      const GEAR_TOOTH_H = 8
-                      const GEAR_OUTER = GEAR_RING_R + GEAR_TOOTH_H
-
-                      /** Build an arc‑segment path between two radii */
-                      function arcPath(
-                        startDeg: number,
-                        spanDeg: number,
-                        rIn: number,
-                        rOut: number,
-                      ) {
-                        const a1 = toRad(startDeg)
-                        const a2 = toRad(startDeg + spanDeg)
-                        const x1 = CX + rOut * Math.cos(a1)
-                        const y1 = CY + rOut * Math.sin(a1)
-                        const x2 = CX + rOut * Math.cos(a2)
-                        const y2 = CY + rOut * Math.sin(a2)
-                        const x3 = CX + rIn * Math.cos(a2)
-                        const y3 = CY + rIn * Math.sin(a2)
-                        const x4 = CX + rIn * Math.cos(a1)
-                        const y4 = CY + rIn * Math.sin(a1)
-                        return [
-                          `M ${x1} ${y1}`,
-                          `A ${rOut} ${rOut} 0 0 1 ${x2} ${y2}`,
-                          `L ${x3} ${y3}`,
-                          `A ${rIn} ${rIn} 0 0 0 ${x4} ${y4}`,
-                          "Z",
-                        ].join(" ")
-                      }
-
-                      return (
-                        <>
-                          {/* ── Gear teeth: 24 teeth, 2 per segment, centered in each arc ── */}
-                          {Array.from({ length: 24 }, (_, i) => {
-                            // Segment index and sub-position (0 or 1)
-                            const seg = Math.floor(i / 2)
-                            const sub = i % 2
-                            // Segment center at seg*30 - 90 (clock tick), two teeth at ±7°
-                            const segCenter = seg * 30 - 90
-                            const toothAngle = segCenter + (sub === 0 ? -7 : 7)
-                            const hw = 3.5 // half-width of tooth
-                            const mid = toRad(toothAngle)
-                            const perp = mid + Math.PI / 2
-                            const ix1 = CX + GEAR_RING_R * Math.cos(mid) + hw * Math.cos(perp)
-                            const iy1 = CY + GEAR_RING_R * Math.sin(mid) + hw * Math.sin(perp)
-                            const ix2 = CX + GEAR_RING_R * Math.cos(mid) - hw * Math.cos(perp)
-                            const iy2 = CY + GEAR_RING_R * Math.sin(mid) - hw * Math.sin(perp)
-                            const ox1 =
-                              CX + GEAR_OUTER * Math.cos(mid) + (hw - 0.8) * Math.cos(perp)
-                            const oy1 =
-                              CY + GEAR_OUTER * Math.sin(mid) + (hw - 0.8) * Math.sin(perp)
-                            const ox2 =
-                              CX + GEAR_OUTER * Math.cos(mid) - (hw - 0.8) * Math.cos(perp)
-                            const oy2 =
-                              CY + GEAR_OUTER * Math.sin(mid) - (hw - 0.8) * Math.sin(perp)
-                            return (
-                              <path
-                                key={`tooth-${i}`}
-                                d={`M ${ix1} ${iy1} L ${ox1} ${oy1} L ${ox2} ${oy2} L ${ix2} ${iy2} Z`}
-                                fill="var(--border)"
-                                opacity={0.2}
-                              />
-                            )
-                          })}
-
-                          {/* ── Outer gear ring ── */}
-                          <circle
-                            cx={CX}
-                            cy={CY}
-                            r={GEAR_RING_R}
-                            fill="none"
-                            stroke="var(--border)"
-                            strokeWidth="2"
-                          />
-
-                          {/* ── PM ring (outer): hours 12–23 ── */}
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const h = i + 12
-                            const isFutureHour = isToday && h > nowHour
-                            const hourly = dayHourlyMap.get(h)
-                            const hCount = isFutureHour
-                              ? 0
-                              : (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
-                            const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
-                            const startDeg = i * 30 + BASE + GAP
-
-                            return (
-                              <path
-                                key={`pm-${h}`}
-                                d={arcPath(startDeg, ARC_SPAN, PM_INNER, PM_OUTER)}
-                                fill={hLevel === -1 ? "none" : LEVEL_COLORS[hLevel]}
-                                stroke={hLevel === -1 ? "var(--border)" : "none"}
-                                strokeWidth={hLevel === -1 ? "0.5" : "0"}
-                                strokeDasharray={hLevel === -1 ? "3 2" : "none"}
-                                opacity={hLevel === -1 ? 0.3 : 1}
-                                className="cursor-pointer transition-opacity hover:opacity-80"
-                                onClick={() => navigateToHour(selectedDayDateStr, h)}
-                                onMouseEnter={(e) =>
-                                  handleMouseEnter(e, {
-                                    label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
-                                    metrics: hourly ?? null,
-                                  })
-                                }
-                                onMouseLeave={handleMouseLeave}
-                              />
-                            )
-                          })}
-
-                          {/* ── Divider ring between AM / PM ── */}
-                          <circle
-                            cx={CX}
-                            cy={CY}
-                            r={117}
-                            fill="none"
-                            stroke="var(--border)"
-                            strokeWidth="1"
-                          />
-
-                          {/* ── AM ring (inner): hours 0–11 ── */}
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const h = i
-                            const isFutureHour = isToday && h > nowHour
-                            const hourly = dayHourlyMap.get(h)
-                            const hCount = isFutureHour
-                              ? 0
-                              : (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
-                            const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
-                            const startDeg = i * 30 + BASE + GAP
-
-                            return (
-                              <path
-                                key={`am-${h}`}
-                                d={arcPath(startDeg, ARC_SPAN, AM_INNER, AM_OUTER)}
-                                fill={hLevel === -1 ? "none" : LEVEL_COLORS[hLevel]}
-                                stroke={hLevel === -1 ? "var(--border)" : "none"}
-                                strokeWidth={hLevel === -1 ? "0.5" : "0"}
-                                strokeDasharray={hLevel === -1 ? "3 2" : "none"}
-                                opacity={hLevel === -1 ? 0.3 : 1}
-                                className="cursor-pointer transition-opacity hover:opacity-80"
-                                onClick={() => navigateToHour(selectedDayDateStr, h)}
-                                onMouseEnter={(e) =>
-                                  handleMouseEnter(e, {
-                                    label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
-                                    metrics: hourly ?? null,
-                                  })
-                                }
-                                onMouseLeave={handleMouseLeave}
-                              />
-                            )
-                          })}
-
-                          {/* ── Center hub ── */}
-                          <circle
-                            cx={CX}
-                            cy={CY}
-                            r={HUB_R}
-                            fill="var(--card)"
-                            stroke="var(--border)"
-                            strokeWidth="1.5"
-                          />
-
-                          {/* ── Wheel spokes — thin lines at each segment boundary (every 30°) ── */}
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const angle = toRad(i * 30 + BASE + 15)
-                            return (
-                              <line
-                                key={`spoke-${i}`}
-                                x1={CX + HUB_R * Math.cos(angle)}
-                                y1={CY + HUB_R * Math.sin(angle)}
-                                x2={CX + GEAR_RING_R * Math.cos(angle)}
-                                y2={CY + GEAR_RING_R * Math.sin(angle)}
-                                stroke="var(--border)"
-                                strokeWidth="1.2"
-                                opacity={0.12}
-                              />
-                            )
-                          })}
-
-                          {/* ── Small hub accent circle (axle) ── */}
-                          <circle cx={CX} cy={CY} r="5" fill="var(--border)" opacity={0.15} />
-
-                          {/* ── Clock hour labels at the outer edge of each segment ── */}
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const displayHour = i === 0 ? 12 : i
-                            // Label at the clock tick position (center of arc segment)
-                            const midAngle = i * 30 - 90
-                            const labelR = GEAR_RING_R + GEAR_TOOTH_H / 2 + 10
-                            const x = CX + labelR * Math.cos(toRad(midAngle))
-                            const y = CY + labelR * Math.sin(toRad(midAngle))
-                            const isCardinal = i % 3 === 0
-                            return (
-                              <text
-                                key={`label-${i}`}
-                                x={x}
-                                y={y}
-                                textAnchor="middle"
-                                dominantBaseline="central"
-                                fill="var(--foreground)"
-                                fontSize={isCardinal ? "10" : "7.5"}
-                                fontWeight={isCardinal ? "800" : "600"}
-                                fontFamily="inherit"
-                                opacity={isCardinal ? 1 : 0.5}
-                              >
-                                {displayHour}
-                              </text>
-                            )
-                          })}
-
-                          {/* ── AM / PM labels inside their rings ── */}
-                          <text
-                            x={CX}
-                            y={CY - (PM_INNER + PM_OUTER) / 2}
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            fill="var(--muted-foreground)"
-                            fontSize="6"
-                            fontWeight="700"
-                            fontFamily="inherit"
-                            letterSpacing="1"
-                            opacity={0.5}
-                          >
-                            PM
-                          </text>
-                          <text
-                            x={CX}
-                            y={CY - (AM_INNER + AM_OUTER) / 2}
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            fill="var(--muted-foreground)"
-                            fontSize="6"
-                            fontWeight="700"
-                            fontFamily="inherit"
-                            letterSpacing="1"
-                            opacity={0.5}
-                          >
-                            AM
-                          </text>
-
-                          {/* ── Current hour hand (today only) ── */}
-                          {isToday &&
-                            (() => {
-                              const minuteFraction = now.getMinutes() / 60
-                              const clockPos = (nowHour % 12) + minuteFraction
-                              const handAngle = clockPos * 30 - 90
-                              const isPM = nowHour >= 12
-                              const handLen = isPM ? PM_OUTER : AM_OUTER
-                              const hx = CX + handLen * Math.cos(toRad(handAngle))
-                              const hy = CY + handLen * Math.sin(toRad(handAngle))
-                              return (
-                                <>
-                                  <line
-                                    x1={CX}
-                                    y1={CY}
-                                    x2={hx}
-                                    y2={hy}
-                                    stroke="var(--destructive)"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                  />
-                                  <circle cx={CX} cy={CY} r="4" fill="var(--destructive)" />
-                                  <circle cx={hx} cy={hy} r="3" fill="var(--destructive)" />
-                                </>
-                              )
-                            })()}
-
-                          {/* ── Center stats ── */}
-                          <text
-                            x={CX}
-                            y={CY - 18}
-                            textAnchor="middle"
-                            fill="var(--foreground)"
-                            fontSize="20"
-                            fontWeight="900"
-                            fontFamily="inherit"
-                          >
-                            {formatCount(reqCount).value}
-                          </text>
-                          <text
-                            x={CX}
-                            y={CY - 5}
-                            textAnchor="middle"
-                            fill="var(--muted-foreground)"
-                            fontSize="7"
-                            fontWeight="600"
-                            fontFamily="inherit"
-                            letterSpacing="0.5"
-                          >
-                            {t("stats.requests").toUpperCase()}
-                          </text>
-
-                          {/* ── Bottom stats row inside hub ── */}
-                          {[
-                            { label: "In", value: formatCount(inTokens) },
-                            { label: "Out", value: formatCount(outTokens) },
-                            { label: "$", value: formatMoney(totalCost) },
-                          ].map((s, si) => {
-                            const xPos = CX - 30 + si * 30
-                            return (
-                              <g key={s.label}>
-                                <text
-                                  x={xPos}
-                                  y={CY + 11}
-                                  textAnchor="middle"
-                                  fill="var(--muted-foreground)"
-                                  fontSize="5.5"
-                                  fontWeight="600"
-                                  fontFamily="inherit"
-                                >
-                                  {s.label}
-                                </text>
-                                <text
-                                  x={xPos}
-                                  y={CY + 20}
-                                  textAnchor="middle"
-                                  fill="var(--foreground)"
-                                  fontSize="8"
-                                  fontWeight="800"
-                                  fontFamily="inherit"
-                                >
-                                  {s.value.value}
-                                  {s.value.unit && s.value.unit}
-                                </text>
-                              </g>
-                            )
-                          })}
-                        </>
-                      )
-                    })()}
-                  </svg>
-                </div>
+                {/* ══ HERO GEAR CLOCK — Bold dual-ring with data-driven rotation ══ */}
+                <HeroGearClock
+                  dayHourlyMap={dayHourlyMap}
+                  isToday={isToday}
+                  nowHour={nowHour}
+                  now={now}
+                  reqCount={reqCount}
+                  inTokens={inTokens}
+                  outTokens={outTokens}
+                  totalCost={totalCost}
+                  selectedDayDateStr={selectedDayDateStr}
+                  selectedDisplayDate={selectedDisplayDate}
+                  gearAngle={gearAngle}
+                  t={t}
+                  navigateToHour={navigateToHour}
+                  handleMouseEnter={handleMouseEnter}
+                  handleMouseLeave={handleMouseLeave}
+                />
               </div>
             )
           })()}
@@ -2070,12 +2332,24 @@ export default function DashboardPage() {
         {isModelError ? (
           <InlineError message={t("errors.modelStats")} onRetry={() => refetchModel()} />
         ) : (
-          <ModelStatsSection data={modelData?.data} />
+          <motion.div
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4, delay: 0.2, ease: [0.33, 1, 0.68, 1] }}
+          >
+            <ModelStatsSection data={modelData?.data} />
+          </motion.div>
         )}
         {isChannelError ? (
           <InlineError message={t("errors.channelStats")} onRetry={() => refetchChannel()} />
         ) : (
-          <RankSection data={channelData?.data} />
+          <motion.div
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4, delay: 0.3, ease: [0.33, 1, 0.68, 1] }}
+          >
+            <RankSection data={channelData?.data} />
+          </motion.div>
         )}
       </div>
     </div>

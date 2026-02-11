@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { GearSpinner } from "@/components/ui/gear-spinner"
 import { Toaster } from "@/components/ui/sonner"
 import { QueryProvider } from "./components/query-provider"
 import { ThemeProvider } from "./components/theme-provider"
@@ -6,8 +7,9 @@ import { AppRouter } from "./routes"
 
 function LoadingFallback() {
   return (
-    <div className="flex h-screen items-center justify-center">
-      <div className="text-muted-foreground h-8 w-8 animate-spin rounded-full border-4 border-current border-t-transparent" />
+    <div className="flex h-screen flex-col items-center justify-center gap-3">
+      <GearSpinner size="lg" className="text-muted-foreground" />
+      <span className="text-muted-foreground text-sm font-bold">Loading</span>
     </div>
   )
 }

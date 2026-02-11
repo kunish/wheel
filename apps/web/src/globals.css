@@ -204,6 +204,138 @@
   }
 }
 
+/* ═══════════════════════════════════════════
+   GEAR ANIMATIONS — Mechanical motion system
+   ═══════════════════════════════════════════ */
+
+@keyframes gear-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gear-spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes gear-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes gear-pulse-shadow {
+  0%,
+  100% {
+    box-shadow: 4px 4px 0 var(--nb-shadow);
+  }
+  50% {
+    box-shadow: 2px 2px 0 var(--nb-shadow);
+  }
+}
+
+@keyframes gear-tick {
+  0% {
+    transform: rotate(var(--gear-from));
+  }
+  40% {
+    transform: rotate(calc(var(--gear-to) + 2deg));
+  }
+  60% {
+    transform: rotate(calc(var(--gear-to) - 1deg));
+  }
+  100% {
+    transform: rotate(var(--gear-to));
+  }
+}
+
+@keyframes gear-accent-pulse {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes gear-ring-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0px var(--nb-lime));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px var(--nb-lime));
+  }
+}
+
+@keyframes reactor-core-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes reactor-ring-breathe {
+  0%,
+  100% {
+    opacity: 0.06;
+  }
+  50% {
+    opacity: 0.14;
+  }
+}
+
+@keyframes reactor-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer utilities {
+  .animate-gear-spin {
+    animation: gear-spin 3s linear infinite;
+    will-change: transform;
+  }
+  .animate-gear-spin-slow {
+    animation: gear-spin 6s linear infinite;
+    will-change: transform;
+  }
+  .animate-gear-spin-reverse {
+    animation: gear-spin-reverse 4s linear infinite;
+    will-change: transform;
+  }
+  .animate-gear-shimmer {
+    background: linear-gradient(
+      110deg,
+      var(--muted) 0%,
+      var(--muted) 40%,
+      color-mix(in srgb, var(--primary) 8%, var(--muted)) 50%,
+      var(--muted) 60%,
+      var(--muted) 100%
+    );
+    background-size: 200% 100%;
+    animation: gear-shimmer 2s ease-in-out infinite;
+  }
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
