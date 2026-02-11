@@ -20,7 +20,7 @@ export function parseLogFilters(searchParams: URLSearchParams): LogFilters {
     status: searchParams.get("status") ?? "all",
     channelId: searchParams.get("channel") ? Number(searchParams.get("channel")) : undefined,
     keyword: searchParams.get("q") ?? "",
-    pageSize: Number(searchParams.get("size") ?? 20),
+    pageSize: Number(searchParams.get("size") ?? 50),
     startTime: searchParams.get("from") ? Number(searchParams.get("from")) : undefined,
     endTime: searchParams.get("to") ? Number(searchParams.get("to")) : undefined,
   }
@@ -127,7 +127,7 @@ export function buildFilterSearchParams(
 
   // Clean up default values
   if (params.get("status") === "all") params.delete("status")
-  if (params.get("size") === "20") params.delete("size")
+  if (params.get("size") === "50") params.delete("size")
   if (params.get("page") === "1") params.delete("page")
 
   return params

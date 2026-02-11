@@ -20,9 +20,7 @@ import (
 )
 
 const (
-	maxRetryRounds    = 3
-	maxMessageContent = 500
-	maxLogJSON        = 10000
+	maxRetryRounds = 3
 )
 
 // attemptRecord tracks a single relay attempt for logging.
@@ -378,9 +376,6 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 			var upstreamBodyForLog *string
 			if upstream.Body != string(originalBody) {
 				s := upstream.Body
-				if len(s) > maxLogJSON {
-					s = s[:maxLogJSON]
-				}
 				upstreamBodyForLog = &s
 			}
 
@@ -619,7 +614,7 @@ func (h *RelayHandler) asyncStreamLog(
 			CacheCreationTokens: streamInfo.CacheCreationTokens,
 		})
 
-	logBody := truncateForLog(body)
+	logBody := serializeForLog(body)
 	respContent := streamInfo.ResponseContent
 	if streamInfo.ThinkingContent != "" {
 		respContent = "<|thinking|>" + streamInfo.ThinkingContent + "<|/thinking|>" + respContent
@@ -689,12 +684,9 @@ func (h *RelayHandler) asyncNonStreamLog(
 			CacheCreationTokens: result.CacheCreationTokens,
 		})
 
-	logBody := truncateForLog(body)
+	logBody := serializeForLog(body)
 	respJSON, _ := json.Marshal(result.Response)
 	respContent := string(respJSON)
-	if len(respContent) > maxLogJSON {
-		respContent = respContent[:maxLogJSON]
-	}
 
 	attemptsJSON, _ := json.Marshal(attempts)
 	var attemptsVal types.AttemptList
@@ -744,7 +736,7 @@ func (h *RelayHandler) asyncErrorLog(
 	attempts []attemptRecord,
 	startTime time.Time,
 ) {
-	logBody := truncateForLog(body)
+	logBody := serializeForLog(body)
 
 	attemptsJSON, _ := json.Marshal(attempts)
 	var attemptsVal types.AttemptList
@@ -842,87 +834,11 @@ func (h *RelayHandler) loadGroups() []types.Group {
 	return g
 }
 
-// ── Log Truncation ──────────────────────────────────────────────
+// ── Log Serialization ──────────────────────────────────────────────
 
-func truncateMessage(msg map[string]any) map[string]any {
-	m := make(map[string]any, len(msg))
-	for k, v := range msg {
-		m[k] = v
-	}
-
-	if content, ok := m["content"].(string); ok && len(content) > maxMessageContent {
-		m["content"] = fmt.Sprintf("%s... [truncated, %d chars total]", content[:maxMessageContent], len(content))
-	} else if contentArr, ok := m["content"].([]any); ok {
-		truncated := make([]any, 0, len(contentArr))
-		for _, part := range contentArr {
-			p, ok := part.(map[string]any)
-			if !ok {
-				truncated = append(truncated, part)
-				continue
-			}
-			cp := make(map[string]any, len(p))
-			for k, v := range p {
-				cp[k] = v
-			}
-			pType, _ := cp["type"].(string)
-			if pType == "image_url" || pType == "image" {
-				cp = map[string]any{"type": pType, "_omitted": "[image data omitted]"}
-			} else if text, ok := cp["text"].(string); ok && len(text) > maxMessageContent {
-				cp["text"] = text[:maxMessageContent] + "... [truncated]"
-			}
-			truncated = append(truncated, cp)
-		}
-		m["content"] = truncated
-	}
-	return m
-}
-
-func truncateForLog(body map[string]any) string {
-	clone := make(map[string]any, len(body))
-	for k, v := range body {
-		clone[k] = v
-	}
-
-	if messages, ok := clone["messages"].([]any); ok {
-		truncatedMsgs := make([]any, 0, len(messages))
-		for _, m := range messages {
-			if msg, ok := m.(map[string]any); ok {
-				truncatedMsgs = append(truncatedMsgs, truncateMessage(msg))
-			} else {
-				truncatedMsgs = append(truncatedMsgs, m)
-			}
-		}
-		clone["messages"] = truncatedMsgs
-
-		j, _ := json.Marshal(clone)
-		if len(j) > maxLogJSON && len(messages) > 2 {
-			keep := len(truncatedMsgs)
-			if keep > 4 {
-				keep = 4
-			}
-			if keep < 2 {
-				keep = 2
-			}
-			dropped := len(truncatedMsgs) - keep
-			newMsgs := []any{truncatedMsgs[0]}
-			newMsgs = append(newMsgs, map[string]any{
-				"role":    "system",
-				"content": fmt.Sprintf("[%d messages omitted for storage]", dropped),
-			})
-			newMsgs = append(newMsgs, truncatedMsgs[len(truncatedMsgs)-keep+1:]...)
-			clone["messages"] = newMsgs
-		}
-
-		result, _ := json.Marshal(clone)
-		return string(result)
-	}
-
-	result, _ := json.Marshal(clone)
-	s := string(result)
-	if len(s) > maxLogJSON {
-		s = s[:maxLogJSON]
-	}
-	return s
+func serializeForLog(body map[string]any) string {
+	result, _ := json.Marshal(body)
+	return string(result)
 }
 
 // apiError returns an error response in the correct format based on the request type.

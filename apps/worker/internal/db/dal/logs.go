@@ -46,7 +46,7 @@ func ListLogs(ctx context.Context, db *bun.DB, opts ListLogsOpts) ([]types.Relay
 	}
 	pageSize := opts.PageSize
 	if pageSize < 1 {
-		pageSize = 20
+		pageSize = 50
 	}
 	offset := (page - 1) * pageSize
 

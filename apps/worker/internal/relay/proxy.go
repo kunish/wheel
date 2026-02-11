@@ -49,8 +49,6 @@ type StreamCompleteInfo struct {
 	ThinkingContent     string
 }
 
-const maxResponseContent = 10000
-
 // extractCacheTokens extracts cache token counts from a response usage object.
 func extractCacheTokens(data map[string]any, channelType types.OutboundType) (cacheRead, cacheCreation int) {
 	if channelType == types.OutboundAnthropic {
@@ -199,9 +197,6 @@ func (s *streamingState) maybeNotify() {
 }
 
 func (s *streamingState) appendThinking(text string) {
-	if len(s.thinkingContent) >= maxResponseContent {
-		return
-	}
 	chunk := text
 	if len(s.thinkingContent) == 0 {
 		chunk = strings.TrimLeft(chunk, " \t\n\r")
@@ -210,16 +205,10 @@ func (s *streamingState) appendThinking(text string) {
 		return
 	}
 	s.thinkingContent += chunk
-	if len(s.thinkingContent) > maxResponseContent {
-		s.thinkingContent = s.thinkingContent[:maxResponseContent]
-	}
 	s.maybeNotify()
 }
 
 func (s *streamingState) appendContent(text string) {
-	if len(s.responseContent) >= maxResponseContent {
-		return
-	}
 	chunk := text
 	if len(s.responseContent) == 0 {
 		chunk = strings.TrimLeft(chunk, " \t\n\r")
@@ -228,9 +217,6 @@ func (s *streamingState) appendContent(text string) {
 		return
 	}
 	s.responseContent += chunk
-	if len(s.responseContent) > maxResponseContent {
-		s.responseContent = s.responseContent[:maxResponseContent]
-	}
 	s.maybeNotify()
 }
 
