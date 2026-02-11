@@ -8,6 +8,7 @@ import { ModelBadge } from "@/components/model-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 
 export interface LogEntry {
   id: number
@@ -189,7 +190,10 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       enableSorting: true,
       cell: (info) => (
         <span
-          className={`text-right font-mono text-xs${info.row.original._streaming ? "opacity-50" : ""}`}
+          className={cn(
+            "text-right font-mono text-xs",
+            info.row.original._streaming && "opacity-50",
+          )}
         >
           {info.getValue().toLocaleString()}
         </span>
@@ -203,7 +207,10 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       enableSorting: true,
       cell: (info) => (
         <span
-          className={`text-right font-mono text-xs${info.row.original._streaming ? "opacity-50" : ""}`}
+          className={cn(
+            "text-right font-mono text-xs",
+            info.row.original._streaming && "opacity-50",
+          )}
         >
           {info.getValue().toLocaleString()}
         </span>
@@ -235,7 +242,10 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       enableSorting: true,
       cell: (info) => (
         <span
-          className={`text-right font-mono text-xs${info.row.original._streaming ? "opacity-50" : ""}`}
+          className={cn(
+            "text-right font-mono text-xs",
+            info.row.original._streaming && "opacity-50",
+          )}
         >
           {formatCost(info.getValue())}
         </span>
