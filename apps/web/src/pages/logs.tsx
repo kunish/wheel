@@ -12,17 +12,25 @@ import {
 import {
   AlertCircle,
   ArrowUp,
+  Bot,
+  Braces,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Code2,
   Copy,
   FileText,
+  Image,
   Loader2,
+  MessageSquare,
   Play,
   RefreshCw,
   Search,
+  Settings2,
+  User,
+  Wrench,
   X,
 } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -213,6 +221,7 @@ export default function LogsPage() {
   )
 
   const [detailId, setDetailId] = useState<number | null>(null)
+  const [detailTab, setDetailTab] = useState("overview")
   const [pendingCount, setPendingCount] = useState(0)
   const [sorting, setSorting] = useState<SortingState>([])
   const [grouping, setGrouping] = useState<GroupingState>([])
@@ -702,7 +711,8 @@ export default function LogsPage() {
                   size="icon"
                   className="h-7 w-7"
                   disabled={
-                    !detailId || visibleRows.findIndex((r) => r.original.id === detailId) <= 0
+                    detailId == null ||
+                    visibleRows.findIndex((r) => r.original.id === detailId) <= 0
                   }
                   onClick={() => {
                     const idx = visibleRows.findIndex((r) => r.original.id === detailId)
@@ -716,7 +726,7 @@ export default function LogsPage() {
                   size="icon"
                   className="h-7 w-7"
                   disabled={
-                    !detailId ||
+                    detailId == null ||
                     visibleRows.findIndex((r) => r.original.id === detailId) >=
                       visibleRows.length - 1
                   }
@@ -732,7 +742,7 @@ export default function LogsPage() {
             </div>
           </SheetHeader>
           {detail ? (
-            <DetailPanel detail={detail} />
+            <DetailPanel detail={detail} activeTab={detailTab} onTabChange={setDetailTab} />
           ) : (
             <div className="flex flex-col gap-4 px-4 py-4">
               <div className="flex flex-col gap-2">
@@ -782,10 +792,19 @@ function CopyableField({ label, value }: { label: string; value: string }) {
   )
 }
 
-function DetailPanel({ detail }: { detail: LogDetail }) {
+function DetailPanel({
+  detail,
+  activeTab,
+  onTabChange,
+}: {
+  detail: LogDetail
+  activeTab: string
+  onTabChange: (tab: string) => void
+}) {
   const [replayResult, setReplayResult] = useState<string | null>(null)
   const [replaying, setReplaying] = useState(false)
-  const [activeTab, setActiveTab] = useState("overview")
+
+  const setActiveTab = onTabChange
 
   const isTruncated =
     /\[truncated,?\s*\d+\s*chars\s*total\]/.test(detail.requestContent) ||
@@ -965,23 +984,9 @@ function DetailPanel({ detail }: { detail: LogDetail }) {
         </div>
       </TabsContent>
 
-      {/* Messages Tab (merged Request + Response) */}
+      {/* Messages Tab (conversation flow + raw JSON toggle) */}
       <TabsContent value="messages" className="mt-4">
-        <div className="flex flex-col gap-4">
-          <CollapsibleCodeBlock
-            label="Request (Original)"
-            content={detail.requestContent}
-            defaultOpen
-          />
-          {detail.upstreamContent && (
-            <CollapsibleCodeBlock
-              label="Request (Upstream)"
-              content={detail.upstreamContent}
-              defaultOpen={false}
-            />
-          )}
-          <CollapsibleCodeBlock label="Response" content={detail.responseContent} defaultOpen />
-        </div>
+        <MessagesTabContent detail={detail} />
       </TabsContent>
 
       {/* Retry Timeline Tab */}
@@ -1082,6 +1087,446 @@ function ModelFlowNode({ modelId, channelId }: { modelId: string; channelId: num
         >
           {modelId}
         </button>
+      )}
+    </div>
+  )
+}
+
+// --- Messages Tab: conversation flow view ---
+
+interface ParsedMessage {
+  role: string
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> | null
+  name?: string
+  tool_call_id?: string
+  tool_calls?: Array<{
+    id: string
+    type: string
+    function: { name: string; arguments: string }
+  }>
+}
+
+interface ParsedResponse {
+  assistantContent: string | null
+  toolCalls: ParsedMessage["tool_calls"]
+  finishReason: string | null
+  raw: unknown
+}
+
+function parseMessages(content: string): ParsedMessage[] | null {
+  try {
+    const parsed = JSON.parse(content)
+    // OpenAI request format: { messages: [...] } or { model, messages: [...] }
+    if (parsed?.messages && Array.isArray(parsed.messages)) {
+      return parsed.messages as ParsedMessage[]
+    }
+    // Direct array of messages
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.role) {
+      return parsed as ParsedMessage[]
+    }
+  } catch {
+    /* not parseable */
+  }
+  return null
+}
+
+function parseResponseContent(content: string): ParsedResponse | null {
+  try {
+    const parsed = JSON.parse(content)
+    const choice = parsed?.choices?.[0]
+    if (choice) {
+      return {
+        assistantContent:
+          typeof choice.message?.content === "string" ? choice.message.content : null,
+        toolCalls: choice.message?.tool_calls ?? null,
+        finishReason: choice.finish_reason ?? null,
+        raw: parsed,
+      }
+    }
+  } catch {
+    /* not parseable */
+  }
+  return null
+}
+
+function getMessageTextContent(content: ParsedMessage["content"]): {
+  text: string
+  hasImages: boolean
+} {
+  if (content === null || content === undefined) return { text: "", hasImages: false }
+  if (typeof content === "string") return { text: content, hasImages: false }
+  if (Array.isArray(content)) {
+    const textParts = content.filter((p) => p.type === "text" && p.text).map((p) => p.text!)
+    const hasImages = content.some((p) => p.type === "image_url")
+    return { text: textParts.join("\n"), hasImages }
+  }
+  return { text: String(content), hasImages: false }
+}
+
+const ROLE_CONFIG: Record<
+  string,
+  {
+    icon: React.ComponentType<{ className?: string }>
+    label: string
+    bgClass: string
+    borderClass: string
+    avatarClass: string
+  }
+> = {
+  system: {
+    icon: Settings2,
+    label: "System",
+    bgClass: "bg-nb-lavender/15 dark:bg-nb-lavender/10",
+    borderClass: "border-l-nb-lavender",
+    avatarClass: "bg-nb-lavender text-foreground",
+  },
+  user: {
+    icon: User,
+    label: "User",
+    bgClass: "bg-nb-sky/15 dark:bg-nb-sky/10",
+    borderClass: "border-l-nb-sky",
+    avatarClass: "bg-nb-sky text-foreground",
+  },
+  assistant: {
+    icon: Bot,
+    label: "Assistant",
+    bgClass: "bg-nb-lime/15 dark:bg-nb-lime/10",
+    borderClass: "border-l-nb-lime",
+    avatarClass: "bg-nb-lime text-foreground",
+  },
+  tool: {
+    icon: Wrench,
+    label: "Tool",
+    bgClass: "bg-nb-orange/15 dark:bg-nb-orange/10",
+    borderClass: "border-l-nb-orange",
+    avatarClass: "bg-nb-orange text-foreground",
+  },
+  function: {
+    icon: Code2,
+    label: "Function",
+    bgClass: "bg-nb-pink/15 dark:bg-nb-pink/10",
+    borderClass: "border-l-nb-pink",
+    avatarClass: "bg-nb-pink text-foreground",
+  },
+}
+
+const DEFAULT_ROLE_CONFIG = {
+  icon: MessageSquare,
+  label: "Unknown",
+  bgClass: "bg-muted/30",
+  borderClass: "border-l-muted-foreground",
+  avatarClass: "bg-muted text-muted-foreground",
+}
+
+const TRUNCATION_PATTERNS = [
+  /\[truncated,?\s*\d+\s*chars\s*total\]/,
+  /\[\d+\s*messages?\s*omitted[^\]]*\]/,
+  /\[image data omitted\]/,
+  /\[image\]/gi,
+]
+
+/** Strip Unicode replacement characters (U+FFFD) that result from mid-byte truncation */
+function stripReplacementChars(text: string): string {
+  return text.replace(/\uFFFD+/g, "")
+}
+
+function detectTruncation(text: string): {
+  isTruncated: boolean
+  cleanText: string
+  notice: string | null
+} {
+  let cleaned = text
+  let notice: string | null = null
+  let isTruncated = false
+
+  for (const pattern of TRUNCATION_PATTERNS) {
+    const match = cleaned.match(pattern)
+    if (match) {
+      isTruncated = true
+      if (!notice) notice = match[0]
+      cleaned = cleaned.replace(pattern, "")
+    }
+  }
+
+  // Clean up broken Unicode from mid-byte truncation
+  if (cleaned !== stripReplacementChars(cleaned)) {
+    isTruncated = true
+    cleaned = stripReplacementChars(cleaned)
+  }
+
+  cleaned = cleaned.trim()
+  return { isTruncated, cleanText: cleaned, notice }
+}
+
+function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
+  const [expanded, setExpanded] = useState(false)
+  const config = ROLE_CONFIG[msg.role] ?? DEFAULT_ROLE_CONFIG
+  const Icon = config.icon
+  const { text, hasImages } = getMessageTextContent(msg.content)
+  const { isTruncated, cleanText, notice } = detectTruncation(text)
+
+  const displaySource = cleanText || text
+  const isLong = displaySource.length > 800
+  const displayText = isLong && !expanded ? displaySource.slice(0, 800) : displaySource
+
+  return (
+    <div className={`rounded-md border-2 border-l-4 ${config.borderClass} ${config.bgClass}`}>
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <div
+          className={`border-border flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${config.avatarClass}`}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </div>
+        <span className="text-xs font-bold tracking-wide uppercase">{config.label}</span>
+        {msg.name && (
+          <span className="bg-background rounded border px-1.5 py-0.5 font-mono text-[10px]">
+            {msg.name}
+          </span>
+        )}
+        {msg.tool_call_id && (
+          <span className="text-muted-foreground font-mono text-[10px]">
+            id: {msg.tool_call_id}
+          </span>
+        )}
+        {hasImages && (
+          <span className="text-muted-foreground inline-flex items-center gap-1 text-[10px]">
+            <Image className="h-3 w-3" /> image
+          </span>
+        )}
+        {isTruncated && (
+          <Badge variant="ghost" className="gap-1 text-[10px]">
+            <AlertCircle className="h-2.5 w-2.5" />
+            Truncated
+          </Badge>
+        )}
+        <span className="text-muted-foreground ml-auto font-mono text-[10px]">#{index}</span>
+      </div>
+
+      {/* Truncation notice */}
+      {isTruncated && notice && !cleanText && (
+        <div className="border-border/50 border-t px-3 py-2">
+          <p className="text-muted-foreground text-xs italic">{notice}</p>
+        </div>
+      )}
+
+      {/* Content */}
+      {displaySource && (
+        <div className="border-border/50 border-t px-3 py-2">
+          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+            <Suspense
+              fallback={
+                <pre className="font-[inherit] text-xs leading-relaxed whitespace-pre-wrap">
+                  {displayText}
+                </pre>
+              }
+            >
+              <LazyMarkdown>{displayText}</LazyMarkdown>
+            </Suspense>
+          </div>
+          {isLong && (
+            <button
+              className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "Show less" : `Show all (${displaySource.length.toLocaleString()} chars)`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Tool calls */}
+      {msg.tool_calls && msg.tool_calls.length > 0 && (
+        <div className="border-border/50 border-t px-3 py-2">
+          <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
+            Tool Calls
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {msg.tool_calls.map((tc) => (
+              <ToolCallBlock key={tc.id} toolCall={tc} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty content indicator */}
+      {!displaySource && !isTruncated && !msg.tool_calls?.length && (
+        <div className="border-border/50 border-t px-3 py-2">
+          <span className="text-muted-foreground text-xs italic">No content</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ToolCallBlock({
+  toolCall,
+}: {
+  toolCall: NonNullable<ParsedMessage["tool_calls"]>[number]
+}) {
+  const [expanded, setExpanded] = useState(false)
+  let args = toolCall.function.arguments
+  try {
+    args = JSON.stringify(JSON.parse(args), null, 2)
+  } catch {
+    /* keep original */
+  }
+  const isLong = args.length > 200
+
+  return (
+    <div className="bg-background/60 rounded-md border p-2">
+      <div className="flex items-center gap-1.5">
+        <Code2 className="text-muted-foreground h-3 w-3 shrink-0" />
+        <span className="font-mono text-xs font-bold">{toolCall.function.name}</span>
+        <span className="text-muted-foreground font-mono text-[10px]">{toolCall.id}</span>
+      </div>
+      {args && args !== "{}" && (
+        <div className="mt-1.5">
+          <pre className="bg-muted/50 rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+            {isLong && !expanded ? `${args.slice(0, 200)}...` : args}
+          </pre>
+          {isLong && (
+            <button
+              className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "Collapse" : "Expand"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ResponseBlock({ response }: { response: ParsedResponse }) {
+  const { text } = getMessageTextContent(response.assistantContent)
+  const [expanded, setExpanded] = useState(false)
+  const isLong = text.length > 800
+  const displayText = isLong && !expanded ? text.slice(0, 800) : text
+
+  return (
+    <div className="border-l-nb-lime bg-nb-lime/15 dark:bg-nb-lime/10 rounded-md border-2 border-l-4">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <div className="border-border bg-nb-lime text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2">
+          <Bot className="h-3.5 w-3.5" />
+        </div>
+        <span className="text-xs font-bold tracking-wide uppercase">Response</span>
+        {response.finishReason && (
+          <Badge variant="ghost" className="text-[10px]">
+            {response.finishReason}
+          </Badge>
+        )}
+      </div>
+
+      {text && (
+        <div className="border-border/50 border-t px-3 py-2">
+          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+            <Suspense
+              fallback={
+                <pre className="font-[inherit] text-xs leading-relaxed whitespace-pre-wrap">
+                  {displayText}
+                </pre>
+              }
+            >
+              <LazyMarkdown>{displayText}</LazyMarkdown>
+            </Suspense>
+          </div>
+          {isLong && (
+            <button
+              className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "Show less" : `Show all (${text.length.toLocaleString()} chars)`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {response.toolCalls && response.toolCalls.length > 0 && (
+        <div className="border-border/50 border-t px-3 py-2">
+          <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
+            Tool Calls
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {response.toolCalls.map((tc) => (
+              <ToolCallBlock key={tc.id} toolCall={tc} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MessagesTabContent({ detail }: { detail: LogDetail }) {
+  const [viewMode, setViewMode] = useState<"conversation" | "raw">("conversation")
+
+  const messages = useMemo(() => parseMessages(detail.requestContent), [detail.requestContent])
+  const response = useMemo(
+    () => parseResponseContent(detail.responseContent),
+    [detail.responseContent],
+  )
+
+  const canShowConversation = messages !== null
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* View mode toggle */}
+      {canShowConversation && (
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground text-xs">
+            {messages.length} message{messages.length !== 1 ? "s" : ""}
+            {response ? " + response" : ""}
+          </span>
+          <div className="border-border flex items-center rounded-md border-2">
+            <button
+              className={`flex items-center gap-1 px-2 py-1 text-xs font-bold transition-colors ${
+                viewMode === "conversation"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+              onClick={() => setViewMode("conversation")}
+            >
+              <MessageSquare className="h-3 w-3" />
+              Chat
+            </button>
+            <button
+              className={`border-border flex items-center gap-1 border-l-2 px-2 py-1 text-xs font-bold transition-colors ${
+                viewMode === "raw" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+              }`}
+              onClick={() => setViewMode("raw")}
+            >
+              <Braces className="h-3 w-3" />
+              Raw
+            </button>
+          </div>
+        </div>
+      )}
+
+      {canShowConversation && viewMode === "conversation" ? (
+        <div className="flex flex-col gap-2">
+          {messages.map((msg, i) => (
+            <MessageBubble key={`msg-${i.toString()}`} msg={msg} index={i} />
+          ))}
+          {response && <ResponseBlock response={response} />}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <CollapsibleCodeBlock
+            label="Request (Original)"
+            content={detail.requestContent}
+            defaultOpen
+          />
+          {detail.upstreamContent && (
+            <CollapsibleCodeBlock
+              label="Request (Upstream)"
+              content={detail.upstreamContent}
+              defaultOpen={false}
+            />
+          )}
+          <CollapsibleCodeBlock label="Response" content={detail.responseContent} defaultOpen />
+        </div>
       )}
     </div>
   )

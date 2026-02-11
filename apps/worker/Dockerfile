@@ -5,10 +5,10 @@ ARG TARGETOS TARGETARCH
 RUN apk add --no-cache git
 
 WORKDIR /build
-COPY go.mod go.sum ./
+COPY apps/worker/go.mod apps/worker/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY apps/worker/ .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o /wheel ./cmd/worker
 
 # ── Runtime ──
@@ -18,7 +18,7 @@ RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 COPY --from=builder /wheel .
-COPY drizzle/ ./drizzle/
+COPY apps/worker/drizzle/ ./drizzle/
 
 RUN mkdir -p /app/data
 
