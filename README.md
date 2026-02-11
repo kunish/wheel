@@ -90,11 +90,25 @@
 
 ```
 apps/
-  worker/     API Backend (Hono + better-sqlite3 + Drizzle ORM)
+  worker/     API Backend (Go — Gin + SQLite + Bun ORM)
   web/        Next.js Dashboard (shadcn/ui + Tailwind)
-packages/
-  core/       Shared TypeScript types and enums
 ```
+
+**数据库**
+
+Worker 使用两个独立的 SQLite 数据库文件，均存放在 `DB_PATH` 所在目录下：
+
+| 文件            | 用途       | 说明                                               |
+| --------------- | ---------- | -------------------------------------------------- |
+| `wheel.db`      | 主数据库   | 通道、分组、API Key、设置、定价等配置数据          |
+| `wheel-logs.db` | 日志数据库 | 请求日志（高频写入），独立文件避免与配置数据库争用 |
+
+日志数据库路径由 `DB_PATH` 自动推导（同目录下的 `wheel-logs.db`），无需额外配置。
+
+**启动时自动迁移** — Worker 启动时会自动执行数据库迁移，无需手动操作：
+
+- 主数据库：读取 `drizzle/` 目录下的 SQL 迁移文件，按顺序执行（兼容 Drizzle ORM 格式）
+- 日志数据库：自动创建 `relay_logs` 表和索引
 
 ---
 
@@ -134,7 +148,7 @@ docker run -d \
 
 ```yaml
 volumes:
-  worker-data:
+  worker-data: # 包含 wheel.db（配置）和 wheel-logs.db（日志）
 
 services:
   worker:
@@ -144,7 +158,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
-      DB_PATH: /app/data/wheel.db
+      DB_PATH: /app/data/wheel.db # 日志数据库自动创建在同目录
       PORT: 8787
     volumes:
       - worker-data:/app/data
@@ -188,17 +202,17 @@ docker compose up -d
 
 #### 前置条件
 
-- Node.js >= 22
-- pnpm >= 10
+- Go >= 1.24（Worker）
+- Node.js >= 22, pnpm >= 10（Web）
 
 ```bash
-pnpm install
-
 # Worker
-pnpm --filter @wheel/worker build
-JWT_SECRET=your-secret node apps/worker/dist/index.js
+cd apps/worker
+go build -o wheel ./cmd/worker
+JWT_SECRET=your-secret ./wheel
 
 # Web
+pnpm install
 pnpm --filter @wheel/web build
 node apps/web/.next/standalone/apps/web/server.js
 ```
@@ -207,14 +221,14 @@ node apps/web/.next/standalone/apps/web/server.js
 
 ## Environment Variables
 
-| 变量                       | 组件         | 描述              | 必填              | 默认值            |
-| -------------------------- | ------------ | ----------------- | ----------------- | ----------------- |
-| `JWT_SECRET`               | Worker       | JWT 签名密钥      | Yes               | —                 |
-| `ADMIN_USERNAME`           | Worker       | 管理员用户名      | No                | `admin`           |
-| `ADMIN_PASSWORD`           | Worker       | 管理员密码        | No                | `admin`           |
-| `DB_PATH`                  | Worker       | SQLite 数据库路径 | No                | `./data/wheel.db` |
-| `PORT`                     | Worker       | HTTP 端口         | No                | `8787`            |
-| `NEXT_PUBLIC_API_BASE_URL` | Web (Vercel) | Worker API 地址   | Vercel 部署时必填 | —                 |
+| 变量                       | 组件         | 描述                                                        | 必填              | 默认值            |
+| -------------------------- | ------------ | ----------------------------------------------------------- | ----------------- | ----------------- |
+| `JWT_SECRET`               | Worker       | JWT 签名密钥                                                | Yes               | —                 |
+| `ADMIN_USERNAME`           | Worker       | 管理员用户名                                                | No                | `admin`           |
+| `ADMIN_PASSWORD`           | Worker       | 管理员密码                                                  | No                | `admin`           |
+| `DB_PATH`                  | Worker       | 主数据库路径，日志数据库 (`wheel-logs.db`) 自动创建在同目录 | No                | `./data/wheel.db` |
+| `PORT`                     | Worker       | HTTP 端口                                                   | No                | `8787`            |
+| `NEXT_PUBLIC_API_BASE_URL` | Web (Vercel) | Worker API 地址                                             | Vercel 部署时必填 | —                 |
 
 ---
 
