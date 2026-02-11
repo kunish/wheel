@@ -13,6 +13,7 @@ import (
 // Handler holds shared dependencies for all route handlers.
 type Handler struct {
 	DB     *bun.DB
+	LogDB  *bun.DB
 	Cache  *cache.MemoryKV
 	Config *config.Config
 }

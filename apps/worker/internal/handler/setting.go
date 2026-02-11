@@ -14,7 +14,7 @@ import (
 
 // Default settings values matching the TS implementation.
 var defaultSettings = map[string]string{
-	"log_retention_days":        "30",
+	"log_retention_days":        "365",
 	"circuit_breaker_threshold": "5",
 	"circuit_breaker_cooldown":  "60",
 	"circuit_breaker_max_cooldown": "600",
@@ -97,7 +97,7 @@ func (h *Handler) ExportData(c *gin.Context) {
 	}
 
 	if includeLogs {
-		logs, _, err := dal.ListLogs(ctx, h.DB, dal.ListLogsOpts{Page: 1, PageSize: 999999})
+		logs, _, err := dal.ListLogs(ctx, h.LogDB, dal.ListLogsOpts{Page: 1, PageSize: 999999})
 		if err != nil {
 			errorJSON(c, http.StatusInternalServerError, err.Error())
 			return

@@ -111,3 +111,39 @@ func Migrate(db *sql.DB, migrationsDir string) error {
 
 	return nil
 }
+
+// MigrateLogDB creates the relay_logs table and indexes in the separate log database.
+func MigrateLogDB(db *sql.DB) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS relay_logs (
+			id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+			time integer NOT NULL,
+			request_model_name text DEFAULT '' NOT NULL,
+			channel_id integer DEFAULT 0 NOT NULL,
+			channel_name text DEFAULT '' NOT NULL,
+			actual_model_name text DEFAULT '' NOT NULL,
+			input_tokens integer DEFAULT 0 NOT NULL,
+			output_tokens integer DEFAULT 0 NOT NULL,
+			ftut integer DEFAULT 0 NOT NULL,
+			use_time integer DEFAULT 0 NOT NULL,
+			cost real DEFAULT 0 NOT NULL,
+			request_content text DEFAULT '' NOT NULL,
+			response_content text DEFAULT '' NOT NULL,
+			error text DEFAULT '' NOT NULL,
+			attempts text DEFAULT '[]' NOT NULL,
+			total_attempts integer DEFAULT 0 NOT NULL,
+			upstream_content text
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_relay_logs_time ON relay_logs(time)`,
+		`CREATE INDEX IF NOT EXISTS idx_relay_logs_channel_id ON relay_logs(channel_id)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate log db: %w\nStatement: %s", err, stmt)
+		}
+	}
+
+	log.Println("[migration] Log database schema ready")
+	return nil
+}

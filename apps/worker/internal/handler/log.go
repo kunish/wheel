@@ -40,7 +40,7 @@ func (h *Handler) ListLogs(c *gin.Context) {
 		Keyword:   keyword,
 	}
 
-	logs, total, err := dal.ListLogs(c.Request.Context(), h.DB, opts)
+	logs, total, err := dal.ListLogs(c.Request.Context(), h.LogDB, opts)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -61,7 +61,7 @@ func (h *Handler) GetLog(c *gin.Context) {
 		return
 	}
 
-	log, err := dal.GetLog(c.Request.Context(), h.DB, id)
+	log, err := dal.GetLog(c.Request.Context(), h.LogDB, id)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -81,7 +81,7 @@ func (h *Handler) DeleteLog(c *gin.Context) {
 		return
 	}
 
-	if err := dal.DeleteLog(c.Request.Context(), h.DB, id); err != nil {
+	if err := dal.DeleteLog(c.Request.Context(), h.LogDB, id); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -89,7 +89,7 @@ func (h *Handler) DeleteLog(c *gin.Context) {
 }
 
 func (h *Handler) ClearLogs(c *gin.Context) {
-	if err := dal.ClearLogs(c.Request.Context(), h.DB); err != nil {
+	if err := dal.ClearLogs(c.Request.Context(), h.LogDB); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -105,7 +105,7 @@ func (h *Handler) ReplayLog(c *gin.Context) {
 		return
 	}
 
-	log, err := dal.GetLog(c.Request.Context(), h.DB, id)
+	log, err := dal.GetLog(c.Request.Context(), h.LogDB, id)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return

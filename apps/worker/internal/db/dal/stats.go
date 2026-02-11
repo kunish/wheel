@@ -2,7 +2,6 @@ package dal
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"math"
 	"regexp"
@@ -73,63 +72,59 @@ func localDateStr(t time.Time, tzOffsetMinutes int) string {
 	return fmt.Sprintf("%04d%02d%02d", local.Year(), local.Month(), local.Day())
 }
 
-// metricsRow holds raw aggregation results from SQL queries.
-type metricsRow struct {
-	InputTokens  sql.NullFloat64
-	OutputTokens sql.NullFloat64
-	Cost         sql.NullFloat64
-	WaitTime     sql.NullFloat64
-	SuccessCount sql.NullFloat64
-	FailedCount  sql.NullFloat64
+// metricsResult holds aggregation results scanned via Bun ORM.
+type metricsResult struct {
+	InputTokens  float64 `bun:"input_tokens"`
+	OutputTokens float64 `bun:"output_tokens"`
+	Cost         float64 `bun:"cost"`
+	WaitTime     float64 `bun:"wait_time"`
+	SuccessCount float64 `bun:"success_count"`
+	FailedCount  float64 `bun:"failed_count"`
 }
 
-func (r metricsRow) toDailyStats(date string) types.DailyStatsItem {
-	cost := r.Cost.Float64
+func (r metricsResult) toDailyStats(date string) types.DailyStatsItem {
 	return types.DailyStatsItem{
 		Date:           date,
-		InputToken:     int(r.InputTokens.Float64),
-		OutputToken:    int(r.OutputTokens.Float64),
-		InputCost:      cost * 0.6,
-		OutputCost:     cost * 0.4,
-		WaitTime:       int(r.WaitTime.Float64),
-		RequestSuccess: int(r.SuccessCount.Float64),
-		RequestFailed:  int(r.FailedCount.Float64),
+		InputToken:     int(r.InputTokens),
+		OutputToken:    int(r.OutputTokens),
+		InputCost:      r.Cost * 0.6,
+		OutputCost:     r.Cost * 0.4,
+		WaitTime:       int(r.WaitTime),
+		RequestSuccess: int(r.SuccessCount),
+		RequestFailed:  int(r.FailedCount),
 	}
 }
 
-func (r metricsRow) toHourlyStats(hour int, date string) types.HourlyStatsItem {
-	cost := r.Cost.Float64
+func (r metricsResult) toHourlyStats(hour int, date string) types.HourlyStatsItem {
 	return types.HourlyStatsItem{
 		Hour:           hour,
 		Date:           date,
-		InputToken:     int(r.InputTokens.Float64),
-		OutputToken:    int(r.OutputTokens.Float64),
-		InputCost:      cost * 0.6,
-		OutputCost:     cost * 0.4,
-		WaitTime:       int(r.WaitTime.Float64),
-		RequestSuccess: int(r.SuccessCount.Float64),
-		RequestFailed:  int(r.FailedCount.Float64),
+		InputToken:     int(r.InputTokens),
+		OutputToken:    int(r.OutputTokens),
+		InputCost:      r.Cost * 0.6,
+		OutputCost:     r.Cost * 0.4,
+		WaitTime:       int(r.WaitTime),
+		RequestSuccess: int(r.SuccessCount),
+		RequestFailed:  int(r.FailedCount),
 	}
 }
 
-const metricsSelectSQL = `
-	SUM(input_tokens),
-	SUM(output_tokens),
-	SUM(cost),
-	SUM(use_time),
-	SUM(CASE WHEN error = '' THEN 1 ELSE 0 END),
-	SUM(CASE WHEN error != '' THEN 1 ELSE 0 END)
-`
-
-func scanMetrics(scanner interface{ Scan(...any) error }) (metricsRow, error) {
-	var m metricsRow
-	err := scanner.Scan(&m.InputTokens, &m.OutputTokens, &m.Cost, &m.WaitTime, &m.SuccessCount, &m.FailedCount)
-	return m, err
+// metricsColumns returns the standard ColumnExpr for metrics aggregation.
+// CAST AS REAL is required because SQLite SUM on integer columns returns int64,
+// but Bun ORM does not auto-convert int64 to float64 during scan.
+func metricsColumns(q *bun.SelectQuery) *bun.SelectQuery {
+	return q.
+		ColumnExpr("CAST(COALESCE(SUM(input_tokens), 0) AS REAL) AS input_tokens").
+		ColumnExpr("CAST(COALESCE(SUM(output_tokens), 0) AS REAL) AS output_tokens").
+		ColumnExpr("CAST(COALESCE(SUM(cost), 0) AS REAL) AS cost").
+		ColumnExpr("CAST(COALESCE(SUM(use_time), 0) AS REAL) AS wait_time").
+		ColumnExpr("CAST(COALESCE(SUM(CASE WHEN error = '' THEN 1 ELSE 0 END), 0) AS REAL) AS success_count").
+		ColumnExpr("CAST(COALESCE(SUM(CASE WHEN error != '' THEN 1 ELSE 0 END), 0) AS REAL) AS failed_count")
 }
 
 func GetTotalStats(ctx context.Context, db *bun.DB) (*types.DailyStatsItem, error) {
-	row := db.QueryRowContext(ctx, "SELECT "+metricsSelectSQL+" FROM relay_logs")
-	m, err := scanMetrics(row)
+	var m metricsResult
+	err := metricsColumns(db.NewSelect().TableExpr("relay_logs")).Scan(ctx, &m)
 	if err != nil {
 		return nil, err
 	}
@@ -140,10 +135,11 @@ func GetTotalStats(ctx context.Context, db *bun.DB) (*types.DailyStatsItem, erro
 func GetTodayStats(ctx context.Context, db *bun.DB, tz string) (*types.DailyStatsItem, error) {
 	mod := tzModifier(tz)
 	todayStr := localDateStr(time.Now(), parseTzMinutes(tz))
-	query := fmt.Sprintf(`SELECT %s FROM relay_logs
-		WHERE strftime('%%Y%%m%%d', time, 'unixepoch', '%s') = ?`, metricsSelectSQL, mod)
-	row := db.QueryRowContext(ctx, query, todayStr)
-	m, err := scanMetrics(row)
+
+	q := db.NewSelect().TableExpr("relay_logs").
+		Where(fmt.Sprintf("strftime('%%Y%%m%%d', time, 'unixepoch', '%s') = ?", mod), todayStr)
+	var m metricsResult
+	err := metricsColumns(q).Scan(ctx, &m)
 	if err != nil {
 		return nil, err
 	}
@@ -151,31 +147,38 @@ func GetTodayStats(ctx context.Context, db *bun.DB, tz string) (*types.DailyStat
 	return &result, nil
 }
 
+type dailyRow struct {
+	metricsResult
+	Date string `bun:"date"`
+}
+
 func GetDailyStats(ctx context.Context, db *bun.DB, tz string) ([]types.DailyStatsItem, error) {
 	mod := tzModifier(tz)
-	query := fmt.Sprintf(`SELECT strftime('%%Y%%m%%d', time, 'unixepoch', '%s') as date, %s
-		FROM relay_logs
-		WHERE time >= unixepoch('now', '-365 days')
-		GROUP BY date ORDER BY date`, mod, metricsSelectSQL)
-	rows, err := db.QueryContext(ctx, query)
+
+	q := db.NewSelect().TableExpr("relay_logs").
+		ColumnExpr(fmt.Sprintf("strftime('%%Y%%m%%d', time, 'unixepoch', '%s') AS date", mod)).
+		Where("time >= unixepoch('now', '-365 days')").
+		GroupExpr("date").
+		OrderExpr("date")
+	q = metricsColumns(q)
+
+	var rows []dailyRow
+	err := q.Scan(ctx, &rows)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var results []types.DailyStatsItem
-	for rows.Next() {
-		var date string
-		var m metricsRow
-		if err := rows.Scan(&date, &m.InputTokens, &m.OutputTokens, &m.Cost, &m.WaitTime, &m.SuccessCount, &m.FailedCount); err != nil {
-			return nil, err
-		}
-		results = append(results, m.toDailyStats(date))
-	}
-	if results == nil {
-		results = []types.DailyStatsItem{}
+	results := make([]types.DailyStatsItem, 0, len(rows))
+	for _, r := range rows {
+		results = append(results, r.toDailyStats(r.Date))
 	}
 	return results, nil
+}
+
+type hourlyRow struct {
+	metricsResult
+	Hour int    `bun:"hour"`
+	Date string `bun:"date"`
 }
 
 func GetHourlyStats(ctx context.Context, db *bun.DB, startDate, endDate, tz string) ([]types.HourlyStatsItem, error) {
@@ -187,148 +190,173 @@ func GetHourlyStats(ctx context.Context, db *bun.DB, startDate, endDate, tz stri
 		endDate = startDate
 	}
 
-	query := fmt.Sprintf(`SELECT
-		CAST(strftime('%%H', time, 'unixepoch', '%s') AS INTEGER) as hour,
-		strftime('%%Y%%m%%d', time, 'unixepoch', '%s') as date,
-		%s
-		FROM relay_logs
-		WHERE strftime('%%Y%%m%%d', time, 'unixepoch', '%s') >= ?
-		  AND strftime('%%Y%%m%%d', time, 'unixepoch', '%s') <= ?
-		GROUP BY date, hour ORDER BY date, hour`, mod, mod, metricsSelectSQL, mod, mod)
+	dateExpr := fmt.Sprintf("strftime('%%Y%%m%%d', time, 'unixepoch', '%s')", mod)
 
-	rows, err := db.QueryContext(ctx, query, startDate, endDate)
+	q := db.NewSelect().TableExpr("relay_logs").
+		ColumnExpr(fmt.Sprintf("CAST(strftime('%%H', time, 'unixepoch', '%s') AS INTEGER) AS hour", mod)).
+		ColumnExpr(fmt.Sprintf("%s AS date", dateExpr)).
+		Where(fmt.Sprintf("%s >= ?", dateExpr), startDate).
+		Where(fmt.Sprintf("%s <= ?", dateExpr), endDate).
+		GroupExpr("date, hour").
+		OrderExpr("date, hour")
+	q = metricsColumns(q)
+
+	var rows []hourlyRow
+	err := q.Scan(ctx, &rows)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var results []types.HourlyStatsItem
-	for rows.Next() {
-		var hour int
-		var date string
-		var m metricsRow
-		if err := rows.Scan(&hour, &date, &m.InputTokens, &m.OutputTokens, &m.Cost, &m.WaitTime, &m.SuccessCount, &m.FailedCount); err != nil {
-			return nil, err
-		}
-		results = append(results, m.toHourlyStats(hour, date))
-	}
-	if results == nil {
-		results = []types.HourlyStatsItem{}
+	results := make([]types.HourlyStatsItem, 0, len(rows))
+	for _, r := range rows {
+		results = append(results, r.toHourlyStats(r.Hour, r.Date))
 	}
 	return results, nil
 }
 
-func GetGlobalStats(ctx context.Context, db *bun.DB) (*types.GlobalStatsResponse, error) {
-	var totalRequests int
-	var totalInputTokens, totalOutputTokens, totalCost sql.NullFloat64
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(cost) FROM relay_logs`).
-		Scan(&totalRequests, &totalInputTokens, &totalOutputTokens, &totalCost)
+func GetGlobalStats(ctx context.Context, logDB *bun.DB, mainDB *bun.DB) (*types.GlobalStatsResponse, error) {
+	var logStats struct {
+		TotalRequests     int     `bun:"total_requests"`
+		TotalInputTokens  float64 `bun:"total_input_tokens"`
+		TotalOutputTokens float64 `bun:"total_output_tokens"`
+		TotalCost         float64 `bun:"total_cost"`
+	}
+	err := logDB.NewSelect().TableExpr("relay_logs").
+		ColumnExpr("COUNT(*) AS total_requests").
+		ColumnExpr("CAST(COALESCE(SUM(input_tokens), 0) AS REAL) AS total_input_tokens").
+		ColumnExpr("CAST(COALESCE(SUM(output_tokens), 0) AS REAL) AS total_output_tokens").
+		ColumnExpr("CAST(COALESCE(SUM(cost), 0) AS REAL) AS total_cost").
+		Scan(ctx, &logStats)
 	if err != nil {
 		return nil, err
 	}
 
 	var activeChannels int
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM channels WHERE enabled = 1").Scan(&activeChannels)
+	_ = mainDB.NewSelect().TableExpr("channels").
+		ColumnExpr("COUNT(*)").
+		Where("enabled = 1").
+		Scan(ctx, &activeChannels)
 
 	var activeGroups int
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM groups").Scan(&activeGroups)
+	_ = mainDB.NewSelect().TableExpr("groups").
+		ColumnExpr("COUNT(*)").
+		Scan(ctx, &activeGroups)
 
 	return &types.GlobalStatsResponse{
-		TotalRequests:     totalRequests,
-		TotalInputTokens:  int(totalInputTokens.Float64),
-		TotalOutputTokens: int(totalOutputTokens.Float64),
-		TotalCost:         totalCost.Float64,
+		TotalRequests:     logStats.TotalRequests,
+		TotalInputTokens:  int(logStats.TotalInputTokens),
+		TotalOutputTokens: int(logStats.TotalOutputTokens),
+		TotalCost:         logStats.TotalCost,
 		ActiveChannels:    activeChannels,
 		ActiveGroups:      activeGroups,
 	}, nil
 }
 
+type channelStatsRow struct {
+	ChannelID     int     `bun:"channel_id"`
+	ChannelName   string  `bun:"channel_name"`
+	TotalRequests int     `bun:"total_requests"`
+	TotalCost     float64 `bun:"total_cost"`
+	AvgLatency    float64 `bun:"avg_latency"`
+}
+
 func GetChannelStats(ctx context.Context, db *bun.DB) ([]types.ChannelStatsItem, error) {
-	rows, err := db.QueryContext(ctx, `SELECT channel_id, channel_name, COUNT(*) as total_requests,
-		SUM(cost) as total_cost, AVG(use_time) as avg_latency
-		FROM relay_logs WHERE channel_id > 0
-		GROUP BY channel_id, channel_name`)
+	var rows []channelStatsRow
+	err := db.NewSelect().TableExpr("relay_logs").
+		Column("channel_id", "channel_name").
+		ColumnExpr("COUNT(*) AS total_requests").
+		ColumnExpr("CAST(COALESCE(SUM(cost), 0) AS REAL) AS total_cost").
+		ColumnExpr("CAST(COALESCE(AVG(use_time), 0) AS REAL) AS avg_latency").
+		Where("channel_id > 0").
+		GroupExpr("channel_id, channel_name").
+		Scan(ctx, &rows)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var results []types.ChannelStatsItem
-	for rows.Next() {
-		var s types.ChannelStatsItem
-		var totalCost, avgLatency sql.NullFloat64
-		if err := rows.Scan(&s.ChannelID, &s.ChannelName, &s.TotalRequests, &totalCost, &avgLatency); err != nil {
-			return nil, err
-		}
-		s.TotalCost = totalCost.Float64
-		s.AvgLatency = avgLatency.Float64
-		results = append(results, s)
-	}
-	if results == nil {
-		results = []types.ChannelStatsItem{}
+	results := make([]types.ChannelStatsItem, 0, len(rows))
+	for _, r := range rows {
+		results = append(results, types.ChannelStatsItem{
+			ChannelID:     r.ChannelID,
+			ChannelName:   r.ChannelName,
+			TotalRequests: r.TotalRequests,
+			TotalCost:     r.TotalCost,
+			AvgLatency:    r.AvgLatency,
+		})
 	}
 	return results, nil
+}
+
+type modelStatsRow struct {
+	Model        string  `bun:"request_model_name"`
+	RequestCount int     `bun:"cnt"`
+	InputTokens  float64 `bun:"input_tokens"`
+	OutputTokens float64 `bun:"output_tokens"`
+	TotalCost    float64 `bun:"total_cost"`
+	AvgLatency   float64 `bun:"avg_latency"`
+	AvgFtut      float64 `bun:"avg_ftut"`
 }
 
 func GetModelStats(ctx context.Context, db *bun.DB) ([]types.ModelStatsItem, error) {
-	rows, err := db.QueryContext(ctx, `SELECT request_model_name, COUNT(*) as cnt,
-		SUM(input_tokens), SUM(output_tokens), SUM(cost),
-		AVG(use_time), AVG(ftut)
-		FROM relay_logs
-		GROUP BY request_model_name ORDER BY cnt DESC`)
+	var rows []modelStatsRow
+	err := db.NewSelect().TableExpr("relay_logs").
+		Column("request_model_name").
+		ColumnExpr("COUNT(*) AS cnt").
+		ColumnExpr("CAST(COALESCE(SUM(input_tokens), 0) AS REAL) AS input_tokens").
+		ColumnExpr("CAST(COALESCE(SUM(output_tokens), 0) AS REAL) AS output_tokens").
+		ColumnExpr("CAST(COALESCE(SUM(cost), 0) AS REAL) AS total_cost").
+		ColumnExpr("CAST(COALESCE(AVG(use_time), 0) AS REAL) AS avg_latency").
+		ColumnExpr("CAST(COALESCE(AVG(ftut), 0) AS REAL) AS avg_ftut").
+		GroupExpr("request_model_name").
+		OrderExpr("cnt DESC").
+		Scan(ctx, &rows)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var results []types.ModelStatsItem
-	for rows.Next() {
-		var s types.ModelStatsItem
-		var inputTokens, outputTokens, totalCost, avgLatency, avgFtut sql.NullFloat64
-		if err := rows.Scan(&s.Model, &s.RequestCount, &inputTokens, &outputTokens, &totalCost, &avgLatency, &avgFtut); err != nil {
-			return nil, err
-		}
-		s.InputTokens = int(inputTokens.Float64)
-		s.OutputTokens = int(outputTokens.Float64)
-		s.TotalCost = totalCost.Float64
-		s.AvgLatency = int(math.Round(avgLatency.Float64))
-		s.AvgFirstTokenTime = int(math.Round(avgFtut.Float64))
-		results = append(results, s)
-	}
-	if results == nil {
-		results = []types.ModelStatsItem{}
+	results := make([]types.ModelStatsItem, 0, len(rows))
+	for _, r := range rows {
+		results = append(results, types.ModelStatsItem{
+			Model:             r.Model,
+			RequestCount:      r.RequestCount,
+			InputTokens:       int(r.InputTokens),
+			OutputTokens:      int(r.OutputTokens),
+			TotalCost:         r.TotalCost,
+			AvgLatency:        int(math.Round(r.AvgLatency)),
+			AvgFirstTokenTime: int(math.Round(r.AvgFtut)),
+		})
 	}
 	return results, nil
 }
 
+type apiKeyStatsRow struct {
+	ID        int     `bun:"id"`
+	Name      string  `bun:"name"`
+	Enabled   bool    `bun:"enabled"`
+	TotalCost float64 `bun:"total_cost"`
+	MaxCost   float64 `bun:"max_cost"`
+	ExpireAt  int64   `bun:"expire_at"`
+}
+
 func GetApiKeyStats(ctx context.Context, db *bun.DB) ([]map[string]any, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, name, enabled, total_cost, max_cost, expire_at FROM api_keys`)
+	var rows []apiKeyStatsRow
+	err := db.NewSelect().TableExpr("api_keys").
+		Column("id", "name", "enabled", "total_cost", "max_cost", "expire_at").
+		Scan(ctx, &rows)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var results []map[string]any
-	for rows.Next() {
-		var id int
-		var name string
-		var enabled bool
-		var totalCost, maxCost float64
-		var expireAt int64
-		if err := rows.Scan(&id, &name, &enabled, &totalCost, &maxCost, &expireAt); err != nil {
-			return nil, err
-		}
+	results := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
 		results = append(results, map[string]any{
-			"id":        id,
-			"name":      name,
-			"enabled":   enabled,
-			"totalCost": totalCost,
-			"maxCost":   maxCost,
-			"expireAt":  expireAt,
+			"id":        r.ID,
+			"name":      r.Name,
+			"enabled":   r.Enabled,
+			"totalCost": r.TotalCost,
+			"maxCost":   r.MaxCost,
+			"expireAt":  r.ExpireAt,
 		})
-	}
-	if results == nil {
-		results = []map[string]any{}
 	}
 	return results, nil
 }

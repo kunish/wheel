@@ -10,7 +10,7 @@ import (
 // ──── Stats Routes ────
 
 func (h *Handler) GetGlobalStats(c *gin.Context) {
-	stats, err := dal.GetGlobalStats(c.Request.Context(), h.DB)
+	stats, err := dal.GetGlobalStats(c.Request.Context(), h.LogDB, h.DB)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -19,7 +19,7 @@ func (h *Handler) GetGlobalStats(c *gin.Context) {
 }
 
 func (h *Handler) GetChannelStats(c *gin.Context) {
-	stats, err := dal.GetChannelStats(c.Request.Context(), h.DB)
+	stats, err := dal.GetChannelStats(c.Request.Context(), h.LogDB)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -28,7 +28,7 @@ func (h *Handler) GetChannelStats(c *gin.Context) {
 }
 
 func (h *Handler) GetTotalStats(c *gin.Context) {
-	stats, err := dal.GetTotalStats(c.Request.Context(), h.DB)
+	stats, err := dal.GetTotalStats(c.Request.Context(), h.LogDB)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -38,7 +38,7 @@ func (h *Handler) GetTotalStats(c *gin.Context) {
 
 func (h *Handler) GetTodayStats(c *gin.Context) {
 	tz := c.DefaultQuery("tz", "")
-	stats, err := dal.GetTodayStats(c.Request.Context(), h.DB, tz)
+	stats, err := dal.GetTodayStats(c.Request.Context(), h.LogDB, tz)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -48,7 +48,7 @@ func (h *Handler) GetTodayStats(c *gin.Context) {
 
 func (h *Handler) GetDailyStats(c *gin.Context) {
 	tz := c.DefaultQuery("tz", "")
-	stats, err := dal.GetDailyStats(c.Request.Context(), h.DB, tz)
+	stats, err := dal.GetDailyStats(c.Request.Context(), h.LogDB, tz)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -60,7 +60,7 @@ func (h *Handler) GetHourlyStats(c *gin.Context) {
 	start := c.DefaultQuery("start", "")
 	end := c.DefaultQuery("end", "")
 	tz := c.DefaultQuery("tz", "")
-	stats, err := dal.GetHourlyStats(c.Request.Context(), h.DB, start, end, tz)
+	stats, err := dal.GetHourlyStats(c.Request.Context(), h.LogDB, start, end, tz)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -69,7 +69,7 @@ func (h *Handler) GetHourlyStats(c *gin.Context) {
 }
 
 func (h *Handler) GetModelStats(c *gin.Context) {
-	stats, err := dal.GetModelStats(c.Request.Context(), h.DB)
+	stats, err := dal.GetModelStats(c.Request.Context(), h.LogDB)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
