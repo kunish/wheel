@@ -18,12 +18,16 @@ var upgrader = websocket.Upgrader{
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[*websocket.Conn]struct{}
+
+	streamMu      sync.RWMutex
+	activeStreams  map[string]map[string]any // streamId -> log-stream-start payload
 }
 
 // New creates a new WebSocket Hub.
 func New() *Hub {
 	return &Hub{
-		clients: make(map[*websocket.Conn]struct{}),
+		clients:      make(map[*websocket.Conn]struct{}),
+		activeStreams: make(map[string]map[string]any),
 	}
 }
 
@@ -34,6 +38,16 @@ func (h *Hub) HandleWS(c *gin.Context) {
 		log.Printf("[ws] upgrade error: %v", err)
 		return
 	}
+
+	// Send current active streams snapshot to the new client
+	h.streamMu.RLock()
+	for _, payload := range h.activeStreams {
+		msg := map[string]any{"event": "log-stream-start", "data": payload}
+		if data, err := json.Marshal(msg); err == nil {
+			conn.WriteMessage(websocket.TextMessage, data)
+		}
+	}
+	h.streamMu.RUnlock()
 
 	h.mu.Lock()
 	h.clients[conn] = struct{}{}
@@ -53,6 +67,20 @@ func (h *Hub) HandleWS(c *gin.Context) {
 			}
 		}
 	}()
+}
+
+// TrackStream registers an active stream. Called when log-stream-start is broadcast.
+func (h *Hub) TrackStream(streamId string, data map[string]any) {
+	h.streamMu.Lock()
+	h.activeStreams[streamId] = data
+	h.streamMu.Unlock()
+}
+
+// UntrackStream removes an active stream. Called on log-stream-end or log-created.
+func (h *Hub) UntrackStream(streamId string) {
+	h.streamMu.Lock()
+	delete(h.activeStreams, streamId)
+	h.streamMu.Unlock()
 }
 
 // Broadcast sends a JSON event to all connected WebSocket clients.

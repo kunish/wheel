@@ -110,6 +110,7 @@
     "status": "状态",
     "error": "错误",
     "ok": "正常",
-    "attempts": "{{count}} 次尝试"
+    "attempts": "{{count}} 次尝试",
+    "streaming": "传输中"
   }
 }

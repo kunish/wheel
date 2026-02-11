@@ -36,7 +36,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import * as React from "react"
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { toast } from "sonner"
@@ -228,6 +228,11 @@ export default function LogsPage() {
   detailIdRef.current = detailId
   const [detailTab, setDetailTab] = useState("overview")
 
+  // Track which streamId the detail panel is viewing (null = viewing a DB log)
+  const [detailStreamId, setDetailStreamId] = useState<string | null>(null)
+  const detailStreamIdRef = useRef(detailStreamId)
+  detailStreamIdRef.current = detailStreamId
+
   // Streaming overlay: real-time content from log-streaming WS events
   const [streamingOverlay, setStreamingOverlay] = useState<{
     thinkingContent: string
@@ -240,6 +245,7 @@ export default function LogsPage() {
     setStreamingOverlay(null)
   }
 
+  const [pendingStreams, setPendingStreams] = useState<Map<string, LogEntry>>(new Map())
   const [pendingCount, setPendingCount] = useState(0)
   const [sorting, setSorting] = useState<SortingState>([])
   const [grouping, setGrouping] = useState<GroupingState>([])
@@ -272,7 +278,7 @@ export default function LogsPage() {
   const { data: detailData } = useQuery({
     queryKey: ["log-detail", detailId],
     queryFn: () => getLog(detailId!),
-    enabled: detailId !== null,
+    enabled: detailId !== null && detailStreamId === null,
   })
 
   const { data: channelsData } = useQuery({
@@ -315,31 +321,79 @@ export default function LogsPage() {
     hasFilters,
   }
 
-  // Listen for log-streaming WS events: real-time content during SSE proxy
-  useWsEvent("log-streaming", (data) => {
-    if (!data?.key) return
-    // Only update if detail panel is open and we can match the streaming key
-    const currentDetailId = detailIdRef.current
-    if (currentDetailId === null) return
-    // Match against the detail data in React Query cache
-    const cached = queryClient.getQueryData(["log-detail", currentDetailId]) as
-      | { data?: LogDetail }
-      | undefined
-    if (!cached?.data) return
-    const d = cached.data
-    // Build the same key as the worker: "requestModel/actualModel/channelId"
-    const detailKey = `${d.requestModelName}/${d.actualModelName}/${d.channelId}`
-    if (data.key !== detailKey) return
-    // Only overlay if the stored response is still a streaming placeholder
-    if (d.responseContent && d.responseContent !== "[streaming]") return
-    setStreamingOverlay({
-      thinkingContent: data.thinkingContent ?? "",
-      responseContent: data.responseContent ?? "",
+  // Listen for log-stream-start: create a pending entry for the streaming request
+  useWsEvent("log-stream-start", (data) => {
+    if (!data?.streamId) return
+    const f = filtersRef.current
+    if (!f.isFirstPage || f.hasFilters) return
+    setPendingStreams((prev) => {
+      const next = new Map(prev)
+      next.set(data.streamId, {
+        id: -Date.now(),
+        time: data.time ?? Math.floor(Date.now() / 1000),
+        requestModelName: data.requestModelName ?? "",
+        actualModelName: data.actualModelName ?? "",
+        channelId: data.channelId ?? 0,
+        channelName: data.channelName ?? "",
+        inputTokens: 0,
+        outputTokens: 0,
+        ftut: 0,
+        useTime: 0,
+        error: "",
+        totalAttempts: 0,
+        _streaming: true,
+        _streamId: data.streamId,
+        _startedAt: Date.now(),
+      })
+      return next
     })
+  })
+
+  // Listen for log-streaming WS events: update pending entry useTime + streaming overlay for detail panel
+  useWsEvent("log-streaming", (data) => {
+    if (!data?.streamId) return
+
+    // Update pending entry useTime
+    setPendingStreams((prev) => {
+      const entry = prev.get(data.streamId)
+      if (!entry) return prev
+      const next = new Map(prev)
+      next.set(data.streamId, {
+        ...entry,
+        useTime: Date.now() - (entry._startedAt ?? Date.now()),
+      })
+      return next
+    })
+
+    // Streaming overlay for detail panel (when viewing a pending stream)
+    const currentStreamId = detailStreamIdRef.current
+    if (currentStreamId === data.streamId) {
+      setStreamingOverlay({
+        thinkingContent: data.thinkingContent ?? "",
+        responseContent: data.responseContent ?? "",
+      })
+    }
   })
 
   useWsEvent("log-created", (data) => {
     if (!data?.log) return
+
+    // Remove corresponding pending stream entry
+    if (data.streamId) {
+      setPendingStreams((prev) => {
+        if (!prev.has(data.streamId)) return prev
+        const next = new Map(prev)
+        next.delete(data.streamId)
+        return next
+      })
+
+      // If detail panel is viewing this stream, switch to the real log ID
+      if (detailStreamIdRef.current === data.streamId) {
+        setDetailStreamId(null)
+        setDetailId(data.log.id)
+        setStreamingOverlay(null)
+      }
+    }
 
     // Clear streaming overlay & refresh detail panel if viewing this log
     const currentDetailId = detailIdRef.current
@@ -384,6 +438,17 @@ export default function LogsPage() {
     }
   })
 
+  // Listen for log-stream-end: remove pending entry (failed/exhausted stream)
+  useWsEvent("log-stream-end", (data) => {
+    if (!data?.streamId) return
+    setPendingStreams((prev) => {
+      if (!prev.has(data.streamId)) return prev
+      const next = new Map(prev)
+      next.delete(data.streamId)
+      return next
+    })
+  })
+
   // Reset pending count when navigating to page 1 or clearing filters
   const prevFirstPageRef = useRef(isFirstPage)
   const prevHasFiltersRef = useRef(hasFilters)
@@ -403,10 +468,33 @@ export default function LogsPage() {
     queryClient.invalidateQueries({ queryKey: ["logs"] })
   }, [queryClient, navigate, pathname])
 
-  const logs = useMemo(() => (data?.data?.logs ?? []) as LogEntry[], [data])
+  const logs = useMemo(() => {
+    const dbLogs = (data?.data?.logs ?? []) as LogEntry[]
+    if (pendingStreams.size === 0) return dbLogs
+    const pending = Array.from(pendingStreams.values()).sort((a, b) => b.time - a.time)
+    return [...pending, ...dbLogs]
+  }, [data, pendingStreams])
   const total = data?.data?.total ?? 0
   const totalPages = Math.ceil(total / pageSize)
   const detail = (detailData?.data ?? null) as LogDetail | null
+
+  // Real-time elapsed time update for pending streams (1s interval)
+  useEffect(() => {
+    if (pendingStreams.size === 0) return
+    const interval = setInterval(() => {
+      setPendingStreams((prev) => {
+        const next = new Map(prev)
+        for (const [key, entry] of next) {
+          next.set(key, {
+            ...entry,
+            useTime: Date.now() - (entry._startedAt ?? Date.now()),
+          })
+        }
+        return next
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [pendingStreams.size > 0]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns = useMemo(() => createLogColumns(setDetailId, t), [t])
 
@@ -695,9 +783,20 @@ export default function LogsPage() {
                       <tr
                         key={row.id}
                         className={`hover:bg-muted/50 cursor-pointer border-b ${
-                          log.error ? "border-l-destructive bg-destructive/5 border-l-2" : ""
+                          log._streaming
+                            ? "bg-muted/20"
+                            : log.error
+                              ? "border-l-destructive bg-destructive/5 border-l-2"
+                              : ""
                         }`}
-                        onClick={() => setDetailId(log.id)}
+                        onClick={() => {
+                          if (log._streaming && log._streamId) {
+                            setDetailStreamId(log._streamId)
+                          } else {
+                            setDetailStreamId(null)
+                            setDetailId(log.id)
+                          }
+                        }}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <TableCell
@@ -745,16 +844,36 @@ export default function LogsPage() {
       )}
 
       {/* Log Detail Side Panel */}
-      <Sheet open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
+      <Sheet
+        open={detailId !== null || detailStreamId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailId(null)
+            setDetailStreamId(null)
+          }
+        }}
+      >
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
             <div className="flex items-center justify-between pr-8">
               <SheetTitle className="flex items-center gap-2">
-                {t("detail.title", { id: detailId })}
-                {detail && (
-                  <Badge variant={detail.error ? "destructive" : "default"} className="text-xs">
-                    {detail.error ? t("detail.error") : t("detail.ok")}
-                  </Badge>
+                {detailStreamId ? (
+                  <>
+                    {t("detail.title", { id: "..." })}
+                    <Badge variant="outline" className="animate-pulse gap-1 text-xs">
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      {t("columns.streaming")}
+                    </Badge>
+                  </>
+                ) : (
+                  <>
+                    {t("detail.title", { id: detailId })}
+                    {detail && (
+                      <Badge variant={detail.error ? "destructive" : "default"} className="text-xs">
+                        {detail.error ? t("detail.error") : t("detail.ok")}
+                      </Badge>
+                    )}
+                  </>
                 )}
               </SheetTitle>
               <div className="flex items-center gap-1">
@@ -793,7 +912,39 @@ export default function LogsPage() {
               </div>
             </div>
           </SheetHeader>
-          {detail ? (
+          {detailStreamId ? (
+            (() => {
+              const entry = pendingStreams.get(detailStreamId)
+              if (!entry) return null
+              const streamingDetail: LogDetail = {
+                id: entry.id,
+                time: entry.time,
+                requestModelName: entry.requestModelName,
+                actualModelName: entry.actualModelName,
+                channelName: entry.channelName,
+                channelId: entry.channelId,
+                inputTokens: entry.inputTokens,
+                outputTokens: entry.outputTokens,
+                cost: 0,
+                ftut: entry.ftut,
+                useTime: entry.useTime,
+                requestContent: "",
+                upstreamContent: null,
+                responseContent: "",
+                error: entry.error,
+                attempts: [],
+                totalAttempts: entry.totalAttempts,
+              }
+              return (
+                <DetailPanel
+                  detail={streamingDetail}
+                  activeTab={detailTab}
+                  onTabChange={setDetailTab}
+                  streamingOverlay={streamingOverlay}
+                />
+              )
+            })()
+          ) : detail ? (
             <DetailPanel
               detail={detail}
               activeTab={detailTab}
@@ -1629,6 +1780,7 @@ function MessagesTabContent({
   )
 
   const canShowConversation = messages !== null
+  const isStreamingOnly = !canShowConversation && !!streamingOverlay
 
   return (
     <div className="flex flex-col gap-3">
@@ -1664,7 +1816,18 @@ function MessagesTabContent({
         </div>
       )}
 
-      {canShowConversation && viewMode === "conversation" ? (
+      {isStreamingOnly ? (
+        <div className="flex flex-col gap-2">
+          {response ? (
+            <ResponseBlock response={response} isStreaming />
+          ) : (
+            <div className="flex items-center justify-center gap-2 py-8">
+              <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+              <span className="text-muted-foreground text-sm">{t("messagesTab.streaming")}</span>
+            </div>
+          )}
+        </div>
+      ) : canShowConversation && viewMode === "conversation" ? (
         <div className="flex flex-col gap-2">
           {messages.map((msg, i) => (
             <MessageBubble key={`msg-${i.toString()}`} msg={msg} index={i} />

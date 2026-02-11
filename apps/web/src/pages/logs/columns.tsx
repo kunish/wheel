@@ -2,7 +2,7 @@ import type { HeaderContext } from "@tanstack/react-table"
 import type { TFunction } from "i18next"
 import type { ReactNode } from "react"
 import { createColumnHelper } from "@tanstack/react-table"
-import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Layers } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Layers, Loader2 } from "lucide-react"
 import { Link } from "react-router"
 import { ModelBadge } from "@/components/model-badge"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +23,9 @@ export interface LogEntry {
   error: string
   cost?: number
   totalAttempts: number
+  _streaming?: boolean
+  _streamId?: string
+  _startedAt?: number
 }
 
 function formatDuration(ms: number): string {
@@ -229,6 +232,14 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       header: t("columns.status"),
       cell: (info) => {
         const row = info.row.original
+        if (row._streaming) {
+          return (
+            <Badge variant="outline" className="animate-pulse gap-1">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              {t("columns.streaming")}
+            </Badge>
+          )
+        }
         return row.error ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -248,18 +259,22 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
     columnHelper.display({
       id: "actions",
       header: "",
-      cell: (info) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={(e) => {
-            e.stopPropagation()
-            onViewDetail(info.row.original.id)
-          }}
-        >
-          <Eye className="h-4 w-4" />
-        </Button>
-      ),
+      cell: (info) => {
+        const row = info.row.original
+        if (row._streaming) return null
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation()
+              onViewDetail(row.id)
+            }}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+        )
+      },
       meta: { className: "w-10" },
     }),
   ]

@@ -110,6 +110,7 @@
     "status": "Status",
     "error": "Error",
     "ok": "OK",
-    "attempts": "{{count}} attempts"
+    "attempts": "{{count}} attempts",
+    "streaming": "Streaming"
   }
 }

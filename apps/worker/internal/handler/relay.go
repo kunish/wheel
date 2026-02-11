@@ -39,11 +39,19 @@ type attemptRecord struct {
 // BroadcastFunc is the signature for WebSocket broadcast.
 type BroadcastFunc func(event string, data ...any)
 
+// StreamTracker tracks active streams so new WS clients get a snapshot.
+type StreamTracker interface {
+	TrackStream(streamId string, data map[string]any)
+	UntrackStream(streamId string)
+}
+
 // RelayHandler holds dependencies for the relay routes.
 type RelayHandler struct {
-	DB        *bun.DB
-	Cache     *cache.MemoryKV
-	Broadcast BroadcastFunc
+	DB            *bun.DB
+	LogDB         *bun.DB
+	Cache         *cache.MemoryKV
+	Broadcast     BroadcastFunc
+	StreamTracker StreamTracker
 }
 
 // RegisterRelayRoutes registers the /v1/* relay routes on a Gin engine.
@@ -281,6 +289,9 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 	// Circuit breaker config
 	cbBaseSec, cbMaxSec := relay.GetCooldownConfig(c.Request.Context(), h.DB)
 
+	// Track the last streamId for cleanup on exhaustion
+	var lastStreamId string
+
 	// Retry loop
 	for round := 1; round <= maxRetryRounds; round++ {
 		for idx, item := range orderedItems {
@@ -382,14 +393,31 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 			if stream {
 				// ── Streaming path ──
 				// We need to directly write to the response writer for SSE
+				streamId := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), channel.ID, apiKeyId)
+				lastStreamId = streamId
+
+				streamStartPayload := map[string]any{
+					"streamId":         streamId,
+					"requestModelName": model,
+					"actualModelName":  targetModel,
+					"channelId":        channel.ID,
+					"channelName":      channel.Name,
+					"time":             time.Now().Unix(),
+				}
+				if h.Broadcast != nil {
+					h.Broadcast("log-stream-start", streamStartPayload)
+				}
+				if h.StreamTracker != nil {
+					h.StreamTracker.TrackStream(streamId, streamStartPayload)
+				}
+
 				var onContent relay.StreamContentCallback
 				if h.Broadcast != nil {
-					streamKey := fmt.Sprintf("%s/%s/%d", model, targetModel, channel.ID)
 					onContent = func(thinking, response string) {
 						h.Broadcast("log-streaming", map[string]any{
-							"key":              streamKey,
-							"thinkingContent":  thinking,
-							"responseContent":  response,
+							"streamId":        streamId,
+							"thinkingContent": thinking,
+							"responseContent": response,
 						})
 					}
 				}
@@ -432,6 +460,12 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 						rateLimited = true
 						go dal.UpdateChannelKeyStatus(context.Background(), h.DB, selectedKey.ID, 429)
 					}
+					if h.Broadcast != nil {
+						h.Broadcast("log-stream-end", map[string]any{"streamId": streamId})
+					}
+					if h.StreamTracker != nil {
+						h.StreamTracker.UntrackStream(streamId)
+					}
 					continue
 				}
 
@@ -461,6 +495,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 				go h.asyncStreamLog(
 					model, targetModel, channel, selectedKey, apiKeyId,
 					body, upstreamBodyForLog, streamInfo, attempts, startTime,
+					streamId,
 				)
 				return // Response already written by ProxyStreaming
 
@@ -570,6 +605,15 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 		}
 	}
 
+	if stream && lastStreamId != "" {
+		if h.Broadcast != nil {
+			h.Broadcast("log-stream-end", map[string]any{"streamId": lastStreamId})
+		}
+		if h.StreamTracker != nil {
+			h.StreamTracker.UntrackStream(lastStreamId)
+		}
+	}
+
 	// Async error log
 	go h.asyncErrorLog(
 		model, lastAttemptChannelID, lastAttemptChannelName,
@@ -603,6 +647,7 @@ func (h *RelayHandler) asyncStreamLog(
 	streamInfo *relay.StreamCompleteInfo,
 	attempts []attemptRecord,
 	startTime time.Time,
+	streamId string,
 ) {
 	if streamInfo == nil {
 		return
@@ -632,7 +677,7 @@ func (h *RelayHandler) asyncStreamLog(
 		upstreamContent = upstreamBodyForLog
 	}
 
-	logRow, err := dal.CreateLog(context.Background(), h.DB, types.RelayLog{
+	logRow, err := dal.CreateLog(context.Background(), h.LogDB, types.RelayLog{
 		Time:             time.Now().Unix(),
 		RequestModelName: model,
 		ChannelID:        channel.ID,
@@ -661,7 +706,12 @@ func (h *RelayHandler) asyncStreamLog(
 
 	if h.Broadcast != nil {
 		h.Broadcast("stats-updated")
-		h.Broadcast("log-created", logSummary(logRow))
+		summary := logSummary(logRow)
+		summary["streamId"] = streamId
+		h.Broadcast("log-created", summary)
+	}
+	if h.StreamTracker != nil {
+		h.StreamTracker.UntrackStream(streamId)
 	}
 
 	h.maybeCleanupLogs()
@@ -692,7 +742,7 @@ func (h *RelayHandler) asyncNonStreamLog(
 	var attemptsVal types.AttemptList
 	json.Unmarshal(attemptsJSON, &attemptsVal)
 
-	logRow, err := dal.CreateLog(context.Background(), h.DB, types.RelayLog{
+	logRow, err := dal.CreateLog(context.Background(), h.LogDB, types.RelayLog{
 		Time:             time.Now().Unix(),
 		RequestModelName: model,
 		ChannelID:        channel.ID,
@@ -742,7 +792,7 @@ func (h *RelayHandler) asyncErrorLog(
 	var attemptsVal types.AttemptList
 	json.Unmarshal(attemptsJSON, &attemptsVal)
 
-	logRow, err := dal.CreateLog(context.Background(), h.DB, types.RelayLog{
+	logRow, err := dal.CreateLog(context.Background(), h.LogDB, types.RelayLog{
 		Time:             time.Now().Unix(),
 		RequestModelName: model,
 		ChannelID:        channelID,
@@ -795,13 +845,13 @@ func (h *RelayHandler) maybeCleanupLogs() {
 	if err != nil {
 		return
 	}
-	retentionDays := 30
+	retentionDays := 365
 	if days != nil {
 		if n, err := strconv.Atoi(*days); err == nil && n > 0 {
 			retentionDays = n
 		}
 	}
-	dal.CleanupOldLogs(context.Background(), h.DB, retentionDays)
+	dal.CleanupOldLogs(context.Background(), h.LogDB, retentionDays)
 }
 
 // ── Cache Helpers ───────────────────────────────────────────────

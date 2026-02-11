@@ -39,6 +39,18 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// ── Log Database (separate file for write-heavy logs) ──
+	logDBPath := filepath.Join(filepath.Dir(cfg.DBPath), "wheel-logs.db")
+	logDatabase, err := db.OpenLogDB(logDBPath)
+	if err != nil {
+		log.Fatalf("Failed to open log database: %v", err)
+	}
+	defer logDatabase.Close()
+
+	if err := db.MigrateLogDB(logDatabase.DB); err != nil {
+		log.Fatalf("Failed to migrate log database: %v", err)
+	}
+
 	// ── Cache ──
 	kv := cache.New()
 	defer kv.Close()
@@ -49,14 +61,17 @@ func main() {
 	// ── Handlers ──
 	h := &handler.Handler{
 		DB:     database,
+		LogDB:  logDatabase,
 		Cache:  kv,
 		Config: cfg,
 	}
 
 	rh := &handler.RelayHandler{
-		DB:        database,
-		Cache:     kv,
-		Broadcast: hub.Broadcast,
+		DB:            database,
+		LogDB:         logDatabase,
+		Cache:         kv,
+		Broadcast:     hub.Broadcast,
+		StreamTracker: hub,
 	}
 
 	// ── Router ──
