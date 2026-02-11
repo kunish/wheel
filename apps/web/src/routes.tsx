@@ -1,9 +1,30 @@
 import { lazy } from "react"
 import { BrowserRouter, Navigate, Route, Routes } from "react-router"
 import { ProtectedLayout } from "./components/protected-layout"
+import { queryClient } from "./components/query-provider"
+import {
+  getChannelStats,
+  getDailyStats,
+  getHourlyStats,
+  getModelStats,
+  getTotalStats,
+} from "./lib/api"
 
 const LoginPage = lazy(() => import("./pages/login"))
-const DashboardPage = lazy(() => import("./pages/dashboard"))
+const DashboardPage = lazy(() => {
+  // Prefetch all dashboard data in parallel with chunk loading
+  const opts = { staleTime: 30 * 1000 }
+  queryClient.prefetchQuery({ queryKey: ["stats", "total"], queryFn: getTotalStats, ...opts })
+  queryClient.prefetchQuery({ queryKey: ["stats", "daily"], queryFn: getDailyStats, ...opts })
+  queryClient.prefetchQuery({
+    queryKey: ["stats", "hourly"],
+    queryFn: () => getHourlyStats(),
+    ...opts,
+  })
+  queryClient.prefetchQuery({ queryKey: ["stats", "channel"], queryFn: getChannelStats, ...opts })
+  queryClient.prefetchQuery({ queryKey: ["stats", "model"], queryFn: getModelStats, ...opts })
+  return import("./pages/dashboard")
+})
 const ChannelsPage = lazy(() => import("./pages/channels"))
 const GroupsPage = lazy(() => import("./pages/groups"))
 const LogsPage = lazy(() => import("./pages/logs"))
