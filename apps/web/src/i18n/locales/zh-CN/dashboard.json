@@ -23,7 +23,11 @@
     "viewLogs": "查看日志 →",
     "less": "少",
     "more": "多",
-    "noData": "暂无数据"
+    "noData": "暂无数据",
+    "today": "今天",
+    "thisWeek": "本周",
+    "thisMonth": "本月",
+    "thisYear": "今年"
   },
   "weekdaysFull": {
     "sunday": "星期日",

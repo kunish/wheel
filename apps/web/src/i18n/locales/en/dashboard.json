@@ -23,7 +23,11 @@
     "viewLogs": "View logs →",
     "less": "Less",
     "more": "More",
-    "noData": "No data"
+    "noData": "No data",
+    "today": "Today",
+    "thisWeek": "This Week",
+    "thisMonth": "This Month",
+    "thisYear": "This Year"
   },
   "weekdaysFull": {
     "sunday": "Sunday",

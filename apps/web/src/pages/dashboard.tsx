@@ -272,6 +272,9 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
   }, [])
   const [activeTooltip, setActiveTooltip] = useState<HeatmapTooltip | null>(null)
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null)
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [monthOffset, setMonthOffset] = useState(0)
+  const [yearOffset, setYearOffset] = useState(0)
   const navigate = useNavigate()
 
   const [today] = useState(() => new Date())
@@ -323,10 +326,22 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
   )
 
   // ── Year view: 53 weeks × 7 days, column-first grid ──
+  const yearAnchor = useMemo(() => {
+    const d = new Date(today.getFullYear() + yearOffset, 11, 31)
+    // If offset is 0, use today as the anchor so future days are dashed
+    if (yearOffset === 0) return today
+    return d
+  }, [today, yearOffset])
+
+  const yearLabel = useMemo(() => {
+    return `${today.getFullYear() + yearOffset}`
+  }, [today, yearOffset])
+
   const yearDays = useMemo(() => {
-    const todayDay = today.getDay()
-    const start = new Date(today)
-    start.setDate(start.getDate() - todayDay - 52 * 7)
+    const anchor = yearAnchor
+    const anchorDay = anchor.getDay()
+    const start = new Date(anchor)
+    start.setDate(start.getDate() - anchorDay - 52 * 7)
     const result: DayData[] = []
     for (let i = 0; i < 53 * 7; i++) {
       const d = new Date(start)
@@ -334,12 +349,20 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       result.push(buildDayData(d, dataMap, today))
     }
     return result
-  }, [dataMap, today])
+  }, [dataMap, today, yearAnchor])
 
-  // ── Month view: current month's days ──
+  // ── Month view: offset-based month ──
+  const monthAnchor = useMemo(() => {
+    return new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+  }, [today, monthOffset])
+
+  const monthLabel = useMemo(() => {
+    return `${monthAnchor.getFullYear()}-${(monthAnchor.getMonth() + 1).toString().padStart(2, "0")}`
+  }, [monthAnchor])
+
   const monthDays = useMemo(() => {
-    const year = today.getFullYear()
-    const month = today.getMonth()
+    const year = monthAnchor.getFullYear()
+    const month = monthAnchor.getMonth()
     const firstDay = new Date(year, month, 1)
     const lastDay = new Date(year, month + 1, 0)
     const startPad = firstDay.getDay()
@@ -350,21 +373,33 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
       result.push(buildDayData(date, dataMap, today))
     }
     return result
-  }, [dataMap, today])
+  }, [dataMap, today, monthAnchor])
 
-  // ── Week view: current week (Sun–Sat) ──
-  const weekDays = useMemo(() => {
+  // ── Week view: offset-based week (Sun–Sat) ──
+  const weekStart = useMemo(() => {
     const todayDay = today.getDay()
     const start = new Date(today)
-    start.setDate(start.getDate() - todayDay)
+    start.setDate(start.getDate() - todayDay + weekOffset * 7)
+    return start
+  }, [today, weekOffset])
+
+  const weekLabel = useMemo(() => {
+    const end = new Date(weekStart)
+    end.setDate(end.getDate() + 6)
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`
+    return `${fmt(weekStart)} ~ ${fmt(end)}`
+  }, [weekStart])
+
+  const weekDays = useMemo(() => {
     const result: DayData[] = []
     for (let i = 0; i < 7; i++) {
-      const d = new Date(start)
+      const d = new Date(weekStart)
       d.setDate(d.getDate() + i)
       result.push(buildDayData(d, dataMap, today))
     }
     return result
-  }, [dataMap, today])
+  }, [dataMap, today, weekStart])
 
   // ── Day view: hourly data for the selected date ──
   const selectedDayDateStr = selectedDateStr ?? toDateStr(today)
@@ -449,6 +484,31 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
     },
     [navigate],
   )
+
+  /** Navigate to logs filtered by the current week's time range */
+  const navigateToWeek = useCallback(() => {
+    const from = Math.floor(weekStart.getTime() / 1000)
+    const end = new Date(weekStart)
+    end.setDate(end.getDate() + 7)
+    const to = Math.floor(end.getTime() / 1000) - 1
+    navigate(`/logs?from=${from}&to=${to}`)
+  }, [weekStart, navigate])
+
+  /** Navigate to logs filtered by the current month's time range */
+  const navigateToMonth = useCallback(() => {
+    const from = Math.floor(monthAnchor.getTime() / 1000)
+    const end = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 1)
+    const to = Math.floor(end.getTime() / 1000) - 1
+    navigate(`/logs?from=${from}&to=${to}`)
+  }, [monthAnchor, navigate])
+
+  /** Navigate to logs filtered by the current year's time range */
+  const navigateToYear = useCallback(() => {
+    const y = today.getFullYear() + yearOffset
+    const from = Math.floor(new Date(y, 0, 1).getTime() / 1000)
+    const to = Math.floor(new Date(y + 1, 0, 1).getTime() / 1000) - 1
+    navigate(`/logs?from=${from}&to=${to}`)
+  }, [today, yearOffset, navigate])
 
   /** Navigate to the previous or next day in Day view */
   const shiftDay = useCallback(
@@ -574,12 +634,22 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
                       />
                     </svg>
                   </button>
-                  <button
-                    onClick={() => navigateToDay(selectedDayDateStr)}
-                    className="text-muted-foreground hover:text-foreground ml-auto text-xs font-medium underline-offset-2 hover:underline"
-                  >
-                    {t("activity.viewLogs")}
-                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    {!isToday && (
+                      <button
+                        onClick={() => setSelectedDateStr(null)}
+                        className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                      >
+                        {t("activity.today")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => navigateToDay(selectedDayDateStr)}
+                      className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                    >
+                      {t("activity.viewLogs")}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Stats summary cards */}
@@ -685,82 +755,232 @@ function ActivitySection({ data }: { data?: StatsDaily[] }) {
           })()}
 
         {view === "year" && (
-          <div
-            className="grid gap-[3px]"
-            style={{
-              gridTemplateColumns: "repeat(53, 1fr)",
-              gridTemplateRows: "repeat(7, 1fr)",
-              gridAutoFlow: "column",
-            }}
-          >
-            {yearDays.map((day) => renderCell(day, day.dateStr))}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setYearOffset((o) => o - 1)}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M10 4L6 8L10 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <span className="text-base font-bold">{yearLabel}</span>
+              <button
+                onClick={() => setYearOffset((o) => o + 1)}
+                disabled={yearOffset >= 0}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M6 4L10 8L6 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <div className="ml-auto flex items-center gap-3">
+                {yearOffset !== 0 && (
+                  <button
+                    onClick={() => setYearOffset(0)}
+                    className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                  >
+                    {t("activity.thisYear")}
+                  </button>
+                )}
+                <button
+                  onClick={navigateToYear}
+                  className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                >
+                  {t("activity.viewLogs")}
+                </button>
+              </div>
+            </div>
+            <div
+              className="grid gap-[3px]"
+              style={{
+                gridTemplateColumns: "repeat(53, 1fr)",
+                gridTemplateRows: "repeat(7, 1fr)",
+                gridAutoFlow: "column",
+              }}
+            >
+              {yearDays.map((day) => renderCell(day, day.dateStr))}
+            </div>
           </div>
         )}
 
         {view === "month" && (
-          <div>
-            <div className="mb-1 grid grid-cols-7 gap-[3px]">
-              {weekdayLabels.map((label) => (
-                <div
-                  key={label}
-                  className="text-muted-foreground py-0.5 text-center text-xs font-medium"
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMonthOffset((o) => o - 1)}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M10 4L6 8L10 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <span className="text-base font-bold">{monthLabel}</span>
+              <button
+                onClick={() => setMonthOffset((o) => o + 1)}
+                disabled={monthOffset >= 0}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M6 4L10 8L6 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <div className="ml-auto flex items-center gap-3">
+                {monthOffset !== 0 && (
+                  <button
+                    onClick={() => setMonthOffset(0)}
+                    className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                  >
+                    {t("activity.thisMonth")}
+                  </button>
+                )}
+                <button
+                  onClick={navigateToMonth}
+                  className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
                 >
-                  {label}
-                </div>
-              ))}
+                  {t("activity.viewLogs")}
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-7 gap-[3px]">
-              {monthDays.map((day, i) => {
-                // eslint-disable-next-line react/no-array-index-key -- padding cells for calendar alignment have no stable identity
-                if (!day) return <div key={`pad-${i}`} />
-                if (day.isFuture)
+            <div>
+              <div className="mb-1 grid grid-cols-7 gap-[3px]">
+                {weekdayLabels.map((label) => (
+                  <div
+                    key={label}
+                    className="text-muted-foreground py-0.5 text-center text-xs font-medium"
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-[3px]">
+                {monthDays.map((day, i) => {
+                  // eslint-disable-next-line react/no-array-index-key -- padding cells for calendar alignment have no stable identity
+                  if (!day) return <div key={`pad-${i}`} />
+                  if (day.isFuture)
+                    return (
+                      <div
+                        key={day.dateStr}
+                        className="border-border/30 aspect-square rounded-sm border border-dashed"
+                      />
+                    )
+                  const count = (day.daily?.request_success ?? 0) + (day.daily?.request_failed ?? 0)
+                  const level = getActivityLevel(count)
                   return (
                     <div
                       key={day.dateStr}
-                      className="border-border/30 aspect-square rounded-sm border border-dashed"
+                      className="aspect-square cursor-pointer rounded-sm transition-transform hover:scale-125"
+                      style={{ backgroundColor: LEVEL_COLORS[level] }}
+                      onClick={() => drillIntoDay(day.dateStr)}
+                      onMouseEnter={(e) =>
+                        handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })
+                      }
+                      onMouseLeave={handleMouseLeave}
                     />
                   )
-                const count = (day.daily?.request_success ?? 0) + (day.daily?.request_failed ?? 0)
-                const level = getActivityLevel(count)
-                return (
-                  <div
-                    key={day.dateStr}
-                    className="aspect-square cursor-pointer rounded-sm transition-transform hover:scale-125"
-                    style={{ backgroundColor: LEVEL_COLORS[level] }}
-                    onClick={() => drillIntoDay(day.dateStr)}
-                    onMouseEnter={(e) =>
-                      handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })
-                    }
-                    onMouseLeave={handleMouseLeave}
-                  />
-                )
-              })}
+                })}
+              </div>
             </div>
           </div>
         )}
 
         {view === "week" && (
-          <div>
-            <div className="mb-1 grid grid-cols-7 gap-[3px]">
-              {weekDays.map((day) => (
-                <div
-                  key={day.dateStr}
-                  className="text-muted-foreground py-0.5 text-center text-xs font-medium"
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setWeekOffset((o) => o - 1)}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M10 4L6 8L10 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <span className="text-base font-bold">{weekLabel}</span>
+              <button
+                onClick={() => setWeekOffset((o) => o + 1)}
+                disabled={weekOffset >= 0}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M6 4L10 8L6 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <div className="ml-auto flex items-center gap-3">
+                {weekOffset !== 0 && (
+                  <button
+                    onClick={() => setWeekOffset(0)}
+                    className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
+                  >
+                    {t("activity.thisWeek")}
+                  </button>
+                )}
+                <button
+                  onClick={navigateToWeek}
+                  className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
                 >
-                  {
-                    weekdayLabels[
-                      new Date(
-                        Number.parseInt(day.dateStr.slice(0, 4)),
-                        Number.parseInt(day.dateStr.slice(4, 6)) - 1,
-                        Number.parseInt(day.dateStr.slice(6, 8)),
-                      ).getDay()
-                    ]
-                  }
-                </div>
-              ))}
+                  {t("activity.viewLogs")}
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-7 gap-[3px]">
-              {weekDays.map((day) => renderCell(day, day.dateStr))}
+            <div>
+              <div className="mb-1 grid grid-cols-7 gap-[3px]">
+                {weekDays.map((day) => (
+                  <div
+                    key={day.dateStr}
+                    className="text-muted-foreground py-0.5 text-center text-xs font-medium"
+                  >
+                    {
+                      weekdayLabels[
+                        new Date(
+                          Number.parseInt(day.dateStr.slice(0, 4)),
+                          Number.parseInt(day.dateStr.slice(4, 6)) - 1,
+                          Number.parseInt(day.dateStr.slice(6, 8)),
+                        ).getDay()
+                      ]
+                    }
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-[3px]">
+                {weekDays.map((day) => renderCell(day, day.dateStr))}
+              </div>
             </div>
           </div>
         )}
