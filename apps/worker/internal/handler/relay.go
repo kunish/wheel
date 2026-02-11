@@ -193,6 +193,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 
 	// Parse request type
 	requestType := relay.DetectRequestType(path)
+	isAnthropicInbound := requestType == "anthropic-messages"
 	if requestType == "" {
 		c.JSON(400, gin.H{"error": gin.H{"message": "Unsupported endpoint", "type": "invalid_request_error"}})
 		return
@@ -201,19 +202,19 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 	// Read and parse body
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(400, gin.H{"error": gin.H{"message": "Failed to read request body", "type": "invalid_request_error"}})
+		apiError(c, 400, "invalid_request_error", "Failed to read request body", isAnthropicInbound)
 		return
 	}
 
 	var body map[string]any
 	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		c.JSON(400, gin.H{"error": gin.H{"message": "Invalid JSON body", "type": "invalid_request_error"}})
+		apiError(c, 400, "invalid_request_error", "Invalid JSON body", isAnthropicInbound)
 		return
 	}
 
 	model, stream := relay.ExtractModel(body)
 	if model == "" {
-		c.JSON(400, gin.H{"error": gin.H{"message": "Model is required", "type": "invalid_request_error"}})
+		apiError(c, 400, "invalid_request_error", "Model is required", isAnthropicInbound)
 		return
 	}
 
@@ -221,14 +222,12 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 	supportedModels, _ := c.Get("supportedModels")
 	sm, _ := supportedModels.(string)
 	if !checkModelAccess(sm, model) {
-		c.JSON(403, gin.H{"error": gin.H{
-			"message": fmt.Sprintf("Model '%s' not allowed for this API key", model),
-			"type":    "invalid_request_error",
-		}})
+		apiError(c, 403, "invalid_request_error",
+			fmt.Sprintf("Model '%s' not allowed for this API key", model),
+			isAnthropicInbound,
+		)
 		return
 	}
-
-	isAnthropicInbound := requestType == "anthropic-messages"
 
 	// Load channels and groups
 	allChannels := h.loadChannels()
@@ -237,10 +236,10 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 	// Match group
 	group := relay.MatchGroup(model, allGroups)
 	if group == nil || len(group.Items) == 0 {
-		c.JSON(404, gin.H{"error": gin.H{
-			"message": fmt.Sprintf("No group matches model '%s'", model),
-			"type":    "invalid_request_error",
-		}})
+		apiError(c, 404, "invalid_request_error",
+			fmt.Sprintf("No group matches model '%s'", model),
+			isAnthropicInbound,
+		)
 		return
 	}
 
@@ -350,6 +349,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					Sticky:       stickyPtr,
 					Msg:          msg,
 				})
+				lastError = msg
 				continue
 			}
 
@@ -590,12 +590,10 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 		errType = "rate_limit_error"
 	}
 
-	c.JSON(exhaustedStatus, gin.H{
-		"error": gin.H{
-			"message": fmt.Sprintf("All channels exhausted after %d rounds. Last error: %s", maxRetryRounds, lastError),
-			"type":    errType,
-		},
-	})
+	apiError(c, exhaustedStatus, errType,
+		fmt.Sprintf("All channels exhausted after %d rounds. Last error: %s", maxRetryRounds, lastError),
+		isAnthropicInbound,
+	)
 }
 
 // ── Async Logging ───────────────────────────────────────────────
@@ -925,4 +923,26 @@ func truncateForLog(body map[string]any) string {
 		s = s[:maxLogJSON]
 	}
 	return s
+}
+
+// apiError returns an error response in the correct format based on the request type.
+// Anthropic format: {"type":"error","error":{"type":"...","message":"..."}}
+// OpenAI format:    {"error":{"message":"...","type":"..."}}
+func apiError(c *gin.Context, status int, errType, message string, isAnthropicInbound bool) {
+	if isAnthropicInbound {
+		c.JSON(status, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    errType,
+				"message": message,
+			},
+		})
+	} else {
+		c.JSON(status, gin.H{
+			"error": gin.H{
+				"message": message,
+				"type":    errType,
+			},
+		})
+	}
 }
