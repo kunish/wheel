@@ -784,7 +784,7 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 			}
 			delta := map[string]any{
 				"type":  "message_delta",
-				"delta": map[string]any{"stop_reason": "end_turn"},
+				"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
 				"usage": map[string]any{"output_tokens": 0},
 			}
 			b, _ := json.Marshal(delta)
@@ -890,7 +890,7 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 			stopReason := mapOpenAIFinishReason(finishReason)
 			md := map[string]any{
 				"type":  "message_delta",
-				"delta": map[string]any{"stop_reason": stopReason},
+				"delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil},
 				"usage": map[string]any{
 					"input_tokens":  inTok,
 					"output_tokens": outTok,
