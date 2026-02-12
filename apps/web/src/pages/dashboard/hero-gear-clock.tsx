@@ -347,7 +347,7 @@ export function HeroGearClock({
           )
         })}
 
-        {/* ── Inner reactor rings (decorative concentric circles) ── */}
+        {/* ── Inner reactor ring (decorative frame) ── */}
         <circle
           cx={GEAR_CX}
           cy={GEAR_CY}
@@ -357,35 +357,6 @@ export function HeroGearClock({
           strokeWidth="0.4"
           opacity={0.12}
           pointerEvents="none"
-        />
-        <circle
-          cx={GEAR_CX}
-          cy={GEAR_CY}
-          r="12"
-          fill="none"
-          stroke="var(--nb-lime)"
-          strokeWidth="0.6"
-          opacity={0.2}
-          pointerEvents="none"
-          style={{ animation: "reactor-core-pulse 2.5s ease-in-out infinite" }}
-        />
-        <circle
-          cx={GEAR_CX}
-          cy={GEAR_CY}
-          r="8"
-          fill="var(--border)"
-          opacity={0.1}
-          pointerEvents="none"
-        />
-        {/* Core dot — energy center */}
-        <circle
-          cx={GEAR_CX}
-          cy={GEAR_CY}
-          r="3"
-          fill="var(--nb-lime)"
-          opacity={0.3}
-          pointerEvents="none"
-          style={{ animation: "reactor-core-pulse 2s ease-in-out infinite" }}
         />
 
         {/* ── Clock hour labels ── */}
@@ -492,7 +463,10 @@ export function HeroGearClock({
       {/* ── HTML overlay for hub content (children) ── */}
       {children && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="pointer-events-auto flex flex-col items-center justify-center">
+          <div
+            className="pointer-events-auto flex flex-col items-center justify-center"
+            style={{ maxWidth: "38%" }}
+          >
             {children}
           </div>
         </div>

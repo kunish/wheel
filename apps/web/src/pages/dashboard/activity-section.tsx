@@ -405,6 +405,11 @@ function DataPanelPopover({
   modelData?: ModelStatsItem[]
   channelData?: ChannelStatsRow[]
 }) {
+  // Keep last active tab so content remains visible during close animation
+  const lastTabRef = useRef<DataTab>("cost")
+  if (dataTab !== null) lastTabRef.current = dataTab
+  const displayTab = dataTab ?? lastTabRef.current
+
   return (
     <div>
       <Popover
@@ -437,7 +442,7 @@ function DataPanelPopover({
                 key={key}
                 onClick={() => setDataTab(key)}
                 className={`rounded-md border-2 p-1.5 transition-all ${
-                  dataTab === key
+                  displayTab === key
                     ? "border-border bg-primary text-primary-foreground shadow-[2px_2px_0_var(--nb-shadow)]"
                     : "text-muted-foreground hover:text-foreground border-transparent"
                 }`}
@@ -448,9 +453,11 @@ function DataPanelPopover({
           </div>
           {/* Panel content */}
           <div>
-            {dataTab === "cost" && <HubCostChart dailyData={dailyData} hourlyData={hourlyData} />}
-            {dataTab === "models" && <HubModelList data={modelData} />}
-            {dataTab === "channels" && <HubChannelList data={channelData} />}
+            {displayTab === "cost" && (
+              <HubCostChart dailyData={dailyData} hourlyData={hourlyData} />
+            )}
+            {displayTab === "models" && <HubModelList data={modelData} />}
+            {displayTab === "channels" && <HubChannelList data={channelData} />}
           </div>
         </PopoverContent>
       </Popover>
@@ -872,14 +879,62 @@ export function ActivitySection({
               handleMouseEnter={handleMouseEnter}
               handleMouseLeave={handleMouseLeave}
             >
-              <DataPanelPopover
-                dataTab={dataTab}
-                setDataTab={setDataTab}
-                dailyData={data}
-                hourlyData={hourlyData}
-                modelData={modelData}
-                channelData={channelData}
-              />
+              <div className="flex flex-col items-center gap-1">
+                {/* Primary metric: requests */}
+                <div className="flex flex-col items-center">
+                  <span className="text-muted-foreground text-[10px] font-bold tracking-[0.15em]">
+                    REQ
+                  </span>
+                  <span className="text-2xl leading-none font-black tabular-nums">
+                    <AnimatedNumber
+                      value={gearData.reqCount}
+                      formatter={(n) => formatCount(n).value}
+                    />
+                    {formatCount(gearData.reqCount).unit && (
+                      <span className="text-muted-foreground ml-0.5 text-xs font-bold">
+                        {formatCount(gearData.reqCount).unit}
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Divider */}
+                <div className="bg-border h-px w-10" />
+
+                {/* Token flow: in / out */}
+                <div className="text-muted-foreground flex items-center gap-2 text-[10px] tabular-nums">
+                  <span className="flex items-center gap-0.5">
+                    <ArrowDownToLine className="h-3 w-3 opacity-50" />
+                    {formatCount(gearData.inTokens).value}
+                    {formatCount(gearData.inTokens).unit}
+                  </span>
+                  <span className="flex items-center gap-0.5">
+                    <ArrowUpFromLine className="h-3 w-3 opacity-50" />
+                    {formatCount(gearData.outTokens).value}
+                    {formatCount(gearData.outTokens).unit}
+                  </span>
+                </div>
+
+                {/* Cost */}
+                <span
+                  className="text-xs font-bold tabular-nums"
+                  style={{
+                    color: "color-mix(in srgb, var(--nb-lime) 60%, var(--foreground))",
+                  }}
+                >
+                  {formatMoney(gearData.totalCost).value}
+                </span>
+
+                {/* Data panel popover button */}
+                <DataPanelPopover
+                  dataTab={dataTab}
+                  setDataTab={setDataTab}
+                  dailyData={data}
+                  hourlyData={hourlyData}
+                  modelData={modelData}
+                  channelData={channelData}
+                />
+              </div>
             </HeroGearClock>
           </GearClockFit>
 
