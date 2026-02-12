@@ -17,6 +17,9 @@ updates:
       docker:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: /apps/worker
@@ -26,6 +29,9 @@ updates:
       docker:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: golang
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /
