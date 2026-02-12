@@ -1690,15 +1690,12 @@ function MessageBubble({
   isContext?: boolean
 }) {
   const { t } = useTranslation("logs")
-  const [expanded, setExpanded] = useState(false)
   const config = ROLE_STYLE_CONFIG[msg.role] ?? DEFAULT_ROLE_STYLE_CONFIG
   const Icon = config.icon
   const { text, hasImages } = getMessageTextContent(msg.content)
   const { isTruncated, cleanText, notice } = detectTruncation(text)
 
   const displaySource = cleanText || text
-  const isLong = displaySource.length > 800
-  const displayText = isLong && !expanded ? displaySource.slice(0, 800) : displaySource
 
   return (
     <div
@@ -1750,23 +1747,13 @@ function MessageBubble({
             <Suspense
               fallback={
                 <pre className="font-[inherit] text-xs leading-relaxed whitespace-pre-wrap">
-                  {displayText}
+                  {displaySource}
                 </pre>
               }
             >
-              <LazyMarkdown>{displayText}</LazyMarkdown>
+              <LazyMarkdown>{displaySource}</LazyMarkdown>
             </Suspense>
           </div>
-          {isLong && (
-            <button
-              className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded
-                ? t("messagesTab.showLess")
-                : t("messagesTab.showAll", { chars: displaySource.length.toLocaleString() })}
-            </button>
-          )}
         </div>
       )}
 
@@ -1799,15 +1786,12 @@ function ToolCallBlock({
 }: {
   toolCall: NonNullable<ParsedMessage["tool_calls"]>[number]
 }) {
-  const { t } = useTranslation("logs")
-  const [expanded, setExpanded] = useState(false)
   let args = toolCall.function.arguments
   try {
     args = JSON.stringify(JSON.parse(args), null, 2)
   } catch {
     /* keep original */
   }
-  const isLong = args.length > 200
 
   return (
     <div className="bg-background/60 rounded-md border p-2">
@@ -1819,16 +1803,8 @@ function ToolCallBlock({
       {args && args !== "{}" && (
         <div className="mt-1.5">
           <pre className="bg-muted/50 rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
-            {isLong && !expanded ? `${args.slice(0, 200)}...` : args}
+            {args}
           </pre>
-          {isLong && (
-            <button
-              className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? t("messagesTab.collapse") : t("messagesTab.expand")}
-            </button>
-          )}
         </div>
       )}
     </div>
@@ -1846,10 +1822,7 @@ function ResponseChoiceBlock({
 }) {
   const { t } = useTranslation("logs")
   const { text } = getMessageTextContent(choice.assistantContent)
-  const [expanded, setExpanded] = useState(false)
   const [thinkingOpen, setThinkingOpen] = useState(false)
-  const isLong = text.length > 800
-  const displayText = isLong && !expanded ? text.slice(0, 800) : text
 
   return (
     <div className="border-l-nb-lime bg-nb-lime/15 dark:bg-nb-lime/10 rounded-md border-2 border-l-4">
@@ -1913,23 +1886,13 @@ function ResponseChoiceBlock({
             <Suspense
               fallback={
                 <pre className="font-[inherit] text-xs leading-relaxed whitespace-pre-wrap">
-                  {displayText}
+                  {text}
                 </pre>
               }
             >
-              <LazyMarkdown>{displayText}</LazyMarkdown>
+              <LazyMarkdown>{text}</LazyMarkdown>
             </Suspense>
           </div>
-          {isLong && (
-            <button
-              className="text-muted-foreground hover:text-foreground mt-1 text-[10px] font-bold tracking-wider uppercase"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded
-                ? t("messagesTab.showLess")
-                : t("messagesTab.showAll", { chars: text.length.toLocaleString() })}
-            </button>
-          )}
         </div>
       )}
 
