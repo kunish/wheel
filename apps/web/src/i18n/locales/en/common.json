@@ -41,8 +41,9 @@
     "cancel": "Cancel"
   },
   "theme": {
-    "light": "Switch to light mode",
-    "dark": "Switch to dark mode"
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
   },
   "aria": {
     "openNav": "Open navigation menu",

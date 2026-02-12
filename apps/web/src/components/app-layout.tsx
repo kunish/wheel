@@ -5,6 +5,7 @@ import {
   Languages,
   LayoutDashboard,
   LogOut,
+  Monitor,
   Moon,
   Settings,
   Sun,
@@ -99,10 +100,25 @@ function BottomNav() {
                 {lang.label}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-              {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-              {theme === "dark" ? t("theme.light") : t("theme.dark")}
-            </DropdownMenuItem>
+            {(
+              [
+                { value: "light", label: t("theme.light"), icon: Sun },
+                { value: "dark", label: t("theme.dark"), icon: Moon },
+                { value: "system", label: t("theme.system"), icon: Monitor },
+              ] as const
+            ).map((item) => {
+              const Icon = item.icon
+              return (
+                <DropdownMenuItem
+                  key={item.value}
+                  onClick={() => setTheme(item.value)}
+                  className={theme === item.value ? "bg-accent/30" : ""}
+                >
+                  <Icon className="size-4" />
+                  {item.label}
+                </DropdownMenuItem>
+              )
+            })}
             <DropdownMenuItem onClick={() => setShowLogoutConfirm(true)}>
               <LogOut className="size-4" />
               {t("logout.button")}
