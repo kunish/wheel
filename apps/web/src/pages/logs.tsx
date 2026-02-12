@@ -569,170 +569,178 @@ export default function LogsPage() {
   )
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Header: Title + Total + Pagination */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
-          <span className="text-muted-foreground text-sm">{t("totalCount", { count: total })}</span>
-          {pendingCount > 0 && (
-            <Button
-              variant="outline"
-              size="xs"
-              className="animate-pulse gap-1"
-              onClick={handleShowNew}
-            >
-              <ArrowUp className="h-3 w-3" />
-              {t("newLogs", { count: pendingCount })}
-            </Button>
-          )}
-        </div>
-        {totalPages > 0 && paginationControls}
-      </div>
-
-      {/* Filter Bar */}
-      <div className="flex flex-col gap-2">
-        {/* Filters: search, model, channel, status, time */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[200px] flex-1">
-            <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-            <Input
-              placeholder={t("searchPlaceholder")}
-              value={keywordInput}
-              onChange={(e) => {
-                setKeywordInput(e.target.value)
-                debouncedUpdateFilter("q", e.target.value)
-              }}
-              className="pl-9"
-            />
-            {keywordInput && (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Sticky header: Title + Filters + Pagination */}
+      <div className="bg-background shrink-0 space-y-4 pb-4">
+        {/* Header: Title + Total + Pagination */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
+            <span className="text-muted-foreground text-sm">
+              {t("totalCount", { count: total })}
+            </span>
+            {pendingCount > 0 && (
               <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
-                onClick={() => {
-                  setKeywordInput("")
-                  updateFilter({ q: undefined })
-                }}
+                variant="outline"
+                size="xs"
+                className="animate-pulse gap-1"
+                onClick={handleShowNew}
               >
-                <X className="h-3 w-3" />
+                <ArrowUp className="h-3 w-3" />
+                {t("newLogs", { count: pendingCount })}
               </Button>
             )}
           </div>
-          <ModelCombobox
-            models={modelOptions}
-            value={model}
-            onChange={(v) => updateFilter({ model: v || undefined })}
-          />
-          <Select
-            value={channelId ? String(channelId) : "all"}
-            onValueChange={(v) => {
-              updateFilter({ channel: v === "all" ? undefined : v })
-            }}
-          >
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder={t("filter.allChannels")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("filter.allChannels")}</SelectItem>
-              {channels.map((ch) => (
-                <SelectItem key={ch.id} value={String(ch.id)}>
-                  {ch.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={status}
-            onValueChange={(v) => {
-              updateFilter({ status: v })
-            }}
-          >
-            <SelectTrigger className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("filter.all")}</SelectItem>
-              <SelectItem value="success">{t("filter.success")}</SelectItem>
-              <SelectItem value="error">{t("filter.error")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <TimeRangePicker
-            from={startTime}
-            to={endTime}
-            onChange={(from, to) => updateFilter({ from: from ?? undefined, to: to ?? undefined })}
-          />
+          {totalPages > 0 && paginationControls}
         </div>
 
-        {/* Active filter chips */}
-        {hasFilters && (
-          <div className="flex flex-wrap gap-1.5">
-            {keyword && (
-              <Badge variant="secondary" className="gap-1 pr-1">
-                {t("chips.search", { value: keyword })}
-                <button
+        {/* Filter Bar */}
+        <div className="flex flex-col gap-2">
+          {/* Filters: search, model, channel, status, time */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[200px] flex-1">
+              <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+              <Input
+                placeholder={t("searchPlaceholder")}
+                value={keywordInput}
+                onChange={(e) => {
+                  setKeywordInput(e.target.value)
+                  debouncedUpdateFilter("q", e.target.value)
+                }}
+                className="pl-9"
+              />
+              {keywordInput && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
                   onClick={() => {
                     setKeywordInput("")
                     updateFilter({ q: undefined })
                   }}
                 >
                   <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {model && (
-              <Badge variant="secondary" className="gap-1 pr-1">
-                {t("chips.model", { value: model })}
-                <button
-                  onClick={() => {
-                    updateFilter({ model: undefined })
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {channelId && (
-              <Badge variant="secondary" className="gap-1 pr-1">
-                {t("chips.channel", {
-                  value: channels.find((c) => c.id === channelId)?.name ?? channelId,
-                })}
-                <button onClick={() => updateFilter({ channel: undefined })}>
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {status !== "all" && (
-              <Badge variant="secondary" className="gap-1 pr-1">
-                {t("chips.status", { value: status })}
-                <button onClick={() => updateFilter({ status: "all" })}>
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {(startTime || endTime) && (
-              <Badge variant="secondary" className="gap-1 pr-1">
-                {t("chips.time", { value: formatRangeSummary(startTime, endTime, t) })}
-                <button onClick={() => updateFilter({ from: undefined, to: undefined })}>
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => {
-                navigate(pathname, { replace: true })
-                setKeywordInput("")
+                </Button>
+              )}
+            </div>
+            <ModelCombobox
+              models={modelOptions}
+              value={model}
+              onChange={(v) => updateFilter({ model: v || undefined })}
+            />
+            <Select
+              value={channelId ? String(channelId) : "all"}
+              onValueChange={(v) => {
+                updateFilter({ channel: v === "all" ? undefined : v })
               }}
             >
-              {t("chips.clearAll")}
-            </Button>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder={t("filter.allChannels")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("filter.allChannels")}</SelectItem>
+                {channels.map((ch) => (
+                  <SelectItem key={ch.id} value={String(ch.id)}>
+                    {ch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={status}
+              onValueChange={(v) => {
+                updateFilter({ status: v })
+              }}
+            >
+              <SelectTrigger className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("filter.all")}</SelectItem>
+                <SelectItem value="success">{t("filter.success")}</SelectItem>
+                <SelectItem value="error">{t("filter.error")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <TimeRangePicker
+              from={startTime}
+              to={endTime}
+              onChange={(from, to) =>
+                updateFilter({ from: from ?? undefined, to: to ?? undefined })
+              }
+            />
           </div>
-        )}
+
+          {/* Active filter chips */}
+          {hasFilters && (
+            <div className="flex flex-wrap gap-1.5">
+              {keyword && (
+                <Badge variant="secondary" className="gap-1 pr-1">
+                  {t("chips.search", { value: keyword })}
+                  <button
+                    onClick={() => {
+                      setKeywordInput("")
+                      updateFilter({ q: undefined })
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {model && (
+                <Badge variant="secondary" className="gap-1 pr-1">
+                  {t("chips.model", { value: model })}
+                  <button
+                    onClick={() => {
+                      updateFilter({ model: undefined })
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {channelId && (
+                <Badge variant="secondary" className="gap-1 pr-1">
+                  {t("chips.channel", {
+                    value: channels.find((c) => c.id === channelId)?.name ?? channelId,
+                  })}
+                  <button onClick={() => updateFilter({ channel: undefined })}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {status !== "all" && (
+                <Badge variant="secondary" className="gap-1 pr-1">
+                  {t("chips.status", { value: status })}
+                  <button onClick={() => updateFilter({ status: "all" })}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {(startTime || endTime) && (
+                <Badge variant="secondary" className="gap-1 pr-1">
+                  {t("chips.time", { value: formatRangeSummary(startTime, endTime, t) })}
+                  <button onClick={() => updateFilter({ from: undefined, to: undefined })}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => {
+                  navigate(pathname, { replace: true })
+                  setKeywordInput("")
+                }}
+              >
+                {t("chips.clearAll")}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Scrollable content area */}
       {isError ? (
         <Card className="flex flex-col items-center justify-center gap-3 py-12">
           <AlertCircle className="text-destructive h-8 w-8" />
@@ -746,113 +754,111 @@ export default function LogsPage() {
         <LogTableSkeleton rows={pageSize > 20 ? 10 : 8} />
       ) : (
         <div
-          className={`transition-opacity duration-150 ${isFetching ? "pointer-events-none opacity-50" : ""}`}
+          className={`min-h-0 flex-1 overflow-auto transition-opacity duration-150 ${isFetching ? "pointer-events-none opacity-50" : ""}`}
         >
-          <div className="overflow-x-auto">
-            <TooltipProvider delayDuration={300}>
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => (
-                        <TableHead
-                          key={header.id}
+          <TooltipProvider delayDuration={300}>
+            <table className="w-full caption-bottom text-sm">
+              <thead className="bg-muted sticky top-0 z-10 [&_tr]:border-b-2">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead
+                        key={header.id}
+                        className={
+                          (header.column.columnDef.meta as { className?: string })?.className
+                        }
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </thead>
+              <TableBody>
+                {table.getRowModel().rows.map((row) => {
+                  if (row.getIsGrouped()) {
+                    return (
+                      <TableRow key={row.id} className="bg-muted/30">
+                        <TableCell colSpan={columns.length}>
+                          <button
+                            className="flex items-center gap-1.5 text-sm font-medium"
+                            onClick={row.getToggleExpandedHandler()}
+                          >
+                            <ChevronRight
+                              className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
+                            />
+                            {String(row.groupingValue)}
+                            <Badge variant="secondary" className="text-xs">
+                              {row.subRows.length}
+                            </Badge>
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  }
+                  const log = row.original
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`hover:bg-muted/50 cursor-pointer border-b ${
+                        log._streaming
+                          ? "bg-muted/20"
+                          : log.error
+                            ? "border-l-destructive bg-destructive/5 border-l-2"
+                            : ""
+                      }`}
+                      onClick={() => {
+                        if (log._streaming && log._streamId) {
+                          setDetailStreamId(log._streamId)
+                        } else {
+                          setDetailStreamId(null)
+                          setDetailId(log.id)
+                        }
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
                           className={
-                            (header.column.columnDef.meta as { className?: string })?.className
+                            (cell.column.columnDef.meta as { className?: string })?.className
                           }
                         >
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
                       ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows.map((row) => {
-                    if (row.getIsGrouped()) {
-                      return (
-                        <TableRow key={row.id} className="bg-muted/30">
-                          <TableCell colSpan={columns.length}>
-                            <button
-                              className="flex items-center gap-1.5 text-sm font-medium"
-                              onClick={row.getToggleExpandedHandler()}
-                            >
-                              <ChevronRight
-                                className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
-                              />
-                              {String(row.groupingValue)}
-                              <Badge variant="secondary" className="text-xs">
-                                {row.subRows.length}
-                              </Badge>
-                            </button>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    }
-                    const log = row.original
-                    return (
-                      <tr
-                        key={row.id}
-                        className={`hover:bg-muted/50 cursor-pointer border-b ${
-                          log._streaming
-                            ? "bg-muted/20"
-                            : log.error
-                              ? "border-l-destructive bg-destructive/5 border-l-2"
-                              : ""
-                        }`}
-                        onClick={() => {
-                          if (log._streaming && log._streamId) {
-                            setDetailStreamId(log._streamId)
-                          } else {
-                            setDetailStreamId(null)
-                            setDetailId(log.id)
-                          }
-                        }}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell
-                            key={cell.id}
-                            className={
-                              (cell.column.columnDef.meta as { className?: string })?.className
-                            }
+                    </tr>
+                  )
+                })}
+                {logs.length === 0 && !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="py-12 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <FileText className="text-muted-foreground/30 h-10 w-10" />
+                        <p className="text-muted-foreground">
+                          {hasFilters ? t("empty.noMatch") : t("empty.noLogs")}
+                        </p>
+                        {hasFilters && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-1"
+                            onClick={() => {
+                              navigate(pathname, { replace: true })
+                              setKeywordInput("")
+                            }}
                           >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        ))}
-                      </tr>
-                    )
-                  })}
-                  {logs.length === 0 && !isLoading && (
-                    <TableRow>
-                      <TableCell colSpan={columns.length} className="py-12 text-center">
-                        <div className="flex flex-col items-center gap-2">
-                          <FileText className="text-muted-foreground/30 h-10 w-10" />
-                          <p className="text-muted-foreground">
-                            {hasFilters ? t("empty.noMatch") : t("empty.noLogs")}
-                          </p>
-                          {hasFilters && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="mt-1"
-                              onClick={() => {
-                                navigate(pathname, { replace: true })
-                                setKeywordInput("")
-                              }}
-                            >
-                              {t("empty.clearFilters")}
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TooltipProvider>
-          </div>
+                            {t("empty.clearFilters")}
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </table>
+          </TooltipProvider>
         </div>
       )}
 
@@ -866,8 +872,8 @@ export default function LogsPage() {
           }
         }}
       >
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
-          <SheetHeader>
+        <SheetContent side="right" className="w-full sm:max-w-2xl">
+          <SheetHeader className="shrink-0 border-b">
             <div className="flex items-center justify-between pr-8">
               <SheetTitle className="flex items-center gap-2">
                 {detailStreamId ? (
@@ -1083,8 +1089,12 @@ function DetailPanel({
   }
 
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 px-4">
-      <TabsList className="w-full">
+    <Tabs
+      value={activeTab}
+      onValueChange={setActiveTab}
+      className="flex min-h-0 min-w-0 flex-1 flex-col px-4"
+    >
+      <TabsList className="w-full shrink-0">
         <TabsTrigger value="overview" className="flex-1">
           {t("detail.overview")}
         </TabsTrigger>
@@ -1104,7 +1114,7 @@ function DetailPanel({
       </TabsList>
 
       {/* Overview Tab */}
-      <TabsContent value="overview" className="mt-4">
+      <TabsContent value="overview" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
         <div className="flex flex-col gap-4 text-sm">
           {/* Model Flow */}
           <div className="flex flex-col gap-1">
@@ -1217,13 +1227,13 @@ function DetailPanel({
       </TabsContent>
 
       {/* Messages Tab (conversation flow + raw JSON toggle) */}
-      <TabsContent value="messages" className="mt-4">
+      <TabsContent value="messages" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
         <MessagesTabContent detail={detail} streamingOverlay={streamingOverlay} />
       </TabsContent>
 
       {/* Retry Timeline Tab */}
       {detail.attempts && detail.attempts.length > 0 && (
-        <TabsContent value="retry" className="mt-4">
+        <TabsContent value="retry" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
           <div className="border-border relative flex flex-col gap-3 border-l-2 pl-4">
             {detail.attempts.map((attempt) => (
               <div
@@ -1287,7 +1297,7 @@ function DetailPanel({
 
       {/* Replay Result Tab */}
       {replayResult !== null && (
-        <TabsContent value="replay" className="mt-4">
+        <TabsContent value="replay" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
           <CodeBlock label={t("detail.replayResult")} content={replayResult} />
         </TabsContent>
       )}
