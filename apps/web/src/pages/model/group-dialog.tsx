@@ -92,14 +92,14 @@ function SortableDialogItem({
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <button type="button" onClick={onEdit} className="shrink-0 cursor-pointer">
+      <button type="button" onClick={onEdit} className="min-w-0 flex-1 cursor-pointer">
         <ModelCard modelId={item.modelName || t("groupDialog.emptyModel")} />
       </button>
       <Select
         value={item.channelId ? String(item.channelId) : ""}
         onValueChange={(v) => onUpdate({ channelId: Number(v) })}
       >
-        <SelectTrigger className="w-36">
+        <SelectTrigger className="w-36 shrink-0">
           <SelectValue placeholder={t("groupDialog.channelPlaceholder")} />
         </SelectTrigger>
         <SelectContent>
