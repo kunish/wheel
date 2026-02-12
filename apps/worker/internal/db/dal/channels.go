@@ -92,12 +92,22 @@ func CreateChannel(ctx context.Context, db *bun.DB, ch types.Channel, keys []typ
 	return &ch, nil
 }
 
+var allowedChannelCols = map[string]bool{
+	"name": true, "type": true, "enabled": true, "base_urls": true,
+	"model": true, "custom_model": true, "proxy": true, "auto_sync": true,
+	"auto_group": true, "custom_header": true, "param_override": true,
+	"channel_proxy": true,
+}
+
 func UpdateChannel(ctx context.Context, db *bun.DB, id int, data map[string]any) error {
 	if len(data) == 0 {
 		return nil
 	}
 	q := db.NewUpdate().Table("channels")
 	for col, val := range data {
+		if !allowedChannelCols[col] {
+			continue
+		}
 		q = q.Set(col+" = ?", val)
 	}
 	_, err := q.Where("id = ?", id).Exec(ctx)

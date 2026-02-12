@@ -205,8 +205,8 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 		return
 	}
 
-	// Read and parse body
-	bodyBytes, err := io.ReadAll(c.Request.Body)
+	// Read and parse body (limit to 10MB to prevent DoS)
+	bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, 10*1024*1024))
 	if err != nil {
 		apiError(c, 400, "invalid_request_error", "Failed to read request body", isAnthropicInbound)
 		return

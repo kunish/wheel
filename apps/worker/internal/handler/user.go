@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -46,7 +47,10 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	if req.Username != h.Config.AdminUsername || req.Password != h.Config.AdminPassword {
+	// Use constant-time comparison to prevent timing attacks
+	usernameMatch := subtle.ConstantTimeCompare([]byte(req.Username), []byte(h.Config.AdminUsername))
+	passwordMatch := subtle.ConstantTimeCompare([]byte(req.Password), []byte(h.Config.AdminPassword))
+	if usernameMatch&passwordMatch != 1 {
 		errorJSON(c, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
@@ -73,7 +77,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if req.OldPassword != h.Config.AdminPassword {
+	if subtle.ConstantTimeCompare([]byte(req.OldPassword), []byte(h.Config.AdminPassword)) != 1 {
 		errorJSON(c, http.StatusUnauthorized, "Old password is incorrect")
 		return
 	}

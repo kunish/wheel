@@ -50,12 +50,20 @@ func CreateApiKey(ctx context.Context, db *bun.DB, name string, expireAt int64, 
 	return ak, nil
 }
 
+var allowedApiKeyCols = map[string]bool{
+	"name": true, "enabled": true, "expire_at": true,
+	"max_cost": true, "supported_models": true,
+}
+
 func UpdateApiKey(ctx context.Context, db *bun.DB, id int, data map[string]any) error {
 	if len(data) == 0 {
 		return nil
 	}
 	q := db.NewUpdate().Table("api_keys")
 	for col, val := range data {
+		if !allowedApiKeyCols[col] {
+			continue
+		}
 		q = q.Set(col+" = ?", val)
 	}
 	_, err := q.Where("id = ?", id).Exec(ctx)

@@ -94,12 +94,16 @@ func CreateGroup(ctx context.Context, db *bun.DB, g types.Group, items []types.G
 }
 
 func UpdateGroup(ctx context.Context, db *bun.DB, id int, data map[string]any, items []types.GroupItemInput, replaceItems bool) error {
+	allowedGroupCols := map[string]bool{
+		"name": true, "mode": true, "enabled": true, "order": true,
+		"first_token_time_out": true, "session_keep_time": true,
+	}
 	if len(data) > 0 {
 		q := db.NewUpdate().Table("groups")
 		for col, val := range data {
 			if col == "order" || col == `"order"` {
 				q = q.Set("\"order\" = ?", val)
-			} else {
+			} else if allowedGroupCols[col] {
 				q = q.Set(col+" = ?", val)
 			}
 		}

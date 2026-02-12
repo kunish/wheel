@@ -14,19 +14,32 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// wsClient wraps a WebSocket connection with a write mutex to prevent
+// concurrent writes, which gorilla/websocket does not support.
+type wsClient struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func (c *wsClient) writeMessage(msgType int, data []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn.WriteMessage(msgType, data)
+}
+
 // Hub manages WebSocket clients and broadcasts events.
 type Hub struct {
 	mu      sync.RWMutex
-	clients map[*websocket.Conn]struct{}
+	clients map[*wsClient]struct{}
 
-	streamMu      sync.RWMutex
-	activeStreams  map[string]map[string]any // streamId -> log-stream-start payload
+	streamMu     sync.RWMutex
+	activeStreams map[string]map[string]any // streamId -> log-stream-start payload
 }
 
 // New creates a new WebSocket Hub.
 func New() *Hub {
 	return &Hub{
-		clients:      make(map[*websocket.Conn]struct{}),
+		clients:      make(map[*wsClient]struct{}),
 		activeStreams: make(map[string]map[string]any),
 	}
 }
@@ -39,25 +52,27 @@ func (h *Hub) HandleWS(c *gin.Context) {
 		return
 	}
 
+	client := &wsClient{conn: conn}
+
 	// Send current active streams snapshot to the new client
 	h.streamMu.RLock()
 	for _, payload := range h.activeStreams {
 		msg := map[string]any{"event": "log-stream-start", "data": payload}
 		if data, err := json.Marshal(msg); err == nil {
-			conn.WriteMessage(websocket.TextMessage, data)
+			client.writeMessage(websocket.TextMessage, data)
 		}
 	}
 	h.streamMu.RUnlock()
 
 	h.mu.Lock()
-	h.clients[conn] = struct{}{}
+	h.clients[client] = struct{}{}
 	h.mu.Unlock()
 
 	// Read loop — keep connection alive and detect disconnects.
 	go func() {
 		defer func() {
 			h.mu.Lock()
-			delete(h.clients, conn)
+			delete(h.clients, client)
 			h.mu.Unlock()
 			conn.Close()
 		}()
@@ -100,8 +115,8 @@ func (h *Hub) Broadcast(event string, data ...any) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	for conn := range h.clients {
-		if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+	for client := range h.clients {
+		if err := client.writeMessage(websocket.TextMessage, payload); err != nil {
 			log.Printf("[ws] write error: %v", err)
 			// Close will be handled by the read loop detecting the broken connection
 		}

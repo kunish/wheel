@@ -13,6 +13,9 @@ import (
 func (h *Handler) ListLogs(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+	if pageSize > 200 {
+		pageSize = 200
+	}
 	channelID, _ := strconv.Atoi(c.DefaultQuery("channelId", "0"))
 	startTime, _ := strconv.ParseInt(c.DefaultQuery("startTime", "0"), 10, 64)
 	endTime, _ := strconv.ParseInt(c.DefaultQuery("endTime", "0"), 10, 64)

@@ -115,7 +115,7 @@ func ProxyNonStreaming(
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024)) // 50MB max response
 	if err != nil {
 		return nil, &ProxyError{Message: fmt.Sprintf("failed to read response: %v", err), StatusCode: 502}
 	}
@@ -266,7 +266,7 @@ func ProxyStreaming(
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024)) // 1MB max error body
 		errorText := string(bodyBytes)
 		return nil, &ProxyError{
 			Message:      fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, errorText),

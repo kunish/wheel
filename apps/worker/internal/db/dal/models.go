@@ -50,6 +50,11 @@ func CreateLLMPrice(ctx context.Context, db *bun.DB, name string, inputPrice, ou
 	return p, nil
 }
 
+var allowedLLMPriceCols = map[string]bool{
+	"name": true, "input_price": true, "output_price": true,
+	"cache_read_price": true, "cache_write_price": true, "source": true,
+}
+
 func UpdateLLMPrice(ctx context.Context, db *bun.DB, id int, data map[string]any) error {
 	if len(data) == 0 {
 		return nil
@@ -58,7 +63,7 @@ func UpdateLLMPrice(ctx context.Context, db *bun.DB, id int, data map[string]any
 	for col, val := range data {
 		if col == "updated_at" {
 			q = q.Set("updated_at = datetime('now')")
-		} else {
+		} else if allowedLLMPriceCols[col] {
 			q = q.Set(col+" = ?", val)
 		}
 	}
