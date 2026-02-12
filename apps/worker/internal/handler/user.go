@@ -66,7 +66,6 @@ func (h *Handler) Login(c *gin.Context) {
 }
 
 type changePasswordRequest struct {
-	OldPassword string `json:"oldPassword"`
 	NewPassword string `json:"newPassword"`
 }
 
@@ -77,8 +76,8 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if subtle.ConstantTimeCompare([]byte(req.OldPassword), []byte(h.Config.AdminPassword)) != 1 {
-		errorJSON(c, http.StatusUnauthorized, "Old password is incorrect")
+	if req.NewPassword == "" {
+		errorJSON(c, http.StatusBadRequest, "New password is required")
 		return
 	}
 
