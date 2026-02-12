@@ -92,7 +92,7 @@ function SortableDialogItem({
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <button type="button" onClick={onEdit} className="min-w-0 flex-1 cursor-pointer">
+      <button type="button" onClick={onEdit} className="min-w-0 flex-1 cursor-pointer text-left">
         <ModelCard modelId={item.modelName || t("groupDialog.emptyModel")} />
       </button>
       <Select

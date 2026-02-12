@@ -350,6 +350,23 @@ export default function ModelPage() {
     onError: (err: Error) => toast.error(err.message),
   })
 
+  const groupRemoveItemMut = useMutation({
+    mutationFn: (data: { group: GroupRecord; itemIndex: number }) => {
+      const items = data.group.items.filter((_, i) => i !== data.itemIndex)
+      return updateGroup({
+        id: data.group.id,
+        name: data.group.name,
+        mode: data.group.mode,
+        firstTokenTimeOut: data.group.firstTokenTimeOut,
+        sessionKeepTime: data.group.sessionKeepTime ?? 0,
+        items,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["groups"] })
+    },
+  })
+
   const groupReorderMut = useMutation({
     mutationFn: reorderGroups,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["groups"] }),
@@ -733,6 +750,9 @@ export default function ModelPage() {
                             onEdit={() => openEditGroup(g)}
                             onDelete={() => setDeleteGroupConfirm(g)}
                             onClear={() => setClearGroupConfirm(g)}
+                            onRemoveItem={(itemIndex) =>
+                              groupRemoveItemMut.mutate({ group: g, itemIndex })
+                            }
                             isOver={activeDrag !== null}
                             hoverGroupId={hoverGroupId}
                             forceCollapsed={groupsCollapsed}
@@ -1043,7 +1063,8 @@ function DraggableChannel({
         refCallback?.(node)
       }}
       className={cn(
-        "transition-all",
+        "overflow-hidden border-l-4 transition-all",
+        channel.enabled ? "border-l-nb-lime" : "border-l-muted-foreground/30",
         isDragging && "opacity-40",
         highlighted && "ring-primary animate-pulse ring-2",
       )}
@@ -1075,9 +1096,9 @@ function DraggableChannel({
                   {t(`typeLabels.${channel.type}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {collapsed && modelNames.length > 0 && (
-                  <span className="text-muted-foreground text-xs">
+                  <Badge variant="ghost" className="text-[10px]">
                     {t("modelCount", { count: modelNames.length })}
-                  </span>
+                  </Badge>
                 )}
               </div>
             </div>
@@ -1170,6 +1191,7 @@ function SortableGroup({
   onEdit,
   onDelete,
   onClear,
+  onRemoveItem,
   isOver: dragActive,
   hoverGroupId,
   forceCollapsed,
@@ -1181,6 +1203,7 @@ function SortableGroup({
   onEdit: () => void
   onDelete: () => void
   onClear: () => void
+  onRemoveItem: (itemIndex: number) => void
   isOver: boolean
   hoverGroupId: number | null
   forceCollapsed?: boolean
@@ -1253,7 +1276,7 @@ function SortableGroup({
       }}
       style={style}
       className={cn(
-        "transition-all",
+        "border-l-nb-lavender overflow-hidden border-l-4 transition-all",
         (isOver || isHovered) && "ring-primary border-primary ring-2",
         dragActive && !isOver && !isHovered && "border-dashed",
         isDragging && "opacity-50",
@@ -1282,13 +1305,26 @@ function SortableGroup({
             <div>
               <CardTitle className="text-sm">{group.name}</CardTitle>
               <div className="mt-1 flex items-center gap-1">
-                <Badge variant="secondary" className="text-xs">
+                <Badge
+                  variant={
+                    group.mode === 1
+                      ? "lime"
+                      : group.mode === 2
+                        ? "sky"
+                        : group.mode === 3
+                          ? "orange"
+                          : group.mode === 4
+                            ? "pink"
+                            : "secondary"
+                  }
+                  className="text-xs"
+                >
                   {t(`modeLabels.${group.mode}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {collapsed && group.items.length > 0 && (
-                  <span className="text-muted-foreground text-xs">
+                  <Badge variant="ghost" className="text-[10px]">
                     {t("itemCount", { count: group.items.length })}
-                  </span>
+                  </Badge>
                 )}
               </div>
             </div>
@@ -1342,6 +1378,7 @@ function SortableGroup({
                 metadataMap={metaData?.data}
                 priceMap={priceMap}
                 onPriceClick={onPriceClick}
+                onRemoveItem={onRemoveItem}
               />
             )}
           </CardContent>
@@ -1360,6 +1397,7 @@ function GroupItemList({
   metadataMap,
   priceMap,
   onPriceClick,
+  onRemoveItem,
 }: {
   items: GroupItemForm[]
   mode: number
@@ -1367,11 +1405,18 @@ function GroupItemList({
   metadataMap: Record<string, import("@/lib/api").ModelMeta> | undefined
   priceMap: Map<string, ModelPrice>
   onPriceClick: (modelName: string) => void
+  onRemoveItem?: (itemIndex: number) => void
 }) {
   // Separate model items from "all" items
   const modelItems = items.filter((it) => it.modelName)
   const allItems = items.filter((it) => !it.modelName)
   const modelIds = modelItems.map((it) => it.modelName)
+
+  const itemIndexMap = useMemo(() => {
+    const map = new Map<GroupItemForm, number>()
+    items.forEach((it, i) => map.set(it, i))
+    return map
+  }, [items])
 
   // Build resolved metadata map using fuzzy matching
   const resolvedMap = useMemo(() => {
@@ -1427,6 +1472,7 @@ function GroupItemList({
     const ch = channelMap.get(item.channelId)
     const isDisabled = ch?.enabled === false
     const price = priceMap.get(item.modelName)
+    const originalIndex = itemIndexMap.get(item)
     return (
       <ModelCard
         key={`${item.channelId}-${item.modelName}-${idx}`}
@@ -1434,6 +1480,11 @@ function GroupItemList({
         disabled={isDisabled}
         price={price ? { inputPrice: price.inputPrice, outputPrice: price.outputPrice } : undefined}
         onPriceClick={price ? () => onPriceClick(item.modelName) : undefined}
+        onRemove={
+          onRemoveItem && originalIndex !== undefined
+            ? () => onRemoveItem(originalIndex)
+            : undefined
+        }
       >
         <span className="text-muted-foreground text-[10px]">
           {ch?.name ?? `#${item.channelId}`}
