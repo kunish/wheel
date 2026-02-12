@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -39,17 +39,15 @@ export default function SystemConfigSection() {
 
   const [formData, setFormData] = useState<Record<string, string>>({})
 
-  // Sync form data when settings load
-  const prevSettingsRef = useRef(data?.data?.settings)
-  if (prevSettingsRef.current !== data?.data?.settings) {
-    prevSettingsRef.current = data?.data?.settings
+  // Sync form data when settings load or change
+  useEffect(() => {
     if (data?.data?.settings) {
       const filtered = Object.fromEntries(
         Object.entries(data.data.settings).filter(([key]) => key in settingLabels),
       )
       setFormData(filtered)
     }
-  }
+  }, [data?.data?.settings, settingLabels])
 
   const mutation = useMutation({
     mutationFn: updateSettings,

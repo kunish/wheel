@@ -286,15 +286,6 @@ export default function ChannelDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>{t("channelDialog.customModels")}</Label>
-            <Input
-              value={form.customModel}
-              onChange={(e) => setForm({ ...form, customModel: e.target.value })}
-              placeholder={t("channelDialog.customModelsPlaceholder")}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
             <Label>{t("channelDialog.paramOverride")}</Label>
             <Textarea
               value={form.paramOverride}

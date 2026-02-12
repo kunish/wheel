@@ -406,7 +406,7 @@ function DataPanelPopover({
   channelData?: ChannelStatsRow[]
 }) {
   return (
-    <div className="absolute left-1/2 -translate-x-1/2">
+    <div>
       <Popover
         open={dataTab !== null}
         onOpenChange={(open) => {
@@ -871,7 +871,16 @@ export function ActivitySection({
               navigateToHour={navigateToHour}
               handleMouseEnter={handleMouseEnter}
               handleMouseLeave={handleMouseLeave}
-            ></HeroGearClock>
+            >
+              <DataPanelPopover
+                dataTab={dataTab}
+                setDataTab={setDataTab}
+                dailyData={data}
+                hourlyData={hourlyData}
+                modelData={modelData}
+                channelData={channelData}
+              />
+            </HeroGearClock>
           </GearClockFit>
 
           <div className="shrink-0 px-2">
@@ -899,14 +908,6 @@ export function ActivitySection({
                     direction="right"
                     onClick={() => shiftDay(1)}
                     disabled={isFutureDate || isToday}
-                  />
-                  <DataPanelPopover
-                    dataTab={dataTab}
-                    setDataTab={setDataTab}
-                    dailyData={data}
-                    hourlyData={hourlyData}
-                    modelData={modelData}
-                    channelData={channelData}
                   />
                   <div className="ml-auto flex items-center gap-3">
                     {!isToday && (

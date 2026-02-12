@@ -540,20 +540,26 @@ function ApiKeyForm({
 export default function SettingsPage() {
   const { t } = useTranslation("settings")
   return (
-    <div className="flex flex-col gap-6">
-      <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
-      <ApiKeysSection />
-      <AccountSection />
-      <Suspense
-        fallback={<p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>}
-      >
-        <SystemConfigSection />
-      </Suspense>
-      <Suspense
-        fallback={<p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>}
-      >
-        <BackupSection />
-      </Suspense>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <h2 className="shrink-0 pb-4 text-2xl font-bold tracking-tight">{t("title")}</h2>
+      <div className="min-h-0 flex-1 space-y-6 overflow-auto">
+        <ApiKeysSection />
+        <AccountSection />
+        <Suspense
+          fallback={
+            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
+          }
+        >
+          <SystemConfigSection />
+        </Suspense>
+        <Suspense
+          fallback={
+            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
+          }
+        >
+          <BackupSection />
+        </Suspense>
+      </div>
     </div>
   )
 }
