@@ -1,8 +1,7 @@
 {
   "nav": {
     "dashboard": "Dashboard",
-    "channels": "Channels & Groups",
-    "prices": "Prices",
+    "model": "Model",
     "logs": "Logs",
     "settings": "Settings"
   },

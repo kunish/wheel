@@ -21,7 +21,7 @@ export function ProtectedLayout() {
   const prevKeyRef = useRef(routeKey)
 
   // Determine scroll direction: entering route index vs previous
-  const navOrder = ["/dashboard", "/channels", "/prices", "/logs", "/settings"]
+  const navOrder = ["/dashboard", "/model", "/logs", "/settings"]
   const prevIdx = navOrder.indexOf(prevKeyRef.current)
   const currIdx = navOrder.indexOf(routeKey)
   const direction = currIdx >= prevIdx ? 1 : -1

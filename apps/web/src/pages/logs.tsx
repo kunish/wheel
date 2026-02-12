@@ -1113,7 +1113,7 @@ function DetailPanel({
               <span className="text-muted-foreground">{t("detail.via")}</span>
               {detail.channelId ? (
                 <Link
-                  to={`/channels?highlight=${detail.channelId}`}
+                  to={`/model?highlight=${detail.channelId}`}
                   className="font-medium hover:underline"
                 >
                   {detail.channelName || "—"}
@@ -1304,7 +1304,7 @@ function ModelFlowNode({ modelId, channelId }: { modelId: string; channelId: num
   return (
     <div className="flex flex-col">
       {channelId ? (
-        <Link to={`/channels?highlight=${channelId}`} className="hover:underline">
+        <Link to={`/model?highlight=${channelId}`} className="hover:underline">
           <ModelBadge modelId={modelId} />
         </Link>
       ) : (

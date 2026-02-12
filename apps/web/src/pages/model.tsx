@@ -1,6 +1,7 @@
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from "@dnd-kit/core"
-import type { ChannelFormData } from "./channels/channel-dialog"
-import type { GroupFormData, GroupItemForm } from "./channels/group-dialog"
+import type { ChannelFormData } from "./model/channel-dialog"
+import type { GroupFormData, GroupItemForm } from "./model/group-dialog"
+import type { PriceFormData } from "./model/price-dialog"
 import {
   DndContext,
   DragOverlay,
@@ -27,6 +28,7 @@ import {
   List,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react"
@@ -57,27 +59,46 @@ import { fuzzyLookup, useModelMetadataQuery } from "@/hooks/use-model-meta"
 import {
   createChannel,
   createGroup,
+  createModelPrice,
   deleteChannel,
   deleteGroup,
+  deleteModelPrice,
   enableChannel,
+  getLastPriceUpdateTime,
   getModelList,
   listChannels,
   listGroups,
+  listModelPrices,
   reorderGroups,
+  syncModelPrices,
   updateChannel,
   updateGroup,
+  updateModelPrice,
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { EMPTY_CHANNEL_FORM } from "./channels/channel-dialog"
-import { EMPTY_GROUP_FORM } from "./channels/group-dialog"
+import { EMPTY_CHANNEL_FORM } from "./model/channel-dialog"
+import { EMPTY_GROUP_FORM } from "./model/group-dialog"
+import { EMPTY_PRICE_FORM } from "./model/price-dialog"
 
 // ─── Lazy-loaded Dialog components ──────────────
 
-const ChannelDialog = lazy(() => import("./channels/channel-dialog"))
+const ChannelDialog = lazy(() => import("./model/channel-dialog"))
 
-const GroupDialog = lazy(() => import("./channels/group-dialog"))
+const GroupDialog = lazy(() => import("./model/group-dialog"))
+
+const PriceDialog = lazy(() => import("./model/price-dialog"))
 
 // ─── Types ─────────────────────────────────────
+
+interface ModelPrice {
+  id: number
+  name: string
+  inputPrice: number
+  outputPrice: number
+  source: string
+  createdAt: string
+  updatedAt: string
+}
 
 interface ChannelRecord {
   id: number
@@ -124,8 +145,8 @@ type DragData = DragDataModel | DragDataChannel | DragDataGroup
 
 // ─── Main page ─────────────────────────────────
 
-export default function ChannelsAndGroupsPage() {
-  const { t } = useTranslation("channels")
+export default function ModelPage() {
+  const { t } = useTranslation("model")
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -156,6 +177,12 @@ export default function ChannelsAndGroupsPage() {
   const [deleteGroupConfirm, setDeleteGroupConfirm] = useState<GroupRecord | null>(null)
   const [clearGroupConfirm, setClearGroupConfirm] = useState<GroupRecord | null>(null)
 
+  // Price state
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false)
+  const [priceForm, setPriceForm] = useState<PriceFormData>(EMPTY_PRICE_FORM)
+  const [editingPriceId, setEditingPriceId] = useState<number | null>(null)
+  const [deletePriceConfirm, setDeletePriceConfirm] = useState<ModelPrice | null>(null)
+
   // Queries
   const { data: channelData, isLoading: channelsLoading } = useQuery({
     queryKey: ["channels"],
@@ -173,12 +200,44 @@ export default function ChannelsAndGroupsPage() {
     enabled: modelListOpen,
   })
 
+  // Price queries
+  const { data: priceData } = useQuery({
+    queryKey: ["model-prices"],
+    queryFn: listModelPrices,
+  })
+
+  const { data: updateTimeData } = useQuery({
+    queryKey: ["price-update-time"],
+    queryFn: getLastPriceUpdateTime,
+  })
+
   const channels = useMemo(
     () => (channelData?.data?.channels ?? []) as ChannelRecord[],
     [channelData],
   )
   const groups = useMemo(() => (groupData?.data?.groups ?? []) as GroupRecord[], [groupData])
   const models = useMemo(() => (modelData?.data?.models ?? []) as string[], [modelData])
+
+  // Price data
+  const priceList = useMemo(() => (priceData?.data?.models ?? []) as ModelPrice[], [priceData])
+  const priceMap = useMemo(() => {
+    const map = new Map<string, ModelPrice>()
+    for (const p of priceList) map.set(p.name, p)
+    return map
+  }, [priceList])
+
+  function formatDateTime(dateStr: string | undefined): string | null {
+    if (!dateStr) return null
+    return new Date(dateStr).toLocaleString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  const lastSync = formatDateTime(updateTimeData?.data?.lastUpdateTime ?? undefined)
 
   // ─── Highlight scroll logic ───────────────────
   const setChannelRef = useCallback((id: number, el: HTMLDivElement | null) => {
@@ -296,6 +355,80 @@ export default function ChannelsAndGroupsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["groups"] }),
     onError: (err: Error) => toast.error(err.message),
   })
+
+  // ─── Price mutations ──────────────────────────────
+
+  const syncPriceMut = useMutation({
+    mutationFn: syncModelPrices,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
+      queryClient.invalidateQueries({ queryKey: ["price-update-time"] })
+      toast.success(t("toast.syncSuccess"))
+    },
+    onError: () => toast.error(t("toast.syncFailed")),
+  })
+
+  const createPriceMut = useMutation({
+    mutationFn: (form: PriceFormData) =>
+      createModelPrice({
+        name: form.name,
+        inputPrice: Number.parseFloat(form.inputPrice),
+        outputPrice: Number.parseFloat(form.outputPrice),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
+      setPriceForm(EMPTY_PRICE_FORM)
+      setPriceDialogOpen(false)
+      toast.success(t("toast.priceCreated"))
+    },
+    onError: () => toast.error(t("toast.createFailed")),
+  })
+
+  const updatePriceMut = useMutation({
+    mutationFn: ({ id, form }: { id: number; form: PriceFormData }) =>
+      updateModelPrice({
+        id,
+        name: form.name,
+        inputPrice: Number.parseFloat(form.inputPrice),
+        outputPrice: Number.parseFloat(form.outputPrice),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
+      setPriceDialogOpen(false)
+      setEditingPriceId(null)
+      toast.success(t("toast.priceUpdated"))
+    },
+    onError: () => toast.error(t("toast.updateFailed")),
+  })
+
+  const deletePriceMut = useMutation({
+    mutationFn: (name: string) => deleteModelPrice({ name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
+      toast.success(t("toast.priceDeleted"))
+    },
+    onError: () => toast.error(t("toast.deleteFailed")),
+  })
+
+  // ─── Price helpers ────────────────────────────────
+
+  function openCreatePrice() {
+    setPriceForm(EMPTY_PRICE_FORM)
+    setEditingPriceId(null)
+    setPriceDialogOpen(true)
+  }
+
+  function openEditPrice(modelName: string) {
+    const price = priceMap.get(modelName)
+    if (!price) return
+    setPriceForm({
+      name: price.name,
+      inputPrice: String(price.inputPrice),
+      outputPrice: String(price.outputPrice),
+    })
+    setEditingPriceId(price.id)
+    setPriceDialogOpen(true)
+  }
 
   // ─── Drag handlers ─────────────────────────────
 
@@ -462,8 +595,27 @@ export default function ChannelsAndGroupsPage() {
       <div className="flex h-full flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold tracking-tight">{t("pageTitle")}</h2>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setModelListOpen(true)}>
+          <div className="flex items-center gap-2">
+            {lastSync && (
+              <span className="text-muted-foreground hidden text-xs sm:inline">
+                {t("price.lastSynced", { time: lastSync })}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncPriceMut.mutate()}
+              disabled={syncPriceMut.isPending}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${syncPriceMut.isPending ? "animate-spin" : ""}`}
+              />
+              {t("price.syncPrices")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={openCreatePrice}>
+              <Plus className="mr-1 h-3 w-3" /> {t("price.addPrice")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setModelListOpen(true)}>
               <List className="mr-2 h-4 w-4" /> {t("models")}
             </Button>
           </div>
@@ -521,6 +673,8 @@ export default function ChannelsAndGroupsPage() {
                           onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
                           enablePending={channelEnableMut.isPending}
                           forceCollapsed={channelsCollapsed}
+                          priceMap={priceMap}
+                          onPriceClick={openEditPrice}
                         />
                       </motion.div>
                     ))}
@@ -582,6 +736,8 @@ export default function ChannelsAndGroupsPage() {
                             isOver={activeDrag !== null}
                             hoverGroupId={hoverGroupId}
                             forceCollapsed={groupsCollapsed}
+                            priceMap={priceMap}
+                            onPriceClick={openEditPrice}
                           />
                         </motion.div>
                       ))}
@@ -739,15 +895,86 @@ export default function ChannelsAndGroupsPage() {
                 {t("noModelsAvailable")}
               </p>
             ) : (
-              models.map((m) => (
-                <div key={m} className="bg-muted rounded-md px-3 py-2 font-mono text-sm">
-                  {m}
-                </div>
-              ))
+              models.map((m) => {
+                const price = priceMap.get(m)
+                return (
+                  <div
+                    key={m}
+                    className="bg-muted flex items-center justify-between rounded-md px-3 py-2 font-mono text-sm"
+                  >
+                    <span className="truncate">{m}</span>
+                    {price ? (
+                      <span className="text-muted-foreground ml-2 shrink-0 text-xs">
+                        ↓{price.inputPrice.toFixed(2)} ↑{price.outputPrice.toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/50 ml-2 shrink-0 text-xs">-</span>
+                    )}
+                  </div>
+                )
+              })
             )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ─── Price Dialog ────────────────────────── */}
+      <Suspense fallback={null}>
+        <PriceDialog
+          open={priceDialogOpen}
+          onOpenChange={(open: boolean) => {
+            setPriceDialogOpen(open)
+            if (!open) {
+              setPriceForm(EMPTY_PRICE_FORM)
+              setEditingPriceId(null)
+            }
+          }}
+          form={priceForm}
+          onChange={setPriceForm}
+          onSubmit={() => {
+            if (editingPriceId) {
+              updatePriceMut.mutate({ id: editingPriceId, form: priceForm })
+            } else {
+              createPriceMut.mutate(priceForm)
+            }
+          }}
+          isPending={editingPriceId ? updatePriceMut.isPending : createPriceMut.isPending}
+          title={editingPriceId ? t("price.editModelPrice") : t("price.addModelPrice")}
+          submitLabel={
+            editingPriceId
+              ? t("actions.save", { ns: "common" })
+              : t("actions.create", { ns: "common" })
+          }
+          nameReadonly={!!editingPriceId}
+        />
+      </Suspense>
+
+      {/* ─── Delete Price Confirmation ────────────── */}
+      <AlertDialog
+        open={!!deletePriceConfirm}
+        onOpenChange={(open) => !open && setDeletePriceConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("price.deleteDialog.title", { name: deletePriceConfirm?.name })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t("price.deleteDialog.description")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deletePriceConfirm) deletePriceMut.mutate(deletePriceConfirm.name)
+                setDeletePriceConfirm(null)
+              }}
+            >
+              {t("actions.delete", { ns: "common" })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DndContext>
   )
 }
@@ -770,6 +997,8 @@ function DraggableChannel({
   onToggle,
   enablePending,
   forceCollapsed,
+  priceMap,
+  onPriceClick,
 }: {
   channel: ChannelRecord
   highlighted?: boolean
@@ -779,8 +1008,10 @@ function DraggableChannel({
   onToggle: (enabled: boolean) => void
   enablePending?: boolean
   forceCollapsed?: boolean
+  priceMap: Map<string, ModelPrice>
+  onPriceClick: (modelName: string) => void
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `channel-${channel.id}`,
     data: { type: "channel", channel } satisfies DragDataChannel,
@@ -880,6 +1111,8 @@ function DraggableChannel({
                       model={m}
                       channelId={channel.id}
                       channelName={channel.name}
+                      priceMap={priceMap}
+                      onPriceClick={onPriceClick}
                     />
                   )}
                 />
@@ -898,15 +1131,21 @@ function DraggableModelTag({
   model,
   channelId,
   channelName,
+  priceMap,
+  onPriceClick,
 }: {
   model: string
   channelId: number
   channelName: string
+  priceMap: Map<string, ModelPrice>
+  onPriceClick: (modelName: string) => void
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `model-${channelId}-${model}`,
     data: { type: "model", model, channelId, channelName } satisfies DragDataModel,
   })
+
+  const price = priceMap.get(model)
 
   return (
     <ModelCard
@@ -915,6 +1154,8 @@ function DraggableModelTag({
       {...listeners}
       modelId={model}
       className={cn("hover:bg-accent cursor-grab", isDragging && "opacity-40")}
+      price={price ? { inputPrice: price.inputPrice, outputPrice: price.outputPrice } : undefined}
+      onPriceClick={price ? () => onPriceClick(model) : undefined}
     />
   )
 }
@@ -930,6 +1171,8 @@ function SortableGroup({
   isOver: dragActive,
   hoverGroupId,
   forceCollapsed,
+  priceMap,
+  onPriceClick,
 }: {
   group: GroupRecord
   channelMap: Map<number, ChannelRecord>
@@ -939,8 +1182,10 @@ function SortableGroup({
   isOver: boolean
   hoverGroupId: number | null
   forceCollapsed?: boolean
+  priceMap: Map<string, ModelPrice>
+  onPriceClick: (modelName: string) => void
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `sortable-group-${group.id}`,
     data: { type: "group", groupId: group.id } satisfies DragDataGroup,
@@ -1093,6 +1338,8 @@ function SortableGroup({
                 mode={group.mode}
                 channelMap={channelMap}
                 metadataMap={metaData?.data}
+                priceMap={priceMap}
+                onPriceClick={onPriceClick}
               />
             )}
           </CardContent>
@@ -1109,11 +1356,15 @@ function GroupItemList({
   mode,
   channelMap,
   metadataMap,
+  priceMap,
+  onPriceClick,
 }: {
   items: GroupItemForm[]
   mode: number
   channelMap: Map<number, ChannelRecord>
   metadataMap: Record<string, import("@/lib/api").ModelMeta> | undefined
+  priceMap: Map<string, ModelPrice>
+  onPriceClick: (modelName: string) => void
 }) {
   // Separate model items from "all" items
   const modelItems = items.filter((it) => it.modelName)
@@ -1173,11 +1424,14 @@ function GroupItemList({
   const renderModelCard = (item: GroupItemForm, idx: number) => {
     const ch = channelMap.get(item.channelId)
     const isDisabled = ch?.enabled === false
+    const price = priceMap.get(item.modelName)
     return (
       <ModelCard
         key={`${item.channelId}-${item.modelName}-${idx}`}
         modelId={item.modelName}
         disabled={isDisabled}
+        price={price ? { inputPrice: price.inputPrice, outputPrice: price.outputPrice } : undefined}
+        onPriceClick={price ? () => onPriceClick(item.modelName) : undefined}
       >
         <span className="text-muted-foreground text-[10px]">
           {ch?.name ?? `#${item.channelId}`}

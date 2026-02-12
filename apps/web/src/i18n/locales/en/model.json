@@ -1,5 +1,5 @@
 {
-  "pageTitle": "Channels & Groups",
+  "pageTitle": "Model",
   "channels": "Channels",
   "groups": "Groups",
   "models": "Models",
@@ -54,7 +54,15 @@
     "groupCleared": "Group cleared",
     "modelAlreadyInGroup": "This model is already in this group",
     "channelNoModels": "This channel has no models configured",
-    "allModelsAlreadyInGroup": "All models from this channel are already in this group"
+    "allModelsAlreadyInGroup": "All models from this channel are already in this group",
+    "priceCreated": "Price created",
+    "createFailed": "Failed to create price",
+    "priceUpdated": "Price updated",
+    "updateFailed": "Failed to update price",
+    "priceDeleted": "Price deleted",
+    "deleteFailed": "Failed to delete price",
+    "syncSuccess": "Prices synced successfully",
+    "syncFailed": "Failed to sync prices"
   },
 
   "availableModels": "Available Models",
@@ -113,5 +121,29 @@
     "title": "Select Model from models.dev",
     "searchPlaceholder": "Search models...",
     "noModelsFound": "No models found"
+  },
+
+  "price": {
+    "description": "Manage model pricing for cost calculation",
+    "searchModels": "Search models",
+    "searchPlaceholder": "Search models...",
+    "lastSynced": "Last synced: {{time}}",
+    "syncPrices": "Sync Prices",
+    "addPrice": "Add Price",
+    "addModelPrice": "Add Model Price",
+    "editModelPrice": "Edit Model Price",
+    "form": {
+      "modelName": "Model Name",
+      "inputPrice": "Input Price ($ / M tokens)",
+      "outputPrice": "Output Price ($ / M tokens)"
+    },
+    "deleteDialog": {
+      "title": "Delete price for \u201c{{name}}\u201d?",
+      "description": "This will remove the pricing data for this model. Historical cost calculations that used this price will not be affected."
+    },
+    "aria": {
+      "editPrice": "Edit price for {{name}}",
+      "deletePrice": "Delete price for {{name}}"
+    }
   }
 }

@@ -4,10 +4,17 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useModelMeta } from "@/hooks/use-model-meta"
 import { cn } from "@/lib/utils"
 
+export interface ModelPriceInfo {
+  inputPrice: number
+  outputPrice: number
+}
+
 interface ModelCardProps extends React.HTMLAttributes<HTMLDivElement> {
   modelId: string
   disabled?: boolean
   onRemove?: () => void
+  price?: ModelPriceInfo
+  onPriceClick?: () => void
 }
 
 export const ModelCard = function ModelCard({
@@ -15,6 +22,8 @@ export const ModelCard = function ModelCard({
   modelId,
   disabled,
   onRemove,
+  price,
+  onPriceClick,
   className,
   children,
   ...props
@@ -58,6 +67,18 @@ export const ModelCard = function ModelCard({
           </span>
         )}
       </div>
+      {price && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onPriceClick?.()
+          }}
+          className="text-muted-foreground hover:text-foreground shrink-0 font-mono text-[10px] leading-tight transition-colors"
+        >
+          ↓{price.inputPrice.toFixed(2)} ↑{price.outputPrice.toFixed(2)}
+        </button>
+      )}
       {children}
       {onRemove && (
         <button
@@ -83,6 +104,11 @@ export const ModelCard = function ModelCard({
             <span className="font-medium">{displayName}</span>
             {displayName !== modelId && (
               <span className="font-mono font-normal opacity-80">{modelId}</span>
+            )}
+            {price && (
+              <span className="font-mono text-xs font-normal opacity-80">
+                Input: ${price.inputPrice.toFixed(6)}/M · Output: ${price.outputPrice.toFixed(6)}/M
+              </span>
             )}
           </div>
         </TooltipContent>

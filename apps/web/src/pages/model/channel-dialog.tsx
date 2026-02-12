@@ -50,7 +50,7 @@ function ModelTagInput({
   value: string[]
   onChange: (value: string[]) => void
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const [input, setInput] = useState("")
   const tags = value ?? []
 
@@ -125,7 +125,7 @@ function FetchModelsButton({
   form: ChannelFormData
   setForm: (f: ChannelFormData) => void
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const [loading, setLoading] = useState(false)
 
   const baseUrl = form.baseUrls[0]?.url?.trim()
@@ -187,7 +187,7 @@ export default function ChannelDialog({
   onSave: () => void
   isPending: boolean
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const [showKey, setShowKey] = useState(false)
 
   const typeLabels = useMemo(

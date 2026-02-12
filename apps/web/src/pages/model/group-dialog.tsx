@@ -69,7 +69,7 @@ function SortableDialogItem({
   onUpdate: (patch: Partial<GroupItemForm>) => void
   onRemove: () => void
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   })
@@ -154,7 +154,7 @@ export default function GroupDialog({
   onSave: () => void
   isPending: boolean
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   // null = closed, -1 = adding new item, >= 0 = editing item at index
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null)

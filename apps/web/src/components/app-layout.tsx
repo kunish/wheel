@@ -1,12 +1,11 @@
 import {
-  DollarSign,
+  Boxes,
   Ellipsis,
   FileText,
   Languages,
   LayoutDashboard,
   LogOut,
   Moon,
-  Radio,
   Settings,
   Sun,
 } from "lucide-react"
@@ -36,8 +35,7 @@ import { cn } from "@/lib/utils"
 
 const navItemDefs = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
-  { href: "/channels", labelKey: "nav.channels", icon: Radio },
-  { href: "/prices", labelKey: "nav.prices", icon: DollarSign },
+  { href: "/model", labelKey: "nav.model", icon: Boxes },
   { href: "/logs", labelKey: "nav.logs", icon: FileText },
   { href: "/settings", labelKey: "nav.settings", icon: Settings },
 ] as const

@@ -1,5 +1,5 @@
 {
-  "pageTitle": "渠道与分组",
+  "pageTitle": "模型",
   "channels": "渠道",
   "groups": "分组",
   "models": "模型",
@@ -54,7 +54,15 @@
     "groupCleared": "分组已清空",
     "modelAlreadyInGroup": "该模型已在此分组中",
     "channelNoModels": "此渠道未配置任何模型",
-    "allModelsAlreadyInGroup": "此渠道的所有模型均已在该分组中"
+    "allModelsAlreadyInGroup": "此渠道的所有模型均已在该分组中",
+    "priceCreated": "价格已创建",
+    "createFailed": "创建价格失败",
+    "priceUpdated": "价格已更新",
+    "updateFailed": "更新价格失败",
+    "priceDeleted": "价格已删除",
+    "deleteFailed": "删除价格失败",
+    "syncSuccess": "价格同步成功",
+    "syncFailed": "同步价格失败"
   },
 
   "availableModels": "可用模型",
@@ -113,5 +121,29 @@
     "title": "从 models.dev 选择模型",
     "searchPlaceholder": "搜索模型...",
     "noModelsFound": "未找到模型"
+  },
+
+  "price": {
+    "description": "管理模型定价，用于费用计算",
+    "searchModels": "搜索模型",
+    "searchPlaceholder": "搜索模型...",
+    "lastSynced": "上次同步: {{time}}",
+    "syncPrices": "同步价格",
+    "addPrice": "添加价格",
+    "addModelPrice": "添加模型价格",
+    "editModelPrice": "编辑模型价格",
+    "form": {
+      "modelName": "模型名称",
+      "inputPrice": "输入价格 ($ / M tokens)",
+      "outputPrice": "输出价格 ($ / M tokens)"
+    },
+    "deleteDialog": {
+      "title": "删除 \u201c{{name}}\u201d 的价格？",
+      "description": "这将删除该模型的定价数据。使用过此价格的历史费用计算不会受到影响。"
+    },
+    "aria": {
+      "editPrice": "编辑 {{name}} 的价格",
+      "deletePrice": "删除 {{name}} 的价格"
+    }
   }
 }

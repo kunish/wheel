@@ -25,10 +25,9 @@ const DashboardPage = lazy(() => {
   queryClient.prefetchQuery({ queryKey: ["stats", "model"], queryFn: getModelStats, ...opts })
   return import("./pages/dashboard")
 })
-const ChannelsPage = lazy(() => import("./pages/channels"))
+const ModelPage = lazy(() => import("./pages/model"))
 const GroupsPage = lazy(() => import("./pages/groups"))
 const LogsPage = lazy(() => import("./pages/logs"))
-const PricesPage = lazy(() => import("./pages/prices"))
 const SettingsPage = lazy(() => import("./pages/settings"))
 
 export function AppRouter() {
@@ -39,10 +38,11 @@ export function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/channels" element={<ChannelsPage />} />
+          <Route path="/model" element={<ModelPage />} />
+          <Route path="/channels" element={<Navigate to="/model" replace />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/logs" element={<LogsPage />} />
-          <Route path="/prices" element={<PricesPage />} />
+          <Route path="/prices" element={<Navigate to="/model" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/apikeys" element={<Navigate to="/settings" replace />} />
         </Route>

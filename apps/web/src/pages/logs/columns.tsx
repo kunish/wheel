@@ -125,7 +125,7 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
               <TooltipTrigger asChild>
                 {row.channelId ? (
                   <Link
-                    to={`/channels?highlight=${row.channelId}`}
+                    to={`/model?highlight=${row.channelId}`}
                     onClick={(e) => e.stopPropagation()}
                     className="hover:underline"
                   >
@@ -160,7 +160,7 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
           <div className="flex items-center gap-1 text-xs">
             {row.channelId ? (
               <Link
-                to={`/channels?highlight=${row.channelId}`}
+                to={`/model?highlight=${row.channelId}`}
                 onClick={(e) => e.stopPropagation()}
                 className="hover:underline"
               >

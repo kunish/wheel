@@ -30,7 +30,7 @@ export default function ChannelModelPickerDialog({
   channelModels: ChannelModelEntry[]
   onSelect: (channelId: number, modelId: string) => void
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const { data } = useModelMetadataQuery()
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState<number | null>(null)

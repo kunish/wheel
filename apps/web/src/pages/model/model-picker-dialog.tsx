@@ -15,7 +15,7 @@ export default function ModelPickerDialog({
   onOpenChange: (open: boolean) => void
   onSelect: (modelId: string) => void
 }) {
-  const { t } = useTranslation("channels")
+  const { t } = useTranslation("model")
   const { data, isLoading } = useModelMetadataQuery()
   const [search, setSearch] = useState("")
 

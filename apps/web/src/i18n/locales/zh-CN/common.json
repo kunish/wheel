@@ -1,8 +1,7 @@
 {
   "nav": {
     "dashboard": "仪表盘",
-    "channels": "渠道与分组",
-    "prices": "价格",
+    "model": "模型",
     "logs": "日志",
     "settings": "设置"
   },
