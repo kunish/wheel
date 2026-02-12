@@ -92,7 +92,9 @@
     "usageCompletion": "Completion",
     "usageTotal": "Total",
     "usageCached": "cached",
-    "usageReasoning": "reasoning"
+    "usageReasoning": "reasoning",
+    "previousContext": "Previous context ({{count}} messages)",
+    "currentTurn": "Current turn"
   },
   "codeBlock": {
     "noContent": "No content available.",

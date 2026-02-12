@@ -92,7 +92,9 @@
     "usageCompletion": "输出",
     "usageTotal": "总计",
     "usageCached": "缓存",
-    "usageReasoning": "推理"
+    "usageReasoning": "推理",
+    "previousContext": "上下文消息 ({{count}} 条)",
+    "currentTurn": "当前轮次"
   },
   "codeBlock": {
     "noContent": "无可用内容。",

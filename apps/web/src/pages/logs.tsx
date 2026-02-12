@@ -1416,6 +1416,22 @@ function parseMessages(content: string): ParsedMessage[] | null {
   return null
 }
 
+/**
+ * Find the boundary between "previous context" and "current turn" messages.
+ * Returns the index of the first "new" message (i.e., lastAssistantIdx + 1).
+ * Returns 0 when there's no assistant message (first turn), meaning all messages are new.
+ */
+function findNewTurnBoundary(messages: ParsedMessage[]): number {
+  let lastAssistantIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant") {
+      lastAssistantIdx = i
+      break
+    }
+  }
+  return lastAssistantIdx === -1 ? 0 : lastAssistantIdx + 1
+}
+
 function parseRequestParams(content: string): ParsedRequestParams | null {
   try {
     const parsed = JSON.parse(content)
@@ -1453,8 +1469,23 @@ function parseRequestTools(content: string): ParsedRequestTools | null {
   try {
     const parsed = JSON.parse(content)
     if (!parsed?.tools || !Array.isArray(parsed.tools) || parsed.tools.length === 0) return null
+    // Normalize tool formats: Anthropic tools have {name, input_schema} at top level,
+    // OpenAI tools have {type, function: {name, parameters}} — unify to OpenAI shape.
+    const normalized = parsed.tools.map((tool: Record<string, unknown>) => {
+      if (tool.function && typeof tool.function === "object") {
+        return tool
+      }
+      return {
+        type: (tool.type as string) || "function",
+        function: {
+          name: tool.name as string,
+          description: tool.description as string | undefined,
+          parameters: tool.input_schema ?? tool.parameters,
+        },
+      }
+    })
     return {
-      tools: parsed.tools as ParsedRequestTools["tools"],
+      tools: normalized as ParsedRequestTools["tools"],
       tool_choice: parsed.tool_choice,
     }
   } catch {
@@ -1649,7 +1680,15 @@ function detectTruncation(text: string): {
   return { isTruncated, cleanText: cleaned, notice }
 }
 
-function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
+function MessageBubble({
+  msg,
+  index,
+  isContext,
+}: {
+  msg: ParsedMessage
+  index: number
+  isContext?: boolean
+}) {
   const { t } = useTranslation("logs")
   const [expanded, setExpanded] = useState(false)
   const config = ROLE_STYLE_CONFIG[msg.role] ?? DEFAULT_ROLE_STYLE_CONFIG
@@ -1662,7 +1701,9 @@ function MessageBubble({ msg, index }: { msg: ParsedMessage; index: number }) {
   const displayText = isLong && !expanded ? displaySource.slice(0, 800) : displaySource
 
   return (
-    <div className={`rounded-md border-2 border-l-4 ${config.borderClass} ${config.bgClass}`}>
+    <div
+      className={`rounded-md border-2 border-l-4 ${config.borderClass} ${config.bgClass}${isContext ? "opacity-60" : ""}`}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
         <div
@@ -2180,6 +2221,18 @@ function MessagesTabContent({
   const [viewMode, setViewMode] = useState<"conversation" | "raw">("conversation")
 
   const messages = useMemo(() => parseMessages(detail.requestContent), [detail.requestContent])
+  const newTurnBoundary = useMemo(() => (messages ? findNewTurnBoundary(messages) : 0), [messages])
+  const [contextExpanded, setContextExpanded] = useState(false)
+
+  // Reset collapsed state when switching between log entries
+  const prevDetailId = useRef(detail.id)
+  useEffect(() => {
+    if (prevDetailId.current !== detail.id) {
+      setContextExpanded(false)
+      prevDetailId.current = detail.id
+    }
+  }, [detail.id])
+
   const requestParams = useMemo(
     () => parseRequestParams(detail.requestContent),
     [detail.requestContent],
@@ -2254,8 +2307,38 @@ function MessagesTabContent({
         <div className="flex flex-col gap-2">
           {requestParams && <RequestParamsSummary params={requestParams} />}
           {requestTools && <ToolsDefinitionList tools={requestTools} />}
-          {messages.map((msg, i) => (
-            <MessageBubble key={`msg-${i.toString()}`} msg={msg} index={i} />
+          {newTurnBoundary > 0 && (
+            <>
+              <button
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 self-start text-[11px] font-bold tracking-wide uppercase"
+                onClick={() => setContextExpanded(!contextExpanded)}
+              >
+                {contextExpanded ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                {t("messagesTab.previousContext", { count: newTurnBoundary })}
+              </button>
+              {contextExpanded &&
+                messages
+                  .slice(0, newTurnBoundary)
+                  .map((msg, i) => (
+                    <MessageBubble key={`ctx-${i.toString()}`} msg={msg} index={i} isContext />
+                  ))}
+              <div className="text-muted-foreground flex items-center gap-2 py-1 text-[11px] font-bold tracking-wide uppercase">
+                <div className="border-border flex-1 border-t" />
+                {t("messagesTab.currentTurn")}
+                <div className="border-border flex-1 border-t" />
+              </div>
+            </>
+          )}
+          {messages.slice(newTurnBoundary).map((msg, i) => (
+            <MessageBubble
+              key={`msg-${(newTurnBoundary + i).toString()}`}
+              msg={msg}
+              index={newTurnBoundary + i}
+            />
           ))}
           {response && <ResponseBlock response={response} isStreaming={!!streamingOverlay} />}
         </div>
