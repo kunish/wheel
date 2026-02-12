@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1770442424740,
+      "tag": "0000_far_stephen_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1770466858443,
+      "tag": "0001_special_puff_adder",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1770472927427,
+      "tag": "0002_tidy_swordsman",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1770530839498,
+      "tag": "0003_cultured_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1770615803754,
+      "tag": "0004_flimsy_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1770618573521,
+      "tag": "0005_left_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1770662569999,
+      "tag": "0006_great_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1770748800000,
+      "tag": "0007_add_upstream_content",
+      "breakpoints": true
+    }
+  ]
+}

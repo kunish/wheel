@@ -1,0 +1,132 @@
+{
+  "title": "Logs",
+  "totalCount": "{{count}} total",
+  "newLogs": "{{count}} new",
+  "searchPlaceholder": "Search logs...",
+  "filter": {
+    "allChannels": "All Channels",
+    "all": "All",
+    "success": "Success",
+    "error": "Error"
+  },
+  "chips": {
+    "search": "Search: {{value}}",
+    "model": "Model: {{value}}",
+    "channel": "Channel: {{value}}",
+    "status": "Status: {{value}}",
+    "time": "Time: {{value}}",
+    "clearAll": "Clear all"
+  },
+  "loadError": "Failed to load logs",
+  "empty": {
+    "noMatch": "No logs match your filters",
+    "noLogs": "No logs yet",
+    "clearFilters": "Clear all filters"
+  },
+  "detail": {
+    "title": "Log #{{id}}",
+    "ok": "OK",
+    "error": "Error",
+    "via": "via",
+    "overview": "Overview",
+    "messages": "Messages",
+    "retry": "Retry ({{count}})",
+    "replay": "Replay",
+    "field": {
+      "time": "Time",
+      "channel": "Channel",
+      "inputTokens": "Input Tokens",
+      "outputTokens": "Output Tokens",
+      "totalTokens": "Total Tokens",
+      "cost": "Cost",
+      "ttft": "TTFT",
+      "totalLatency": "Total Latency",
+      "outputSpeed": "Output Speed",
+      "attempts": "Attempts"
+    },
+    "truncatedNotice": "Request content was truncated during storage. Replay may produce different results.",
+    "replayBtn": "Replay",
+    "replayFailed": "Replay failed",
+    "emptyResponse": "[Empty response]",
+    "replayResult": "Replay Result"
+  },
+  "retryTimeline": {
+    "sticky": "Sticky",
+    "ok": "OK",
+    "circuitBreak": "CIRCUIT BREAK",
+    "skipped": "SKIPPED",
+    "fail": "FAIL",
+    "channel": "Channel:",
+    "model": "Model:"
+  },
+  "messagesTab": {
+    "count_one": "{{count}} message",
+    "count_other": "{{count}} messages",
+    "plusResponse": " + response",
+    "chat": "Chat",
+    "raw": "Raw",
+    "requestOriginal": "Request (Original)",
+    "requestUpstream": "Request (Upstream)",
+    "response": "Response",
+    "noContent": "No content",
+    "showLess": "Show less",
+    "showAll": "Show all ({{chars}} chars)",
+    "truncated": "Truncated",
+    "toolCalls": "Tool Calls",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "image": "image",
+    "thinking": "Thinking",
+    "thinkingChars": "({{chars}} chars)",
+    "streaming": "Streaming...",
+    "requestParams": "Request Parameters",
+    "tools": "Tools",
+    "toolChoice": "tool_choice",
+    "responseMetadata": "Response Metadata",
+    "metaId": "ID",
+    "metaModel": "Model",
+    "metaCreated": "Created",
+    "metaFingerprint": "Fingerprint",
+    "usage": "Token Usage",
+    "usagePrompt": "Prompt",
+    "usageCompletion": "Completion",
+    "usageTotal": "Total",
+    "usageCached": "cached",
+    "usageReasoning": "reasoning",
+    "previousContext": "Previous context ({{count}} messages)",
+    "currentTurn": "Current turn"
+  },
+  "codeBlock": {
+    "noContent": "No content available.",
+    "searchPlaceholder": "Search in content...",
+    "match_one": "{{count}} match",
+    "match_other": "{{count}} matches",
+    "truncatedRecovered": "Content was truncated and partially recovered."
+  },
+  "toast": {
+    "copied": "Copied!"
+  },
+  "roles": {
+    "system": "System",
+    "user": "User",
+    "assistant": "Assistant",
+    "tool": "Tool",
+    "function": "Function",
+    "unknown": "Unknown"
+  },
+  "columns": {
+    "time": "Time",
+    "model": "Model",
+    "channel": "Channel",
+    "input": "Input",
+    "output": "Output",
+    "ttft": "TTFT",
+    "latency": "Latency",
+    "cost": "Cost",
+    "status": "Status",
+    "error": "Error",
+    "ok": "OK",
+    "attempts": "{{count}} attempts",
+    "streaming": "Streaming"
+  }
+}

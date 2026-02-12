@@ -1,0 +1,474 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/cache"
+	"github.com/kunish/wheel/apps/worker/internal/db/dal"
+	"github.com/kunish/wheel/apps/worker/internal/types"
+	"github.com/uptrace/bun"
+)
+
+// ──── Channel Routes ────
+
+func (h *Handler) ListChannels(c *gin.Context) {
+	channels, err := dal.ListChannels(c.Request.Context(), h.DB)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	successJSON(c, gin.H{"channels": channels})
+}
+
+func (h *Handler) CreateChannel(c *gin.Context) {
+	var req types.ChannelCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	ch := types.Channel{
+		Name:         req.Name,
+		Type:         types.OutboundType(req.Type),
+		Enabled:      req.Enabled,
+		BaseUrls:     types.BaseUrlList(req.BaseUrls),
+		Model:        types.StringList(req.Model),
+		CustomModel:  req.CustomModel,
+		CustomHeader: types.CustomHeaderList(req.CustomHeader),
+		ParamOverride: req.ParamOverride,
+	}
+	if req.AutoSync != nil {
+		ch.AutoSync = *req.AutoSync
+	}
+	if req.AutoGroup != nil {
+		ch.AutoGroup = types.AutoGroupType(*req.AutoGroup)
+	}
+
+	created, err := dal.CreateChannel(c.Request.Context(), h.DB, ch, req.Keys)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.Cache.Delete("channels")
+	successJSON(c, created)
+}
+
+func (h *Handler) UpdateChannel(c *gin.Context) {
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	idFloat, ok := body["id"].(float64)
+	if !ok {
+		errorJSON(c, http.StatusBadRequest, "id is required")
+		return
+	}
+	id := int(idFloat)
+
+	// Build update map with DB column names
+	data := make(map[string]interface{})
+	if v, ok := body["name"]; ok {
+		data["name"] = v
+	}
+	if v, ok := body["type"]; ok {
+		data["type"] = v
+	}
+	if v, ok := body["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			data["enabled"] = b
+		}
+	}
+	if v, ok := body["baseUrls"]; ok {
+		jsonBytes, _ := json.Marshal(v)
+		data["base_urls"] = string(jsonBytes)
+	}
+	if v, ok := body["model"]; ok {
+		jsonBytes, _ := json.Marshal(v)
+		data["model"] = string(jsonBytes)
+	}
+	if v, ok := body["customModel"]; ok {
+		data["custom_model"] = v
+	}
+	if v, ok := body["proxy"]; ok {
+		if b, ok := v.(bool); ok {
+			data["proxy"] = b
+		}
+	}
+	if v, ok := body["autoSync"]; ok {
+		if b, ok := v.(bool); ok {
+			data["auto_sync"] = b
+		}
+	}
+	if v, ok := body["autoGroup"]; ok {
+		data["auto_group"] = v
+	}
+	if v, ok := body["customHeader"]; ok {
+		jsonBytes, _ := json.Marshal(v)
+		data["custom_header"] = string(jsonBytes)
+	}
+	if v, ok := body["paramOverride"]; ok {
+		data["param_override"] = v
+	}
+	if v, ok := body["channelProxy"]; ok {
+		data["channel_proxy"] = v
+	}
+
+	ctx := c.Request.Context()
+
+	if err := dal.UpdateChannel(ctx, h.DB, id, data); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Sync keys if provided
+	if keysRaw, ok := body["keys"]; ok {
+		keysJSON, _ := json.Marshal(keysRaw)
+		var keys []types.ChannelKeyInput
+		json.Unmarshal(keysJSON, &keys)
+		if err := dal.SyncChannelKeys(ctx, h.DB, id, keys); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	h.Cache.Delete("channels")
+	successNoData(c)
+}
+
+func (h *Handler) EnableChannel(c *gin.Context) {
+	var req types.ChannelEnableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := dal.EnableChannel(c.Request.Context(), h.DB, req.ID, req.Enabled); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.Cache.Delete("channels")
+	successNoData(c)
+}
+
+func (h *Handler) DeleteChannel(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid channel ID")
+		return
+	}
+
+	if err := dal.DeleteChannel(c.Request.Context(), h.DB, id); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.Cache.Delete("channels")
+	successNoData(c)
+}
+
+// ──── Fetch Model / Sync ────
+
+type fetchModelRequest struct {
+	ID int `json:"id"`
+}
+
+func (h *Handler) FetchModel(c *gin.Context) {
+	var req fetchModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	channel, err := dal.GetChannel(c.Request.Context(), h.DB, req.ID)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if channel == nil {
+		errorJSON(c, http.StatusNotFound, "Channel not found")
+		return
+	}
+
+	models, err := fetchModelsFromChannel(channel)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	successJSON(c, gin.H{"models": models})
+}
+
+type fetchModelPreviewRequest struct {
+	Type    int    `json:"type"`
+	BaseUrl string `json:"baseUrl"`
+	Key     string `json:"key"`
+}
+
+func (h *Handler) FetchModelPreview(c *gin.Context) {
+	var req fetchModelPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.BaseUrl == "" || req.Key == "" {
+		errorJSON(c, http.StatusBadRequest, "baseUrl and key are required")
+		return
+	}
+
+	channelType := req.Type
+	if channelType == 0 {
+		channelType = 1
+	}
+
+	pseudoChannel := &types.Channel{
+		Type:     types.OutboundType(channelType),
+		Enabled:  true,
+		BaseUrls: types.BaseUrlList{{URL: req.BaseUrl, Delay: 0}},
+		Keys: []types.ChannelKey{
+			{Enabled: true, ChannelKey: req.Key},
+		},
+	}
+
+	models, err := fetchModelsFromChannel(pseudoChannel)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	successJSON(c, gin.H{"models": models})
+}
+
+func (h *Handler) SyncAllModels(c *gin.Context) {
+	result, err := syncAllModels(c.Request.Context(), h.DB, h.Cache)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	successJSON(c, result)
+}
+
+func (h *Handler) LastSyncTime(c *gin.Context) {
+	settings, err := dal.GetAllSettings(c.Request.Context(), h.DB)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	lastSyncTime := "0"
+	if v, ok := settings["last_sync_time"]; ok {
+		lastSyncTime = v
+	}
+	n, _ := strconv.ParseInt(lastSyncTime, 10, 64)
+	successJSON(c, gin.H{"lastSyncTime": n})
+}
+
+// ──── Model fetch helpers ────
+
+func fetchModelsFromChannel(channel *types.Channel) ([]string, error) {
+	var key *types.ChannelKey
+	for i := range channel.Keys {
+		if channel.Keys[i].Enabled {
+			key = &channel.Keys[i]
+			break
+		}
+	}
+	if key == nil {
+		return []string{}, nil
+	}
+
+	baseUrl := ""
+	if len(channel.BaseUrls) > 0 {
+		baseUrl = strings.TrimRight(channel.BaseUrls[0].URL, "/")
+	}
+	if baseUrl == "" {
+		return []string{}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	switch channel.Type {
+	case types.OutboundAnthropic:
+		return fetchAnthropicModels(ctx, baseUrl, key.ChannelKey)
+	case types.OutboundGemini:
+		return fetchGeminiModels(ctx, baseUrl, key.ChannelKey)
+	default:
+		return fetchOpenAIModels(ctx, baseUrl, key.ChannelKey)
+	}
+}
+
+func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OpenAI models API returned %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	models := make([]string, 0, len(result.Data))
+	for _, m := range result.Data {
+		models = append(models, m.ID)
+	}
+	return models, nil
+}
+
+func fetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models", nil)
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Anthropic models API returned %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	models := make([]string, 0, len(result.Data))
+	for _, m := range result.Data {
+		models = append(models, m.ID)
+	}
+	return models, nil
+}
+
+func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models?key="+apiKey, nil)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Gemini models API returned %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	models := make([]string, 0, len(result.Models))
+	for _, m := range result.Models {
+		name := m.Name
+		if strings.HasPrefix(name, "models/") {
+			name = name[7:]
+		}
+		models = append(models, name)
+	}
+	return models, nil
+}
+
+// ──── Sync all models ────
+
+func syncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*types.SyncResult, error) {
+	result := &types.SyncResult{
+		NewModels:     []string{},
+		RemovedModels: []string{},
+		Errors:        []string{},
+	}
+
+	channels, err := dal.ListChannels(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range channels {
+		ch := &channels[i]
+		if !ch.AutoSync {
+			continue
+		}
+
+		upstreamModels, err := fetchModelsFromChannel(ch)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: %s", ch.Name, err.Error()))
+			continue
+		}
+		if len(upstreamModels) == 0 {
+			continue
+		}
+
+		oldModels := []string(ch.Model)
+		newSet := make(map[string]bool)
+		for _, m := range upstreamModels {
+			newSet[m] = true
+		}
+		oldSet := make(map[string]bool)
+		for _, m := range oldModels {
+			oldSet[m] = true
+		}
+
+		for _, m := range upstreamModels {
+			if !oldSet[m] {
+				result.NewModels = append(result.NewModels, m)
+			}
+		}
+		for _, m := range oldModels {
+			if !newSet[m] {
+				result.RemovedModels = append(result.RemovedModels, m)
+			}
+		}
+
+		// Update channel model list
+		modelJSON, _ := json.Marshal(upstreamModels)
+		dal.UpdateChannel(ctx, db, ch.ID, map[string]interface{}{"model": string(modelJSON)})
+
+		result.SyncedChannels++
+	}
+
+	// Save last sync time
+	now := fmt.Sprintf("%d", time.Now().Unix())
+	dal.UpdateSettings(ctx, db, map[string]string{"last_sync_time": now})
+
+	kv.Delete("channels")
+	kv.Delete("groups")
+
+	return result, nil
+}

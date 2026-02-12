@@ -1,0 +1,132 @@
+{
+  "title": "日志",
+  "totalCount": "共 {{count}} 条",
+  "newLogs": "{{count}} 条新日志",
+  "searchPlaceholder": "搜索日志...",
+  "filter": {
+    "allChannels": "全部渠道",
+    "all": "全部",
+    "success": "成功",
+    "error": "失败"
+  },
+  "chips": {
+    "search": "搜索: {{value}}",
+    "model": "模型: {{value}}",
+    "channel": "渠道: {{value}}",
+    "status": "状态: {{value}}",
+    "time": "时间: {{value}}",
+    "clearAll": "清除全部"
+  },
+  "loadError": "加载日志失败",
+  "empty": {
+    "noMatch": "没有匹配筛选条件的日志",
+    "noLogs": "暂无日志",
+    "clearFilters": "清除所有筛选"
+  },
+  "detail": {
+    "title": "日志 #{{id}}",
+    "ok": "正常",
+    "error": "错误",
+    "via": "经由",
+    "overview": "概览",
+    "messages": "消息",
+    "retry": "重试 ({{count}})",
+    "replay": "重放",
+    "field": {
+      "time": "时间",
+      "channel": "渠道",
+      "inputTokens": "输入 Token",
+      "outputTokens": "输出 Token",
+      "totalTokens": "总 Token",
+      "cost": "费用",
+      "ttft": "首字时间",
+      "totalLatency": "总耗时",
+      "outputSpeed": "输出速度",
+      "attempts": "尝试次数"
+    },
+    "truncatedNotice": "请求内容在存储时被截断，重放可能产生不同的结果。",
+    "replayBtn": "重放",
+    "replayFailed": "重放失败",
+    "emptyResponse": "[空响应]",
+    "replayResult": "重放结果"
+  },
+  "retryTimeline": {
+    "sticky": "固定",
+    "ok": "成功",
+    "circuitBreak": "熔断",
+    "skipped": "跳过",
+    "fail": "失败",
+    "channel": "渠道:",
+    "model": "模型:"
+  },
+  "messagesTab": {
+    "count_one": "{{count}} 条消息",
+    "count_other": "{{count}} 条消息",
+    "plusResponse": " + 响应",
+    "chat": "对话",
+    "raw": "原始",
+    "requestOriginal": "请求（原始）",
+    "requestUpstream": "请求（上游）",
+    "response": "响应",
+    "noContent": "无内容",
+    "showLess": "收起",
+    "showAll": "展开全部（{{chars}} 字符）",
+    "truncated": "已截断",
+    "toolCalls": "工具调用",
+    "expand": "展开",
+    "collapse": "收起",
+    "image": "图片",
+    "thinking": "思考",
+    "thinkingChars": "（{{chars}} 字符）",
+    "streaming": "输出中...",
+    "requestParams": "请求参数",
+    "tools": "工具定义",
+    "toolChoice": "tool_choice",
+    "responseMetadata": "响应元数据",
+    "metaId": "ID",
+    "metaModel": "模型",
+    "metaCreated": "创建时间",
+    "metaFingerprint": "指纹",
+    "usage": "Token 用量",
+    "usagePrompt": "输入",
+    "usageCompletion": "输出",
+    "usageTotal": "总计",
+    "usageCached": "缓存",
+    "usageReasoning": "推理",
+    "previousContext": "上下文消息 ({{count}} 条)",
+    "currentTurn": "当前轮次"
+  },
+  "codeBlock": {
+    "noContent": "无可用内容。",
+    "searchPlaceholder": "在内容中搜索...",
+    "match_one": "{{count}} 个匹配",
+    "match_other": "{{count}} 个匹配",
+    "truncatedRecovered": "内容已被截断并部分恢复。"
+  },
+  "toast": {
+    "copied": "已复制！"
+  },
+  "roles": {
+    "system": "系统",
+    "user": "用户",
+    "assistant": "助手",
+    "tool": "工具",
+    "function": "函数",
+    "unknown": "未知"
+  },
+  "columns": {
+    "time": "时间",
+    "model": "模型",
+    "channel": "渠道",
+    "input": "输入",
+    "output": "输出",
+    "ttft": "首字时间",
+    "latency": "耗时",
+    "cost": "费用",
+    "status": "状态",
+    "error": "错误",
+    "ok": "正常",
+    "attempts": "{{count}} 次尝试",
+    "streaming": "传输中"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Wheel",
+  "description": "登录以管理你的 LLM 网关",
+  "username": "用户名",
+  "usernamePlaceholder": "请输入用户名",
+  "password": "密码",
+  "passwordPlaceholder": "请输入密码",
+  "submit": "登录",
+  "submitting": "登录中...",
+  "error": {
+    "loginFailed": "登录失败，请检查你的用户名和密码。"
+  }
+}

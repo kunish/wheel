@@ -1,0 +1,100 @@
+{
+  "title": "设置",
+  "account": {
+    "changeUsername": "修改用户名",
+    "newUsername": "新用户名",
+    "enterNewUsername": "请输入新用户名",
+    "updateUsername": "更新用户名",
+    "usernameUpdated": "用户名已更新",
+    "usernameUpdateFailed": "更新用户名失败",
+    "changePassword": "修改密码",
+    "newPassword": "新密码",
+    "enterNewPassword": "请输入新密码",
+    "confirmPassword": "确认密码",
+    "confirmNewPassword": "请确认新密码",
+    "updatePassword": "更新密码",
+    "passwordUpdated": "密码已更新",
+    "passwordUpdateFailed": "更新密码失败",
+    "passwordMinLength": "密码长度至少为 8 个字符",
+    "passwordsDoNotMatch": "两次输入的密码不一致"
+  },
+  "apiKeys": {
+    "title": "API 密钥",
+    "createKey": "创建密钥",
+    "createApiKey": "创建 API 密钥",
+    "editApiKey": "编辑 API 密钥",
+    "saveKeyWarning": "请保存此密钥 \u2014 它将不会再次显示。",
+    "copied": "已复制！",
+    "done": "完成",
+    "copyKeyBeforeClosing": "请在关闭前复制密钥",
+    "apiKeyUpdated": "API 密钥已更新",
+    "apiKeyDeleted": "API 密钥已删除",
+    "deleteTitle": "删除 API 密钥 \u201c{{name}}\u201d？",
+    "deleteDescription": "此操作无法撤销。使用此密钥的应用程序将立即失去访问权限。",
+    "table": {
+      "name": "名称",
+      "key": "密钥",
+      "status": "状态",
+      "expires": "过期时间",
+      "costLimit": "费用 / 限额"
+    },
+    "statusActive": "活跃",
+    "statusDisabled": "已禁用",
+    "never": "永不过期",
+    "form": {
+      "name": "名称",
+      "namePlaceholder": "我的 API 密钥",
+      "expireDate": "过期日期",
+      "expireDateHint": "留空表示永不过期",
+      "costLimit": "费用限额 ($)",
+      "costLimitPlaceholder": "0 = 不限制",
+      "costLimitHint": "0 或留空 = 不限制",
+      "modelWhitelist": "模型白名单",
+      "modelWhitelistPlaceholder": "gpt-4o, claude-3.5-sonnet（逗号分隔）",
+      "modelWhitelistHint": "逗号分隔的模型名称。留空 = 允许所有模型。"
+    }
+  },
+  "systemConfig": {
+    "title": "系统配置",
+    "description": "配置系统行为。更改立即生效。",
+    "settingsSaved": "设置已保存",
+    "noSettings": "尚未配置任何设置。",
+    "saveChanges": "保存更改",
+    "labels": {
+      "log_retention_days": "日志保留天数",
+      "circuit_breaker_threshold": "熔断器阈值",
+      "circuit_breaker_cooldown": "熔断器冷却时间 (秒)",
+      "circuit_breaker_max_cooldown": "熔断器最大冷却时间 (秒)"
+    },
+    "descriptions": {
+      "log_retention_days": "日志保留天数（0 = 不限制）",
+      "circuit_breaker_threshold": "触发熔断前的连续失败次数（默认：5）",
+      "circuit_breaker_cooldown": "基础冷却时间，单位为秒（默认：60）",
+      "circuit_breaker_max_cooldown": "指数退避后的最大冷却时间，单位为秒（默认：600）"
+    }
+  },
+  "backup": {
+    "exportTitle": "导出数据",
+    "exportDescription": "将所有配置数据导出为 JSON 文件。",
+    "includeRequestLogs": "包含请求日志",
+    "includeStatisticsData": "包含统计数据",
+    "exporting": "导出中...",
+    "downloadExport": "下载导出文件",
+    "exportDownloaded": "导出文件已下载",
+    "exportFailed": "导出数据失败",
+    "importTitle": "导入数据",
+    "importDescription": "从 JSON 文件导入配置。已有数据不会被覆盖。",
+    "dropFileHere": "拖拽文件到此处或点击选择",
+    "supportsJson": "支持 .json 文件",
+    "selected": "已选择：",
+    "importing": "导入中...",
+    "importData": "导入数据",
+    "importCompleted": "导入完成",
+    "importFailed": "导入失败",
+    "importDataFailed": "导入数据失败",
+    "onlyJsonSupported": "仅支持 .json 文件",
+    "importResult": "导入结果：",
+    "added": "{{count}} 已添加",
+    "skipped": "{{count}} 已跳过"
+  }
+}

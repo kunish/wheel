@@ -1,0 +1,79 @@
+{
+  "stats": {
+    "requestStats": "请求统计",
+    "overview": "总览",
+    "input": "输入",
+    "output": "输出",
+    "requests": "请求数",
+    "timeUsed": "耗时",
+    "totalTokens": "总 Token",
+    "totalCost": "总费用",
+    "inputTokens": "输入 Token",
+    "inputCost": "输入费用",
+    "outputTokens": "输出 Token",
+    "outputCost": "输出费用",
+    "cost": "费用"
+  },
+  "activity": {
+    "title": "活动",
+    "day": "日",
+    "week": "周",
+    "month": "月",
+    "year": "年",
+    "viewLogs": "查看日志 →",
+    "less": "少",
+    "more": "多",
+    "noData": "暂无数据",
+    "today": "今天",
+    "thisWeek": "本周",
+    "thisMonth": "本月",
+    "thisYear": "今年"
+  },
+  "weekdaysFull": {
+    "sunday": "星期日",
+    "monday": "星期一",
+    "tuesday": "星期二",
+    "wednesday": "星期三",
+    "thursday": "星期四",
+    "friday": "星期五",
+    "saturday": "星期六"
+  },
+  "channelRanking": {
+    "title": "渠道排名",
+    "channelFallback": "渠道 {{id}}",
+    "noData": "暂无数据"
+  },
+  "modelUsage": {
+    "title": "模型用量",
+    "noData": "暂无数据"
+  },
+  "sort": {
+    "requests": "请求数",
+    "tokens": "Token",
+    "cost": "费用",
+    "latency": "延迟"
+  },
+  "inline": {
+    "req": "请求",
+    "cost": "费用",
+    "avg": "均值",
+    "in": "输入",
+    "out": "输出"
+  },
+  "errors": {
+    "dashboardStats": "加载仪表盘统计数据失败",
+    "modelStats": "加载模型统计数据失败",
+    "channelStats": "加载渠道统计数据失败"
+  },
+  "chart": {
+    "totalRequests": "总请求数",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "totalCost": "总费用",
+    "period": "时间范围",
+    "today": "今日",
+    "last7Days": "近 7 天",
+    "last30Days": "近 30 天",
+    "cost": "费用"
+  }
+}

@@ -1,0 +1,36 @@
+volumes:
+  worker-data:
+
+services:
+  worker:
+    image: ghcr.io/kunish/wheel-worker
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    restart: always
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dummy}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      DATA_PATH: /app/data
+    ports:
+      - 8787:8787
+    volumes:
+      - worker-data:/app/data
+
+  web:
+    image: ghcr.io/kunish/wheel-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    restart: always
+    ports:
+      - 3000:3000
+    depends_on:
+      - worker
