@@ -592,8 +592,8 @@ export default function ModelPage() {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-full flex-col gap-4">
-        <div className="flex items-center justify-between">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex shrink-0 items-center justify-between">
           <h2 className="text-2xl font-bold tracking-tight">{t("pageTitle")}</h2>
           <div className="flex items-center gap-2">
             {lastSync && (
@@ -621,10 +621,10 @@ export default function ModelPage() {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-hidden lg:grid-cols-2">
           {/* ─── Left: Channels ───────────────── */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+          <div className="flex min-h-0 flex-col gap-3">
+            <div className="flex shrink-0 items-center justify-between">
               <h3 className="text-lg font-semibold">{t("channels")}</h3>
               <div className="flex items-center gap-1">
                 {channels.length > 0 && (
@@ -648,7 +648,7 @@ export default function ModelPage() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="min-h-0 flex-1">
               {channelsLoading ? (
                 <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
               ) : channels.length === 0 ? (
@@ -685,8 +685,8 @@ export default function ModelPage() {
           </div>
 
           {/* ─── Right: Groups ────────────────── */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+          <div className="flex min-h-0 flex-col gap-3">
+            <div className="flex shrink-0 items-center justify-between">
               <h3 className="text-lg font-semibold">{t("groups")}</h3>
               <div className="flex items-center gap-1">
                 {groups.length > 0 && (
@@ -710,7 +710,7 @@ export default function ModelPage() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="min-h-0 flex-1">
               {groupsLoading ? (
                 <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
               ) : groups.length === 0 ? (
@@ -858,7 +858,7 @@ export default function ModelPage() {
           open={channelDialogOpen}
           onOpenChange={(open) => {
             setChannelDialogOpen(open)
-            if (!open) setChannelForm(EMPTY_CHANNEL_FORM)
+            if (!open) setTimeout(() => setChannelForm(EMPTY_CHANNEL_FORM), 200)
           }}
           form={channelForm}
           setForm={setChannelForm}
@@ -873,7 +873,7 @@ export default function ModelPage() {
           open={groupDialogOpen}
           onOpenChange={(open) => {
             setGroupDialogOpen(open)
-            if (!open) setGroupForm(EMPTY_GROUP_FORM)
+            if (!open) setTimeout(() => setGroupForm(EMPTY_GROUP_FORM), 200)
           }}
           form={groupForm}
           setForm={setGroupForm}
@@ -925,8 +925,10 @@ export default function ModelPage() {
           onOpenChange={(open: boolean) => {
             setPriceDialogOpen(open)
             if (!open) {
-              setPriceForm(EMPTY_PRICE_FORM)
-              setEditingPriceId(null)
+              setTimeout(() => {
+                setPriceForm(EMPTY_PRICE_FORM)
+                setEditingPriceId(null)
+              }, 200)
             }
           }}
           form={priceForm}
