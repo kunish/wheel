@@ -1340,11 +1340,62 @@ interface ParsedMessage {
   }>
 }
 
-interface ParsedResponse {
+interface ParsedRequestParams {
+  model?: string
+  stream?: boolean
+  temperature?: number
+  max_tokens?: number
+  max_completion_tokens?: number
+  top_p?: number
+  frequency_penalty?: number
+  presence_penalty?: number
+  response_format?: { type: string; [key: string]: unknown }
+  seed?: number
+  stop?: string | string[]
+  n?: number
+  user?: string
+}
+
+interface ParsedRequestTools {
+  tools: Array<{
+    type: string
+    function: {
+      name: string
+      description?: string
+      parameters?: unknown
+    }
+  }>
+  tool_choice?: string | { type: string; function?: { name: string } }
+}
+
+interface ParsedResponseUsage {
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  prompt_tokens_details?: { cached_tokens?: number; audio_tokens?: number }
+  completion_tokens_details?: {
+    reasoning_tokens?: number
+    audio_tokens?: number
+    accepted_prediction_tokens?: number
+    rejected_prediction_tokens?: number
+  }
+}
+
+interface ParsedResponseChoice {
   assistantContent: string | null
   thinkingContent: string | null
   toolCalls: ParsedMessage["tool_calls"]
   finishReason: string | null
+  index: number
+}
+
+interface ParsedResponse {
+  choices: ParsedResponseChoice[]
+  id: string | null
+  model: string | null
+  created: number | null
+  systemFingerprint: string | null
+  usage: ParsedResponseUsage | null
   raw: unknown
 }
 
@@ -1365,6 +1416,52 @@ function parseMessages(content: string): ParsedMessage[] | null {
   return null
 }
 
+function parseRequestParams(content: string): ParsedRequestParams | null {
+  try {
+    const parsed = JSON.parse(content)
+    if (!parsed || typeof parsed !== "object") return null
+    const keys: (keyof ParsedRequestParams)[] = [
+      "model",
+      "stream",
+      "temperature",
+      "max_tokens",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty",
+      "response_format",
+      "seed",
+      "stop",
+      "n",
+      "user",
+    ]
+    const result: ParsedRequestParams = {}
+    let hasAny = false
+    for (const key of keys) {
+      if (parsed[key] !== undefined && parsed[key] !== null) {
+        ;(result as Record<string, unknown>)[key] = parsed[key]
+        hasAny = true
+      }
+    }
+    return hasAny ? result : null
+  } catch {
+    return null
+  }
+}
+
+function parseRequestTools(content: string): ParsedRequestTools | null {
+  try {
+    const parsed = JSON.parse(content)
+    if (!parsed?.tools || !Array.isArray(parsed.tools) || parsed.tools.length === 0) return null
+    return {
+      tools: parsed.tools as ParsedRequestTools["tools"],
+      tool_choice: parsed.tool_choice,
+    }
+  } catch {
+    return null
+  }
+}
+
 function extractThinking(content: string): { thinking: string | null; rest: string } {
   const match = content.match(/^<\|thinking\|>([\s\S]*?)<\|\/thinking\|>([\s\S]*)$/)
   if (match) {
@@ -1380,14 +1477,41 @@ function parseResponseContent(content: string): ParsedResponse | null {
 
   try {
     const parsed = JSON.parse(rest)
-    const choice = parsed?.choices?.[0]
-    if (choice) {
+    const rawChoices = parsed?.choices
+    if (Array.isArray(rawChoices) && rawChoices.length > 0) {
+      const choices: ParsedResponseChoice[] = rawChoices.map(
+        (
+          choice: {
+            message?: { content?: string; tool_calls?: ParsedMessage["tool_calls"] }
+            finish_reason?: string
+            index?: number
+          },
+          i: number,
+        ) => ({
+          assistantContent:
+            typeof choice.message?.content === "string" ? choice.message.content : null,
+          thinkingContent: i === 0 ? thinking : null,
+          toolCalls: choice.message?.tool_calls ?? undefined,
+          finishReason: choice.finish_reason ?? null,
+          index: choice.index ?? i,
+        }),
+      )
+      const usage = parsed.usage
+        ? {
+            prompt_tokens: parsed.usage.prompt_tokens,
+            completion_tokens: parsed.usage.completion_tokens,
+            total_tokens: parsed.usage.total_tokens,
+            prompt_tokens_details: parsed.usage.prompt_tokens_details,
+            completion_tokens_details: parsed.usage.completion_tokens_details,
+          }
+        : null
       return {
-        assistantContent:
-          typeof choice.message?.content === "string" ? choice.message.content : null,
-        thinkingContent: thinking,
-        toolCalls: choice.message?.tool_calls ?? null,
-        finishReason: choice.finish_reason ?? null,
+        choices,
+        id: parsed.id ?? null,
+        model: parsed.model ?? null,
+        created: parsed.created ?? null,
+        systemFingerprint: parsed.system_fingerprint ?? null,
+        usage,
         raw: parsed,
       }
     }
@@ -1395,10 +1519,20 @@ function parseResponseContent(content: string): ParsedResponse | null {
     // Not valid JSON — likely plain text accumulated from a streaming response
     const text = rest || null
     return {
-      assistantContent: text,
-      thinkingContent: thinking,
-      toolCalls: undefined,
-      finishReason: null,
+      choices: [
+        {
+          assistantContent: text,
+          thinkingContent: thinking,
+          toolCalls: undefined,
+          finishReason: null,
+          index: 0,
+        },
+      ],
+      id: null,
+      model: null,
+      created: null,
+      systemFingerprint: null,
+      usage: null,
       raw: null,
     }
   }
@@ -1660,15 +1794,17 @@ function ToolCallBlock({
   )
 }
 
-function ResponseBlock({
-  response,
+function ResponseChoiceBlock({
+  choice,
   isStreaming = false,
+  showIndex = false,
 }: {
-  response: ParsedResponse
+  choice: ParsedResponseChoice
   isStreaming?: boolean
+  showIndex?: boolean
 }) {
   const { t } = useTranslation("logs")
-  const { text } = getMessageTextContent(response.assistantContent)
+  const { text } = getMessageTextContent(choice.assistantContent)
   const [expanded, setExpanded] = useState(false)
   const [thinkingOpen, setThinkingOpen] = useState(false)
   const isLong = text.length > 800
@@ -1683,20 +1819,25 @@ function ResponseBlock({
         <span className="text-xs font-bold tracking-wide uppercase">
           {t("messagesTab.response")}
         </span>
+        {showIndex && (
+          <Badge variant="secondary" className="text-[10px]">
+            Choice #{choice.index}
+          </Badge>
+        )}
         {isStreaming && (
           <Badge variant="ghost" className="animate-pulse gap-1 text-[10px]">
             <Loader2 className="h-2.5 w-2.5 animate-spin" />
             {t("messagesTab.streaming")}
           </Badge>
         )}
-        {response.finishReason && (
+        {choice.finishReason && (
           <Badge variant="ghost" className="text-[10px]">
-            {response.finishReason}
+            {choice.finishReason}
           </Badge>
         )}
       </div>
 
-      {response.thinkingContent && (
+      {choice.thinkingContent && (
         <div className="border-border/50 border-t">
           <button
             className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
@@ -1708,7 +1849,7 @@ function ResponseBlock({
             </span>
             <span className="text-muted-foreground/60 text-[10px]">
               {t("messagesTab.thinkingChars", {
-                chars: response.thinkingContent.length.toLocaleString(),
+                chars: choice.thinkingContent.length.toLocaleString(),
               })}
             </span>
             <ChevronDown
@@ -1718,7 +1859,7 @@ function ResponseBlock({
           {thinkingOpen && (
             <div className="border-border/50 border-t px-3 py-2">
               <pre className="text-muted-foreground max-h-64 overflow-auto text-[11px] leading-relaxed whitespace-pre-wrap">
-                {response.thinkingContent}
+                {choice.thinkingContent}
               </pre>
             </div>
           )}
@@ -1751,18 +1892,279 @@ function ResponseBlock({
         </div>
       )}
 
-      {response.toolCalls && response.toolCalls.length > 0 && (
+      {choice.toolCalls && choice.toolCalls.length > 0 && (
         <div className="border-border/50 border-t px-3 py-2">
           <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
             {t("messagesTab.toolCalls")}
           </p>
           <div className="flex flex-col gap-1.5">
-            {response.toolCalls.map((tc) => (
+            {choice.toolCalls.map((tc) => (
               <ToolCallBlock key={tc.id} toolCall={tc} />
             ))}
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ResponseMetadata({ response }: { response: ParsedResponse }) {
+  const { t } = useTranslation("logs")
+  const hasMetadata =
+    response.id || response.model || response.created || response.systemFingerprint
+  if (!hasMetadata) return null
+
+  return (
+    <div className="bg-muted/30 rounded-md border p-2.5">
+      <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
+        {t("messagesTab.responseMetadata")}
+      </p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        {response.id && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">{t("messagesTab.metaId")}:</span>
+            <span className="truncate font-mono text-[11px]">{response.id}</span>
+          </div>
+        )}
+        {response.model && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">{t("messagesTab.metaModel")}:</span>
+            <span className="truncate font-mono text-[11px]">{response.model}</span>
+          </div>
+        )}
+        {response.created && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">{t("messagesTab.metaCreated")}:</span>
+            <span className="font-mono text-[11px]">
+              {new Date(response.created * 1000).toLocaleString(undefined, { hour12: false })}
+            </span>
+          </div>
+        )}
+        {response.systemFingerprint && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">{t("messagesTab.metaFingerprint")}:</span>
+            <span className="truncate font-mono text-[11px]">{response.systemFingerprint}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function UsageDetails({ usage }: { usage: ParsedResponseUsage }) {
+  const { t } = useTranslation("logs")
+  return (
+    <div className="bg-muted/30 rounded-md border p-2.5">
+      <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
+        {t("messagesTab.usage")}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        {usage.prompt_tokens != null && (
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">{t("messagesTab.usagePrompt")}:</span>
+            <span className="font-mono font-medium">{usage.prompt_tokens.toLocaleString()}</span>
+            {usage.prompt_tokens_details?.cached_tokens != null &&
+              usage.prompt_tokens_details.cached_tokens > 0 && (
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  ({t("messagesTab.usageCached")}:{" "}
+                  {usage.prompt_tokens_details.cached_tokens.toLocaleString()})
+                </span>
+              )}
+          </div>
+        )}
+        {usage.completion_tokens != null && (
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">{t("messagesTab.usageCompletion")}:</span>
+            <span className="font-mono font-medium">
+              {usage.completion_tokens.toLocaleString()}
+            </span>
+            {usage.completion_tokens_details?.reasoning_tokens != null &&
+              usage.completion_tokens_details.reasoning_tokens > 0 && (
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  ({t("messagesTab.usageReasoning")}:{" "}
+                  {usage.completion_tokens_details.reasoning_tokens.toLocaleString()})
+                </span>
+              )}
+          </div>
+        )}
+        {usage.total_tokens != null && (
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">{t("messagesTab.usageTotal")}:</span>
+            <span className="font-mono font-medium">{usage.total_tokens.toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ResponseBlock({
+  response,
+  isStreaming = false,
+}: {
+  response: ParsedResponse
+  isStreaming?: boolean
+}) {
+  const showMultipleChoices = response.choices.length > 1
+
+  return (
+    <div className="flex flex-col gap-2">
+      {response.choices.map((choice) => (
+        <ResponseChoiceBlock
+          key={choice.index}
+          choice={choice}
+          isStreaming={isStreaming}
+          showIndex={showMultipleChoices}
+        />
+      ))}
+      {response.usage && <UsageDetails usage={response.usage} />}
+      <ResponseMetadata response={response} />
+    </div>
+  )
+}
+
+function RequestParamsSummary({ params }: { params: ParsedRequestParams }) {
+  const { t } = useTranslation("logs")
+  const entries: Array<{ label: string; value: React.ReactNode }> = []
+
+  if (params.model != null) entries.push({ label: "model", value: params.model })
+  if (params.stream != null) entries.push({ label: "stream", value: String(params.stream) })
+  if (params.temperature != null)
+    entries.push({ label: "temperature", value: String(params.temperature) })
+  if (params.max_tokens != null)
+    entries.push({ label: "max_tokens", value: params.max_tokens.toLocaleString() })
+  if (params.max_completion_tokens != null)
+    entries.push({
+      label: "max_completion_tokens",
+      value: params.max_completion_tokens.toLocaleString(),
+    })
+  if (params.top_p != null) entries.push({ label: "top_p", value: String(params.top_p) })
+  if (params.frequency_penalty != null)
+    entries.push({ label: "frequency_penalty", value: String(params.frequency_penalty) })
+  if (params.presence_penalty != null)
+    entries.push({ label: "presence_penalty", value: String(params.presence_penalty) })
+  if (params.seed != null) entries.push({ label: "seed", value: String(params.seed) })
+  if (params.n != null && params.n > 1) entries.push({ label: "n", value: String(params.n) })
+  if (params.user) entries.push({ label: "user", value: params.user })
+  if (params.response_format) {
+    entries.push({
+      label: "response_format",
+      value: (
+        <Badge variant="secondary" className="text-[10px]">
+          {params.response_format.type}
+        </Badge>
+      ),
+    })
+  }
+  if (params.stop) {
+    const stops = Array.isArray(params.stop) ? params.stop : [params.stop]
+    entries.push({
+      label: "stop",
+      value: (
+        <div className="flex flex-wrap gap-1">
+          {stops.map((s, i) => (
+            <Badge key={i} variant="outline" className="font-mono text-[10px]">
+              {s}
+            </Badge>
+          ))}
+        </div>
+      ),
+    })
+  }
+
+  if (entries.length === 0) return null
+
+  return (
+    <div className="bg-muted/30 rounded-md border p-2.5">
+      <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
+        {t("messagesTab.requestParams")}
+      </p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
+        {entries.map((entry) => (
+          <div key={entry.label} className="flex min-w-0 items-center gap-1.5">
+            <span className="text-muted-foreground shrink-0">{entry.label}:</span>
+            <span className="truncate font-mono text-[11px]">{entry.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
+  const { t } = useTranslation("logs")
+  const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set())
+
+  const toggleTool = (index: number) => {
+    setExpandedTools((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
+  const toolChoiceLabel = (() => {
+    if (!tools.tool_choice) return null
+    if (typeof tools.tool_choice === "string") return tools.tool_choice
+    if (typeof tools.tool_choice === "object" && tools.tool_choice.function?.name) {
+      return tools.tool_choice.function.name
+    }
+    return null
+  })()
+
+  return (
+    <div className="bg-muted/30 rounded-md border p-2.5">
+      <div className="mb-1.5 flex items-center gap-2">
+        <Wrench className="text-muted-foreground h-3 w-3 shrink-0" />
+        <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
+          {t("messagesTab.tools")} ({tools.tools.length})
+        </p>
+        {toolChoiceLabel && (
+          <Badge variant="secondary" className="text-[10px]">
+            {t("messagesTab.toolChoice")}: {toolChoiceLabel}
+          </Badge>
+        )}
+      </div>
+      <div className="flex flex-col gap-1">
+        {tools.tools.map((tool, i) => {
+          const isExpanded = expandedTools.has(i)
+          let paramsStr = ""
+          if (tool.function.parameters) {
+            try {
+              paramsStr = JSON.stringify(tool.function.parameters, null, 2)
+            } catch {
+              paramsStr = String(tool.function.parameters)
+            }
+          }
+          return (
+            <div key={i} className="bg-background/60 rounded-md border">
+              <button
+                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+                onClick={() => toggleTool(i)}
+              >
+                <Code2 className="text-muted-foreground h-3 w-3 shrink-0" />
+                <span className="font-mono text-xs font-bold">{tool.function.name}</span>
+                {tool.function.description && (
+                  <span className="text-muted-foreground truncate text-[11px]">
+                    — {tool.function.description}
+                  </span>
+                )}
+                <ChevronDown
+                  className={`text-muted-foreground ml-auto h-3 w-3 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                />
+              </button>
+              {isExpanded && paramsStr && (
+                <div className="border-border/50 border-t px-2.5 py-2">
+                  <pre className="bg-muted/50 max-h-48 overflow-auto rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+                    {paramsStr}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -1778,6 +2180,14 @@ function MessagesTabContent({
   const [viewMode, setViewMode] = useState<"conversation" | "raw">("conversation")
 
   const messages = useMemo(() => parseMessages(detail.requestContent), [detail.requestContent])
+  const requestParams = useMemo(
+    () => parseRequestParams(detail.requestContent),
+    [detail.requestContent],
+  )
+  const requestTools = useMemo(
+    () => parseRequestTools(detail.requestContent),
+    [detail.requestContent],
+  )
 
   // Use streaming overlay content when available (real-time during SSE proxy),
   // otherwise fall back to the stored response content from the DB.
@@ -1842,6 +2252,8 @@ function MessagesTabContent({
         </div>
       ) : canShowConversation && viewMode === "conversation" ? (
         <div className="flex flex-col gap-2">
+          {requestParams && <RequestParamsSummary params={requestParams} />}
+          {requestTools && <ToolsDefinitionList tools={requestTools} />}
           {messages.map((msg, i) => (
             <MessageBubble key={`msg-${i.toString()}`} msg={msg} index={i} />
           ))}

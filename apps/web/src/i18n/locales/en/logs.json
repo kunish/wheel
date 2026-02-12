@@ -78,7 +78,21 @@
     "image": "image",
     "thinking": "Thinking",
     "thinkingChars": "({{chars}} chars)",
-    "streaming": "Streaming..."
+    "streaming": "Streaming...",
+    "requestParams": "Request Parameters",
+    "tools": "Tools",
+    "toolChoice": "tool_choice",
+    "responseMetadata": "Response Metadata",
+    "metaId": "ID",
+    "metaModel": "Model",
+    "metaCreated": "Created",
+    "metaFingerprint": "Fingerprint",
+    "usage": "Token Usage",
+    "usagePrompt": "Prompt",
+    "usageCompletion": "Completion",
+    "usageTotal": "Total",
+    "usageCached": "cached",
+    "usageReasoning": "reasoning"
   },
   "codeBlock": {
     "noContent": "No content available.",

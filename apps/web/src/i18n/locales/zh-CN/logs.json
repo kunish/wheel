@@ -78,7 +78,21 @@
     "image": "图片",
     "thinking": "思考",
     "thinkingChars": "（{{chars}} 字符）",
-    "streaming": "输出中..."
+    "streaming": "输出中...",
+    "requestParams": "请求参数",
+    "tools": "工具定义",
+    "toolChoice": "tool_choice",
+    "responseMetadata": "响应元数据",
+    "metaId": "ID",
+    "metaModel": "模型",
+    "metaCreated": "创建时间",
+    "metaFingerprint": "指纹",
+    "usage": "Token 用量",
+    "usagePrompt": "输入",
+    "usageCompletion": "输出",
+    "usageTotal": "总计",
+    "usageCached": "缓存",
+    "usageReasoning": "推理"
   },
   "codeBlock": {
     "noContent": "无可用内容。",
