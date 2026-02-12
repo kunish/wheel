@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /apps/worker
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directory: /apps/worker
+    schedule:
+      interval: weekly
+    groups:
+      golang:
+        patterns:
+          - "*"
