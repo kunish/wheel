@@ -16,6 +16,15 @@ func CreateLog(ctx context.Context, db *bun.DB, log types.RelayLog) (*types.Rela
 	return &log, nil
 }
 
+// CreateLogsBatch inserts multiple logs in a single statement within the given transaction.
+func CreateLogsBatch(ctx context.Context, tx bun.Tx, logs []types.RelayLog) error {
+	if len(logs) == 0 {
+		return nil
+	}
+	_, err := tx.NewInsert().Model(&logs).Exec(ctx)
+	return err
+}
+
 func GetLog(ctx context.Context, db *bun.DB, id int) (*types.RelayLog, error) {
 	log := new(types.RelayLog)
 	err := db.NewSelect().Model(log).Where("id = ?", id).Scan(ctx)

@@ -136,6 +136,7 @@ func MigrateLogDB(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_relay_logs_time ON relay_logs(time)`,
 		`CREATE INDEX IF NOT EXISTS idx_relay_logs_channel_id ON relay_logs(channel_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_relay_logs_error ON relay_logs(error) WHERE error != ''`,
 	}
 
 	for _, stmt := range statements {

@@ -94,3 +94,12 @@ func IncrementApiKeyCost(ctx context.Context, db *bun.DB, id int, cost float64) 
 		Exec(ctx)
 	return err
 }
+
+// IncrementApiKeyCostTx is the transaction-compatible variant of IncrementApiKeyCost.
+func IncrementApiKeyCostTx(ctx context.Context, tx bun.Tx, id int, cost float64) error {
+	_, err := tx.NewUpdate().Table("api_keys").
+		Set("total_cost = total_cost + ?", cost).
+		Where("id = ?", id).
+		Exec(ctx)
+	return err
+}

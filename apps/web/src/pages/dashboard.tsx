@@ -134,7 +134,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[960px] flex-col">
+    <div className="mx-auto flex h-full w-full max-w-[960px] flex-col overflow-hidden">
       <ActivitySection
         data={dailyData?.data}
         totalData={totalData?.data}

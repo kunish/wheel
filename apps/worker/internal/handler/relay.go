@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
+	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/types"
@@ -52,6 +52,7 @@ type RelayHandler struct {
 	Cache         *cache.MemoryKV
 	Broadcast     BroadcastFunc
 	StreamTracker StreamTracker
+	LogWriter     *db.LogWriter
 }
 
 // RegisterRelayRoutes registers the /v1/* relay routes on a Gin engine.
@@ -689,12 +690,16 @@ func (h *RelayHandler) asyncStreamLog(
 	var attemptsVal types.AttemptList
 	json.Unmarshal(attemptsJSON, &attemptsVal)
 
-	var upstreamContent *string
-	if upstreamBodyForLog != nil {
-		upstreamContent = upstreamBodyForLog
+	var costInfo *db.CostInfo
+	if cost > 0 {
+		costInfo = &db.CostInfo{
+			ApiKeyID:     apiKeyId,
+			ChannelKeyID: key.ID,
+			Cost:         cost,
+		}
 	}
 
-	logRow, err := dal.CreateLog(context.Background(), h.LogDB, types.RelayLog{
+	h.LogWriter.Submit(types.RelayLog{
 		Time:             time.Now().Unix(),
 		RequestModelName: model,
 		ChannelID:        channel.ID,
@@ -706,32 +711,12 @@ func (h *RelayHandler) asyncStreamLog(
 		UseTime:          int(time.Since(startTime).Milliseconds()),
 		Cost:             cost,
 		RequestContent:   logBody,
-		UpstreamContent:  upstreamContent,
+		UpstreamContent:  upstreamBodyForLog,
 		ResponseContent:  respContent,
 		Error:            "",
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
-	})
-	if err != nil {
-		return
-	}
-
-	if cost > 0 {
-		dal.IncrementApiKeyCost(context.Background(), h.DB, apiKeyId, cost)
-		dal.IncrementChannelKeyCost(context.Background(), h.DB, key.ID, cost)
-	}
-
-	if h.Broadcast != nil {
-		h.Broadcast("stats-updated")
-		summary := logSummary(logRow)
-		summary["streamId"] = streamId
-		h.Broadcast("log-created", summary)
-	}
-	if h.StreamTracker != nil {
-		h.StreamTracker.UntrackStream(streamId)
-	}
-
-	h.maybeCleanupLogs()
+	}, costInfo, streamId)
 }
 
 func (h *RelayHandler) asyncNonStreamLog(
@@ -759,7 +744,16 @@ func (h *RelayHandler) asyncNonStreamLog(
 	var attemptsVal types.AttemptList
 	json.Unmarshal(attemptsJSON, &attemptsVal)
 
-	logRow, err := dal.CreateLog(context.Background(), h.LogDB, types.RelayLog{
+	var costInfo *db.CostInfo
+	if cost > 0 {
+		costInfo = &db.CostInfo{
+			ApiKeyID:     apiKeyId,
+			ChannelKeyID: key.ID,
+			Cost:         cost,
+		}
+	}
+
+	h.LogWriter.Submit(types.RelayLog{
 		Time:             time.Now().Unix(),
 		RequestModelName: model,
 		ChannelID:        channel.ID,
@@ -776,22 +770,7 @@ func (h *RelayHandler) asyncNonStreamLog(
 		Error:            "",
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
-	})
-	if err != nil {
-		return
-	}
-
-	if cost > 0 {
-		dal.IncrementApiKeyCost(context.Background(), h.DB, apiKeyId, cost)
-		dal.IncrementChannelKeyCost(context.Background(), h.DB, key.ID, cost)
-	}
-
-	if h.Broadcast != nil {
-		h.Broadcast("stats-updated")
-		h.Broadcast("log-created", logSummary(logRow))
-	}
-
-	h.maybeCleanupLogs()
+	}, costInfo, "")
 }
 
 func (h *RelayHandler) asyncErrorLog(
@@ -809,7 +788,7 @@ func (h *RelayHandler) asyncErrorLog(
 	var attemptsVal types.AttemptList
 	json.Unmarshal(attemptsJSON, &attemptsVal)
 
-	logRow, err := dal.CreateLog(context.Background(), h.LogDB, types.RelayLog{
+	h.LogWriter.Submit(types.RelayLog{
 		Time:             time.Now().Unix(),
 		RequestModelName: model,
 		ChannelID:        channelID,
@@ -820,55 +799,7 @@ func (h *RelayHandler) asyncErrorLog(
 		Error:            lastError,
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
-	})
-	if err != nil {
-		return
-	}
-
-	if h.Broadcast != nil {
-		h.Broadcast("stats-updated")
-		h.Broadcast("log-created", logSummary(logRow))
-	}
-
-	h.maybeCleanupLogs()
-}
-
-func logSummary(log *types.RelayLog) map[string]any {
-	return map[string]any{
-		"log": map[string]any{
-			"id":               log.ID,
-			"time":             log.Time,
-			"requestModelName": log.RequestModelName,
-			"actualModelName":  log.ActualModelName,
-			"channelId":        log.ChannelID,
-			"channelName":      log.ChannelName,
-			"inputTokens":      log.InputTokens,
-			"outputTokens":     log.OutputTokens,
-			"ftut":             log.FTUT,
-			"useTime":          log.UseTime,
-			"error":            log.Error,
-			"cost":             log.Cost,
-			"totalAttempts":    log.TotalAttempts,
-		},
-	}
-}
-
-// maybeCleanupLogs probabilistically cleans up old logs (1% chance per request).
-func (h *RelayHandler) maybeCleanupLogs() {
-	if rand.Float64() > 0.01 {
-		return
-	}
-	days, err := dal.GetSetting(context.Background(), h.DB, "log_retention_days")
-	if err != nil {
-		return
-	}
-	retentionDays := 365
-	if days != nil {
-		if n, err := strconv.Atoi(*days); err == nil && n > 0 {
-			retentionDays = n
-		}
-	}
-	dal.CleanupOldLogs(context.Background(), h.LogDB, retentionDays)
+	}, nil, "")
 }
 
 // ── Cache Helpers ───────────────────────────────────────────────

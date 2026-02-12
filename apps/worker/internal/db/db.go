@@ -28,14 +28,22 @@ func Open(dbPath string) (*bun.DB, error) {
 	// SQLite concurrency safety
 	sqldb.SetMaxOpenConns(1)
 
-	// Enable WAL mode and foreign keys
-	if _, err := sqldb.Exec("PRAGMA journal_mode = WAL"); err != nil {
-		sqldb.Close()
-		return nil, fmt.Errorf("set WAL mode: %w", err)
+	// Enable WAL mode, foreign keys, and performance PRAGMAs
+	pragmas := []struct {
+		sql string
+		msg string
+	}{
+		{"PRAGMA journal_mode = WAL", "set WAL mode"},
+		{"PRAGMA foreign_keys = ON", "enable foreign_keys"},
+		{"PRAGMA busy_timeout = 5000", "set busy_timeout"},
+		{"PRAGMA synchronous = NORMAL", "set synchronous"},
+		{"PRAGMA cache_size = -64000", "set cache_size"},
 	}
-	if _, err := sqldb.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		sqldb.Close()
-		return nil, fmt.Errorf("enable foreign_keys: %w", err)
+	for _, p := range pragmas {
+		if _, err := sqldb.Exec(p.sql); err != nil {
+			sqldb.Close()
+			return nil, fmt.Errorf("%s: %w", p.msg, err)
+		}
 	}
 
 	bunDB := bun.NewDB(sqldb, sqlitedialect.New())

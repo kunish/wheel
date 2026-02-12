@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
@@ -59,6 +62,22 @@ func main() {
 	// ── WebSocket Hub ──
 	hub := ws.New()
 
+	// ── LogWriter (batched async log persistence) ──
+	logWriter := db.NewLogWriter(logDatabase, database, hub.Broadcast, hub)
+
+	// Use a cancellable context for background services
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	logWriterDone := make(chan struct{})
+	go func() {
+		logWriter.Run(ctx)
+		close(logWriterDone)
+	}()
+
+	// ── Background Log Cleanup ──
+	db.StartLogCleanup(ctx, database, logDatabase)
+
 	// ── Handlers ──
 	h := &handler.Handler{
 		DB:     database,
@@ -73,6 +92,7 @@ func main() {
 		Cache:         kv,
 		Broadcast:     hub.Broadcast,
 		StreamTracker: hub,
+		LogWriter:     logWriter,
 	}
 
 	// ── Router ──
@@ -106,10 +126,27 @@ func main() {
 	c.Start()
 	defer c.Stop()
 
-	// ── Start Server ──
+	// ── Start Server with Graceful Shutdown ──
 	addr := ":" + cfg.Port
-	log.Printf("Wheel worker listening on %s", addr)
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("Server error: %v", err)
+	srv := &http.Server{Addr: addr, Handler: r}
+
+	go func() {
+		log.Printf("Wheel worker listening on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+	log.Println("[shutdown] Signal received, shutting down...")
+
+	// Gracefully shut down HTTP server (stop accepting new requests)
+	if err := srv.Shutdown(context.Background()); err != nil {
+		log.Printf("[shutdown] HTTP server shutdown error: %v", err)
 	}
+
+	// Wait for LogWriter to flush remaining buffered logs
+	<-logWriterDone
+	log.Println("[shutdown] All logs flushed, exiting.")
 }
