@@ -14,7 +14,6 @@ interface ModelCardProps extends React.HTMLAttributes<HTMLDivElement> {
   disabled?: boolean
   onRemove?: () => void
   price?: ModelPriceInfo
-  onPriceClick?: () => void
 }
 
 export const ModelCard = function ModelCard({
@@ -23,7 +22,6 @@ export const ModelCard = function ModelCard({
   disabled,
   onRemove,
   price,
-  onPriceClick,
   className,
   children,
   ...props
@@ -67,18 +65,6 @@ export const ModelCard = function ModelCard({
           </span>
         )}
       </div>
-      {price && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onPriceClick?.()
-          }}
-          className="text-muted-foreground hover:text-foreground shrink-0 font-mono text-[10px] leading-tight transition-colors"
-        >
-          ↓{price.inputPrice.toFixed(2)} ↑{price.outputPrice.toFixed(2)}
-        </button>
-      )}
       {children}
       {onRemove && (
         <button

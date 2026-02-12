@@ -435,18 +435,6 @@ export default function ModelPage() {
     setPriceDialogOpen(true)
   }
 
-  function openEditPrice(modelName: string) {
-    const price = priceMap.get(modelName)
-    if (!price) return
-    setPriceForm({
-      name: price.name,
-      inputPrice: String(price.inputPrice),
-      outputPrice: String(price.outputPrice),
-    })
-    setEditingPriceId(price.id)
-    setPriceDialogOpen(true)
-  }
-
   // ─── Drag handlers ─────────────────────────────
 
   const sensors = useSensors(
@@ -691,7 +679,6 @@ export default function ModelPage() {
                           enablePending={channelEnableMut.isPending}
                           forceCollapsed={channelsCollapsed}
                           priceMap={priceMap}
-                          onPriceClick={openEditPrice}
                         />
                       </motion.div>
                     ))}
@@ -757,7 +744,6 @@ export default function ModelPage() {
                             hoverGroupId={hoverGroupId}
                             forceCollapsed={groupsCollapsed}
                             priceMap={priceMap}
-                            onPriceClick={openEditPrice}
                           />
                         </motion.div>
                       ))}
@@ -1020,7 +1006,6 @@ function DraggableChannel({
   enablePending,
   forceCollapsed,
   priceMap,
-  onPriceClick,
 }: {
   channel: ChannelRecord
   highlighted?: boolean
@@ -1031,7 +1016,6 @@ function DraggableChannel({
   enablePending?: boolean
   forceCollapsed?: boolean
   priceMap: Map<string, ModelPrice>
-  onPriceClick: (modelName: string) => void
 }) {
   const { t } = useTranslation("model")
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -1135,7 +1119,6 @@ function DraggableChannel({
                       channelId={channel.id}
                       channelName={channel.name}
                       priceMap={priceMap}
-                      onPriceClick={onPriceClick}
                     />
                   )}
                 />
@@ -1155,13 +1138,11 @@ function DraggableModelTag({
   channelId,
   channelName,
   priceMap,
-  onPriceClick,
 }: {
   model: string
   channelId: number
   channelName: string
   priceMap: Map<string, ModelPrice>
-  onPriceClick: (modelName: string) => void
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `model-${channelId}-${model}`,
@@ -1178,7 +1159,6 @@ function DraggableModelTag({
       modelId={model}
       className={cn("hover:bg-accent cursor-grab", isDragging && "opacity-40")}
       price={price ? { inputPrice: price.inputPrice, outputPrice: price.outputPrice } : undefined}
-      onPriceClick={price ? () => onPriceClick(model) : undefined}
     />
   )
 }
@@ -1196,7 +1176,6 @@ function SortableGroup({
   hoverGroupId,
   forceCollapsed,
   priceMap,
-  onPriceClick,
 }: {
   group: GroupRecord
   channelMap: Map<number, ChannelRecord>
@@ -1208,7 +1187,6 @@ function SortableGroup({
   hoverGroupId: number | null
   forceCollapsed?: boolean
   priceMap: Map<string, ModelPrice>
-  onPriceClick: (modelName: string) => void
 }) {
   const { t } = useTranslation("model")
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1377,7 +1355,6 @@ function SortableGroup({
                 channelMap={channelMap}
                 metadataMap={metaData?.data}
                 priceMap={priceMap}
-                onPriceClick={onPriceClick}
                 onRemoveItem={onRemoveItem}
               />
             )}
@@ -1396,7 +1373,6 @@ function GroupItemList({
   channelMap,
   metadataMap,
   priceMap,
-  onPriceClick,
   onRemoveItem,
 }: {
   items: GroupItemForm[]
@@ -1404,7 +1380,6 @@ function GroupItemList({
   channelMap: Map<number, ChannelRecord>
   metadataMap: Record<string, import("@/lib/api").ModelMeta> | undefined
   priceMap: Map<string, ModelPrice>
-  onPriceClick: (modelName: string) => void
   onRemoveItem?: (itemIndex: number) => void
 }) {
   // Separate model items from "all" items
@@ -1479,7 +1454,6 @@ function GroupItemList({
         modelId={item.modelName}
         disabled={isDisabled}
         price={price ? { inputPrice: price.inputPrice, outputPrice: price.outputPrice } : undefined}
-        onPriceClick={price ? () => onPriceClick(item.modelName) : undefined}
         onRemove={
           onRemoveItem && originalIndex !== undefined
             ? () => onRemoveItem(originalIndex)
