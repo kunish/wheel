@@ -7,6 +7,12 @@
   "passwordPlaceholder": "请输入密码",
   "submit": "登录",
   "submitting": "登录中...",
+  "apiUrl": "API 服务器",
+  "apiUrlPlaceholder": "https://your-wheel-server.com",
+  "apiUrlHint": "与服务器同域部署时留空",
+  "configure": "配置 API 服务器",
+  "connectionOk": "已连接",
+  "connectionFailed": "连接失败",
   "error": {
     "loginFailed": "登录失败，请检查你的用户名和密码。"
   }

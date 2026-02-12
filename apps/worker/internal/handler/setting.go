@@ -22,6 +22,13 @@ var defaultSettings = map[string]string{
 
 // ──── Setting Routes ────
 
+// GetSettings godoc
+// @Summary Get all settings
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {settings: map[string]string}}"
+// @Security BearerAuth
+// @Router /api/v1/setting/ [get]
 func (h *Handler) GetSettings(c *gin.Context) {
 	settings, err := dal.GetAllSettings(c.Request.Context(), h.DB)
 	if err != nil {
@@ -42,6 +49,16 @@ func (h *Handler) GetSettings(c *gin.Context) {
 	successJSON(c, gin.H{"settings": merged})
 }
 
+// UpdateSettings godoc
+// @Summary Update settings
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param body body types.SettingsUpdateRequest true "Settings key-value pairs"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/setting/update [post]
 func (h *Handler) UpdateSettings(c *gin.Context) {
 	var req types.SettingsUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -57,6 +74,14 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	successNoData(c)
 }
 
+// ExportData godoc
+// @Summary Export all data as JSON file
+// @Tags Settings
+// @Produce json
+// @Param include_logs query string false "Include relay logs (true|false)"
+// @Success 200 {file} file "JSON export file"
+// @Security BearerAuth
+// @Router /api/v1/setting/export [get]
 func (h *Handler) ExportData(c *gin.Context) {
 	includeLogs := c.Query("include_logs") == "true"
 	ctx := c.Request.Context()
@@ -116,6 +141,16 @@ func (h *Handler) ExportData(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", data)
 }
 
+// ImportData godoc
+// @Summary Import data from JSON file or body
+// @Tags Settings
+// @Accept json,mpfd
+// @Produce json
+// @Param file formData file false "JSON export file"
+// @Success 200 {object} object "{success: true, data: ImportResult}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/setting/import [post]
 func (h *Handler) ImportData(c *gin.Context) {
 	var dump types.DBDump
 

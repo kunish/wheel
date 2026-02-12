@@ -73,6 +73,17 @@
       "circuit_breaker_max_cooldown": "Maximum cooldown in seconds after exponential backoff (default: 600)"
     }
   },
+  "connection": {
+    "title": "API Connection",
+    "apiUrl": "API Server URL",
+    "apiUrlPlaceholder": "https://your-wheel-server.com",
+    "apiUrlHint": "The base URL of your Wheel API server. Leave empty when deployed alongside the server.",
+    "save": "Save",
+    "testing": "Testing...",
+    "success": "Connection successful",
+    "failed": "Connection failed. Please check the URL.",
+    "cleared": "API URL cleared, using default"
+  },
   "backup": {
     "exportTitle": "Export Data",
     "exportDescription": "Export all configuration data as a JSON file.",

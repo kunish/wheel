@@ -1,9 +1,16 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
+import { useAuthStore } from "@/lib/store/auth"
 
 const WS_RECONNECT_INTERVAL = 3000
 
 function getWsUrl() {
+  const apiBaseUrl = useAuthStore.getState().apiBaseUrl
+  if (apiBaseUrl) {
+    const url = new URL(apiBaseUrl)
+    const proto = url.protocol === "https:" ? "wss:" : "ws:"
+    return `${proto}//${url.host}/api/v1/ws`
+  }
   const wsBase = import.meta.env.VITE_API_BASE_URL
   if (wsBase) {
     const url = new URL(wsBase)

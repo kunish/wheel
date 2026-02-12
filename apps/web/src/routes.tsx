@@ -1,5 +1,5 @@
 import { lazy } from "react"
-import { BrowserRouter, Navigate, Route, Routes } from "react-router"
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router"
 import { ProtectedLayout } from "./components/protected-layout"
 import { queryClient } from "./components/query-provider"
 import {
@@ -30,9 +30,11 @@ const GroupsPage = lazy(() => import("./pages/groups"))
 const LogsPage = lazy(() => import("./pages/logs"))
 const SettingsPage = lazy(() => import("./pages/settings"))
 
+const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter
+
 export function AppRouter() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/login" element={<LoginPage />} />
@@ -48,6 +50,6 @@ export function AppRouter() {
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   )
 }

@@ -40,6 +40,16 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+// Login godoc
+// @Summary Admin login
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param body body loginRequest true "Login credentials"
+// @Success 200 {object} object "{success: true, data: {token, expireAt}}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Failure 401 {object} object "{success: false, error: string}"
+// @Router /api/v1/user/login [post]
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -69,6 +79,17 @@ type changePasswordRequest struct {
 	NewPassword string `json:"newPassword"`
 }
 
+// ChangePassword godoc
+// @Summary Change admin password
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param body body changePasswordRequest true "Old and new password"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Failure 401 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/user/change-password [post]
 func (h *Handler) ChangePassword(c *gin.Context) {
 	var req changePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -89,6 +110,16 @@ type changeUsernameRequest struct {
 	Username string `json:"username"`
 }
 
+// ChangeUsername godoc
+// @Summary Change admin username
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param body body changeUsernameRequest true "New username"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/user/change-username [post]
 func (h *Handler) ChangeUsername(c *gin.Context) {
 	var req changeUsernameRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -100,6 +131,13 @@ func (h *Handler) ChangeUsername(c *gin.Context) {
 	successNoData(c)
 }
 
+// UserStatus godoc
+// @Summary Check authentication status
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {authenticated: true}}"
+// @Security BearerAuth
+// @Router /api/v1/user/status [get]
 func (h *Handler) UserStatus(c *gin.Context) {
 	successJSON(c, gin.H{"authenticated": true})
 }

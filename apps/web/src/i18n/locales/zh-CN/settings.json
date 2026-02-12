@@ -73,6 +73,17 @@
       "circuit_breaker_max_cooldown": "指数退避后的最大冷却时间，单位为秒（默认：600）"
     }
   },
+  "connection": {
+    "title": "API 连接",
+    "apiUrl": "API 服务器地址",
+    "apiUrlPlaceholder": "https://your-wheel-server.com",
+    "apiUrlHint": "Wheel API 服务器的根地址。与服务器同域部署时留空。",
+    "save": "保存",
+    "testing": "测试中...",
+    "success": "连接成功",
+    "failed": "连接失败，请检查地址。",
+    "cleared": "API 地址已清除，使用默认值"
+  },
   "backup": {
     "exportTitle": "导出数据",
     "exportDescription": "将所有配置数据导出为 JSON 文件。",

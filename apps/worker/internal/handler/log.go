@@ -10,6 +10,21 @@ import (
 
 // ──── Log Routes ────
 
+// ListLogs godoc
+// @Summary List relay logs with pagination and filters
+// @Tags Logs
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param pageSize query int false "Page size (max 200)" default(50)
+// @Param channelId query int false "Filter by channel ID"
+// @Param startTime query int false "Filter by start timestamp"
+// @Param endTime query int false "Filter by end timestamp"
+// @Param model query string false "Filter by model name"
+// @Param keyword query string false "Search keyword"
+// @Param status query string false "Filter by status (error|success)"
+// @Success 200 {object} object "{success: true, data: {logs, total, page, pageSize}}"
+// @Security BearerAuth
+// @Router /api/v1/log/list [get]
 func (h *Handler) ListLogs(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
@@ -57,6 +72,16 @@ func (h *Handler) ListLogs(c *gin.Context) {
 	})
 }
 
+// GetLog godoc
+// @Summary Get a single relay log by ID
+// @Tags Logs
+// @Produce json
+// @Param id path int true "Log ID"
+// @Success 200 {object} object "{success: true, data: RelayLog}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Failure 404 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/log/{id} [get]
 func (h *Handler) GetLog(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -77,6 +102,15 @@ func (h *Handler) GetLog(c *gin.Context) {
 	successJSON(c, log)
 }
 
+// DeleteLog godoc
+// @Summary Delete a relay log
+// @Tags Logs
+// @Produce json
+// @Param id path int true "Log ID"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/log/delete/{id} [delete]
 func (h *Handler) DeleteLog(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -91,6 +125,13 @@ func (h *Handler) DeleteLog(c *gin.Context) {
 	successNoData(c)
 }
 
+// ClearLogs godoc
+// @Summary Clear all relay logs
+// @Tags Logs
+// @Produce json
+// @Success 200 {object} object "{success: true}"
+// @Security BearerAuth
+// @Router /api/v1/log/clear [delete]
 func (h *Handler) ClearLogs(c *gin.Context) {
 	if err := dal.ClearLogs(c.Request.Context(), h.LogDB); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -99,8 +140,15 @@ func (h *Handler) ClearLogs(c *gin.Context) {
 	successNoData(c)
 }
 
-// ReplayLog replays a logged request. Stubbed for now — full implementation
-// requires the relay proxy engine (Phase 3).
+// ReplayLog godoc
+// @Summary Replay a logged request (not yet implemented)
+// @Tags Logs
+// @Produce json
+// @Param id path int true "Log ID"
+// @Success 200 {object} object "{success: true}"
+// @Failure 501 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/log/replay/{id} [post]
 func (h *Handler) ReplayLog(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {

@@ -16,6 +16,13 @@ import (
 
 // ──── Model Routes ────
 
+// ListModels godoc
+// @Summary List all model prices
+// @Tags Models
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {models: []LLMPrice}}"
+// @Security BearerAuth
+// @Router /api/v1/model/list [get]
 func (h *Handler) ListModels(c *gin.Context) {
 	models, err := dal.ListLLMPrices(c.Request.Context(), h.DB)
 	if err != nil {
@@ -25,6 +32,13 @@ func (h *Handler) ListModels(c *gin.Context) {
 	successJSON(c, gin.H{"models": models})
 }
 
+// ListModelsByChannel godoc
+// @Summary List models grouped by channel
+// @Tags Models
+// @Produce json
+// @Success 200 {object} object "{success: true, data: []object}"
+// @Security BearerAuth
+// @Router /api/v1/model/channel [get]
 func (h *Handler) ListModelsByChannel(c *gin.Context) {
 	channels, err := dal.ListChannels(c.Request.Context(), h.DB)
 	if err != nil {
@@ -64,6 +78,17 @@ func (h *Handler) ListModelsByChannel(c *gin.Context) {
 	successJSON(c, result)
 }
 
+// CreateModel godoc
+// @Summary Create a model price entry
+// @Tags Models
+// @Accept json
+// @Produce json
+// @Param body body object true "Model name and prices"
+// @Success 200 {object} object "{success: true, data: LLMPrice}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Failure 409 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/model/create [post]
 func (h *Handler) CreateModel(c *gin.Context) {
 	var body struct {
 		Name        string  `json:"name"`
@@ -92,6 +117,16 @@ func (h *Handler) CreateModel(c *gin.Context) {
 	successJSON(c, model)
 }
 
+// UpdateModel godoc
+// @Summary Update a model price entry
+// @Tags Models
+// @Accept json
+// @Produce json
+// @Param body body object true "Model ID and optional fields to update"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/model/update [post]
 func (h *Handler) UpdateModel(c *gin.Context) {
 	var body struct {
 		ID          int      `json:"id"`
@@ -127,6 +162,16 @@ func (h *Handler) UpdateModel(c *gin.Context) {
 	successNoData(c)
 }
 
+// DeleteModel godoc
+// @Summary Delete a model price entry
+// @Tags Models
+// @Accept json
+// @Produce json
+// @Param body body object true "Model ID"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/model/delete [post]
 func (h *Handler) DeleteModel(c *gin.Context) {
 	var body struct {
 		ID int `json:"id"`
@@ -294,6 +339,13 @@ func fetchAndFlattenMetadata() (map[string]modelMeta, error) {
 	return result, nil
 }
 
+// GetModelMetadata godoc
+// @Summary Get model metadata (provider, logo, etc.)
+// @Tags Models
+// @Produce json
+// @Success 200 {object} object "{success: true, data: map[string]modelMeta}"
+// @Security BearerAuth
+// @Router /api/v1/model/metadata [get]
 func (h *Handler) GetModelMetadata(c *gin.Context) {
 	cached, ok := cache.Get[map[string]modelMeta](h.Cache, metadataKVKey)
 	if ok && cached != nil {
@@ -311,6 +363,13 @@ func (h *Handler) GetModelMetadata(c *gin.Context) {
 	successJSON(c, metadata)
 }
 
+// RefreshModelMetadata godoc
+// @Summary Refresh model metadata from models.dev
+// @Tags Models
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {count: int}}"
+// @Security BearerAuth
+// @Router /api/v1/model/metadata/refresh [post]
 func (h *Handler) RefreshModelMetadata(c *gin.Context) {
 	h.Cache.Delete(metadataKVKey)
 
@@ -331,6 +390,13 @@ var supportedProviders = []string{
 	"alibaba", "zhipuai", "minimax", "moonshotai",
 }
 
+// UpdatePrice godoc
+// @Summary Sync model prices from models.dev
+// @Tags Models
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {synced: int, updated: int}}"
+// @Security BearerAuth
+// @Router /api/v1/model/update-price [post]
 func (h *Handler) UpdatePrice(c *gin.Context) {
 	result, err := SyncPricesFromModelsDev(c.Request.Context(), h.DB)
 	if err != nil {
@@ -422,6 +488,13 @@ func SyncPricesFromModelsDev(ctx context.Context, db *bun.DB) (gin.H, error) {
 	return gin.H{"synced": synced, "updated": updated}, nil
 }
 
+// GetLastUpdateTime godoc
+// @Summary Get last price sync timestamp
+// @Tags Models
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {lastUpdateTime: string}}"
+// @Security BearerAuth
+// @Router /api/v1/model/last-update-time [get]
 func (h *Handler) GetLastUpdateTime(c *gin.Context) {
 	lastUpdate, err := dal.GetLastPriceSyncTime(c.Request.Context(), h.DB)
 	if err != nil {

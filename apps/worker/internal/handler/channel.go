@@ -19,6 +19,13 @@ import (
 
 // ──── Channel Routes ────
 
+// ListChannels godoc
+// @Summary List all channels
+// @Tags Channels
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {channels: []Channel}}"
+// @Security BearerAuth
+// @Router /api/v1/channel/list [get]
 func (h *Handler) ListChannels(c *gin.Context) {
 	channels, err := dal.ListChannels(c.Request.Context(), h.DB)
 	if err != nil {
@@ -28,6 +35,16 @@ func (h *Handler) ListChannels(c *gin.Context) {
 	successJSON(c, gin.H{"channels": channels})
 }
 
+// CreateChannel godoc
+// @Summary Create a new channel
+// @Tags Channels
+// @Accept json
+// @Produce json
+// @Param body body types.ChannelCreateRequest true "Channel configuration"
+// @Success 200 {object} object "{success: true, data: Channel}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/channel/create [post]
 func (h *Handler) CreateChannel(c *gin.Context) {
 	var req types.ChannelCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -62,6 +79,16 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 	successJSON(c, created)
 }
 
+// UpdateChannel godoc
+// @Summary Update channel configuration
+// @Tags Channels
+// @Accept json
+// @Produce json
+// @Param body body object true "Partial channel fields to update (id required)"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/channel/update [post]
 func (h *Handler) UpdateChannel(c *gin.Context) {
 	var body map[string]interface{}
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -146,6 +173,16 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 	successNoData(c)
 }
 
+// EnableChannel godoc
+// @Summary Enable or disable a channel
+// @Tags Channels
+// @Accept json
+// @Produce json
+// @Param body body types.ChannelEnableRequest true "Channel ID and enabled state"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/channel/enable [post]
 func (h *Handler) EnableChannel(c *gin.Context) {
 	var req types.ChannelEnableRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -162,6 +199,15 @@ func (h *Handler) EnableChannel(c *gin.Context) {
 	successNoData(c)
 }
 
+// DeleteChannel godoc
+// @Summary Delete a channel
+// @Tags Channels
+// @Produce json
+// @Param id path int true "Channel ID"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/channel/delete/{id} [delete]
 func (h *Handler) DeleteChannel(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -184,6 +230,16 @@ type fetchModelRequest struct {
 	ID int `json:"id"`
 }
 
+// FetchModel godoc
+// @Summary Fetch models from an existing channel
+// @Tags Channels
+// @Accept json
+// @Produce json
+// @Param body body fetchModelRequest true "Channel ID"
+// @Success 200 {object} object "{success: true, data: {models: []string}}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/channel/fetch-model [post]
 func (h *Handler) FetchModel(c *gin.Context) {
 	var req fetchModelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -216,6 +272,16 @@ type fetchModelPreviewRequest struct {
 	Key     string `json:"key"`
 }
 
+// FetchModelPreview godoc
+// @Summary Preview models from channel credentials (without saving)
+// @Tags Channels
+// @Accept json
+// @Produce json
+// @Param body body fetchModelPreviewRequest true "Channel type, base URL, and API key"
+// @Success 200 {object} object "{success: true, data: {models: []string}}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/channel/fetch-model-preview [post]
 func (h *Handler) FetchModelPreview(c *gin.Context) {
 	var req fetchModelPreviewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -251,6 +317,13 @@ func (h *Handler) FetchModelPreview(c *gin.Context) {
 	successJSON(c, gin.H{"models": models})
 }
 
+// SyncAllModels godoc
+// @Summary Sync models from all auto-sync channels
+// @Tags Channels
+// @Produce json
+// @Success 200 {object} object "{success: true, data: SyncResult}"
+// @Security BearerAuth
+// @Router /api/v1/channel/sync [post]
 func (h *Handler) SyncAllModels(c *gin.Context) {
 	result, err := syncAllModels(c.Request.Context(), h.DB, h.Cache)
 	if err != nil {
@@ -260,6 +333,13 @@ func (h *Handler) SyncAllModels(c *gin.Context) {
 	successJSON(c, result)
 }
 
+// LastSyncTime godoc
+// @Summary Get last model sync timestamp
+// @Tags Channels
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {lastSyncTime: int}}"
+// @Security BearerAuth
+// @Router /api/v1/channel/last-sync-time [get]
 func (h *Handler) LastSyncTime(c *gin.Context) {
 	settings, err := dal.GetAllSettings(c.Request.Context(), h.DB)
 	if err != nil {

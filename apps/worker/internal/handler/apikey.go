@@ -10,6 +10,13 @@ import (
 
 // ──── API Key Routes (Admin, JWT-protected) ────
 
+// ListApiKeys godoc
+// @Summary List all API keys
+// @Tags API Keys
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {apiKeys: []APIKey}}"
+// @Security BearerAuth
+// @Router /api/v1/apikey/list [get]
 func (h *Handler) ListApiKeys(c *gin.Context) {
 	keys, err := dal.ListApiKeys(c.Request.Context(), h.DB)
 	if err != nil {
@@ -19,6 +26,16 @@ func (h *Handler) ListApiKeys(c *gin.Context) {
 	successJSON(c, gin.H{"apiKeys": keys})
 }
 
+// CreateApiKey godoc
+// @Summary Create a new API key
+// @Tags API Keys
+// @Accept json
+// @Produce json
+// @Param body body object true "API key config: name, expireAt, maxCost, supportedModels"
+// @Success 200 {object} object "{success: true, data: APIKey}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/apikey/create [post]
 func (h *Handler) CreateApiKey(c *gin.Context) {
 	var body struct {
 		Name            string  `json:"name"`
@@ -39,6 +56,16 @@ func (h *Handler) CreateApiKey(c *gin.Context) {
 	successJSON(c, key)
 }
 
+// UpdateApiKey godoc
+// @Summary Update an API key
+// @Tags API Keys
+// @Accept json
+// @Produce json
+// @Param body body object true "Partial API key fields to update (id required)"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/apikey/update [post]
 func (h *Handler) UpdateApiKey(c *gin.Context) {
 	var body struct {
 		ID              int      `json:"id"`
@@ -77,6 +104,15 @@ func (h *Handler) UpdateApiKey(c *gin.Context) {
 	successNoData(c)
 }
 
+// DeleteApiKey godoc
+// @Summary Delete an API key
+// @Tags API Keys
+// @Produce json
+// @Param id path int true "API Key ID"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/apikey/delete/{id} [delete]
 func (h *Handler) DeleteApiKey(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -93,6 +129,14 @@ func (h *Handler) DeleteApiKey(c *gin.Context) {
 
 // ──── API Key User Routes (API Key authenticated) ────
 
+// ApiKeyLogin godoc
+// @Summary Get API key info (end-user)
+// @Tags API Keys
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {id, name, enabled, expireAt, maxCost, totalCost, supportedModels}}"
+// @Failure 404 {object} object "{success: false, error: string}"
+// @Security ApiKeyAuth
+// @Router /api/v1/user/apikey/login [get]
 func (h *Handler) ApiKeyLogin(c *gin.Context) {
 	apiKeyId, _ := c.Get("apiKeyId")
 
@@ -120,6 +164,14 @@ func (h *Handler) ApiKeyLogin(c *gin.Context) {
 	errorJSON(c, http.StatusNotFound, "API key not found")
 }
 
+// ApiKeyStats godoc
+// @Summary Get API key usage stats (end-user)
+// @Tags API Keys
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {id, name, totalCost, maxCost, enabled, expireAt}}"
+// @Failure 404 {object} object "{success: false, error: string}"
+// @Security ApiKeyAuth
+// @Router /api/v1/user/apikey/stats [get]
 func (h *Handler) ApiKeyStats(c *gin.Context) {
 	apiKeyId, _ := c.Get("apiKeyId")
 

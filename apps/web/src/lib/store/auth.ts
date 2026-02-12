@@ -4,9 +4,11 @@ import { persist } from "zustand/middleware"
 interface AuthState {
   token: string | null
   expireAt: string | null
+  apiBaseUrl: string
   setAuth: (token: string, expireAt: string) => void
   logout: () => void
   isAuthenticated: () => boolean
+  setApiBaseUrl: (url: string) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -14,6 +16,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       token: null,
       expireAt: null,
+      apiBaseUrl: "",
       setAuth: (token, expireAt) => set({ token, expireAt }),
       logout: () => set({ token: null, expireAt: null }),
       isAuthenticated: () => {
@@ -25,6 +28,7 @@ export const useAuthStore = create<AuthState>()(
         }
         return true
       },
+      setApiBaseUrl: (url) => set({ apiBaseUrl: url.replace(/\/+$/, "") }),
     }),
     { name: "wheel-auth" },
   ),

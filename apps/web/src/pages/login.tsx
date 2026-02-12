@@ -16,11 +16,15 @@ export default function LoginPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showApiUrl, setShowApiUrl] = useState(() => !!useAuthStore.getState().apiBaseUrl)
+  const [apiUrl, setApiUrl] = useState(() => useAuthStore.getState().apiBaseUrl)
   const setAuth = useAuthStore((s) => s.setAuth)
+  const setApiBaseUrl = useAuthStore((s) => s.setApiBaseUrl)
   const navigate = useNavigate()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setApiBaseUrl(apiUrl)
     setLoading(true)
     try {
       const res = await login(username, password)
@@ -88,6 +92,21 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {showApiUrl && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="apiUrl" className="text-xs font-bold tracking-wider uppercase">
+                  {t("apiUrl")}
+                </Label>
+                <Input
+                  id="apiUrl"
+                  type="url"
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder={t("apiUrlPlaceholder")}
+                />
+                <p className="text-muted-foreground text-xs">{t("apiUrlHint")}</p>
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="username" className="text-xs font-bold tracking-wider uppercase">
                 {t("username")}
@@ -124,6 +143,15 @@ export default function LoginPage() {
                 t("submit")
               )}
             </Button>
+            {!showApiUrl && (
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground text-xs underline transition-colors"
+                onClick={() => setShowApiUrl(true)}
+              >
+                {t("configure")}
+              </button>
+            )}
           </form>
         </CardContent>
       </Card>

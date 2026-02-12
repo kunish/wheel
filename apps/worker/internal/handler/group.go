@@ -13,6 +13,13 @@ import (
 
 // ──── Group Routes ────
 
+// ListGroups godoc
+// @Summary List all routing groups
+// @Tags Groups
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {groups: []Group}}"
+// @Security BearerAuth
+// @Router /api/v1/group/list [get]
 func (h *Handler) ListGroups(c *gin.Context) {
 	groups, err := dal.ListGroups(c.Request.Context(), h.DB)
 	if err != nil {
@@ -22,6 +29,16 @@ func (h *Handler) ListGroups(c *gin.Context) {
 	successJSON(c, gin.H{"groups": groups})
 }
 
+// CreateGroup godoc
+// @Summary Create a new routing group
+// @Tags Groups
+// @Accept json
+// @Produce json
+// @Param body body types.GroupCreateRequest true "Group configuration"
+// @Success 200 {object} object "{success: true, data: Group}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/group/create [post]
 func (h *Handler) CreateGroup(c *gin.Context) {
 	var req types.GroupCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -45,6 +62,16 @@ func (h *Handler) CreateGroup(c *gin.Context) {
 	successJSON(c, created)
 }
 
+// UpdateGroup godoc
+// @Summary Update group configuration
+// @Tags Groups
+// @Accept json
+// @Produce json
+// @Param body body object true "Partial group fields to update (id required)"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/group/update [post]
 func (h *Handler) UpdateGroup(c *gin.Context) {
 	var body map[string]interface{}
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -90,6 +117,15 @@ func (h *Handler) UpdateGroup(c *gin.Context) {
 	successNoData(c)
 }
 
+// DeleteGroup godoc
+// @Summary Delete a routing group
+// @Tags Groups
+// @Produce json
+// @Param id path int true "Group ID"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/group/delete/{id} [delete]
 func (h *Handler) DeleteGroup(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -110,6 +146,16 @@ type reorderRequest struct {
 	OrderedIds []int `json:"orderedIds"`
 }
 
+// ReorderGroups godoc
+// @Summary Reorder routing groups
+// @Tags Groups
+// @Accept json
+// @Produce json
+// @Param body body reorderRequest true "Ordered group IDs"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/group/reorder [post]
 func (h *Handler) ReorderGroups(c *gin.Context) {
 	var req reorderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -126,6 +172,13 @@ func (h *Handler) ReorderGroups(c *gin.Context) {
 	successNoData(c)
 }
 
+// GroupModelList godoc
+// @Summary List all models available across channels
+// @Tags Groups
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {models: []string}}"
+// @Security BearerAuth
+// @Router /api/v1/group/model-list [get]
 func (h *Handler) GroupModelList(c *gin.Context) {
 	channels, err := dal.ListChannels(c.Request.Context(), h.DB)
 	if err != nil {

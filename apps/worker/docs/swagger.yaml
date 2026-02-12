@@ -1,0 +1,1240 @@
+definitions:
+  github_com_kunish_wheel_apps_worker_internal_types.BaseUrl:
+    properties:
+      delay:
+        type: integer
+      url:
+        type: string
+    type: object
+  github_com_kunish_wheel_apps_worker_internal_types.ChannelCreateRequest:
+    properties:
+      autoGroup:
+        type: integer
+      autoSync:
+        type: boolean
+      baseUrls:
+        items:
+          $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.BaseUrl"
+        type: array
+      customHeader:
+        items:
+          $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.CustomHeader"
+        type: array
+      customModel:
+        type: string
+      enabled:
+        type: boolean
+      keys:
+        items:
+          $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.ChannelKeyInput"
+        type: array
+      model:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      paramOverride:
+        type: string
+      type:
+        type: integer
+    type: object
+  github_com_kunish_wheel_apps_worker_internal_types.ChannelEnableRequest:
+    properties:
+      enabled:
+        type: boolean
+      id:
+        type: integer
+    type: object
+  github_com_kunish_wheel_apps_worker_internal_types.ChannelKeyInput:
+    properties:
+      channelKey:
+        type: string
+      remark:
+        type: string
+    type: object
+  github_com_kunish_wheel_apps_worker_internal_types.CustomHeader:
+    properties:
+      key:
+        type: string
+      value:
+        type: string
+    type: object
+  github_com_kunish_wheel_apps_worker_internal_types.GroupCreateRequest:
+    properties:
+      firstTokenTimeOut:
+        type: integer
+      items:
+        items:
+          $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.GroupItemInput"
+        type: array
+      mode:
+        type: integer
+      name:
+        type: string
+    type: object
+  github_com_kunish_wheel_apps_worker_internal_types.GroupItemInput:
+    properties:
+      channelId:
+        type: integer
+      modelName:
+        type: string
+      priority:
+        type: integer
+      weight:
+        type: integer
+    type: object
+  github_com_kunish_wheel_apps_worker_internal_types.SettingsUpdateRequest:
+    properties:
+      settings:
+        additionalProperties:
+          type: string
+        type: object
+    type: object
+  internal_handler.changePasswordRequest:
+    properties:
+      newPassword:
+        type: string
+      oldPassword:
+        type: string
+    type: object
+  internal_handler.changeUsernameRequest:
+    properties:
+      username:
+        type: string
+    type: object
+  internal_handler.fetchModelPreviewRequest:
+    properties:
+      baseUrl:
+        type: string
+      key:
+        type: string
+      type:
+        type: integer
+    type: object
+  internal_handler.fetchModelRequest:
+    properties:
+      id:
+        type: integer
+    type: object
+  internal_handler.loginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  internal_handler.reorderRequest:
+    properties:
+      orderedIds:
+        items:
+          type: integer
+        type: array
+    type: object
+info:
+  contact: {}
+  description: LLM API Gateway — aggregate providers, manage load balancing, and track
+    usage/costs.
+  title: Wheel API
+  version: 1.0.0
+paths:
+  /api/v1/apikey/create:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: "API key config: name, expireAt, maxCost, supportedModels"
+          in: body
+          name: body
+          required: true
+          schema:
+            type: object
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: APIKey}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Create a new API key
+      tags:
+        - API Keys
+  /api/v1/apikey/delete/{id}:
+    delete:
+      parameters:
+        - description: API Key ID
+          in: path
+          name: id
+          required: true
+          type: integer
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Delete an API key
+      tags:
+        - API Keys
+  /api/v1/apikey/list:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {apiKeys: []APIKey}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: List all API keys
+      tags:
+        - API Keys
+  /api/v1/apikey/update:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Partial API key fields to update (id required)
+          in: body
+          name: body
+          required: true
+          schema:
+            type: object
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Update an API key
+      tags:
+        - API Keys
+  /api/v1/channel/create:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Channel configuration
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.ChannelCreateRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: Channel}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Create a new channel
+      tags:
+        - Channels
+  /api/v1/channel/delete/{id}:
+    delete:
+      parameters:
+        - description: Channel ID
+          in: path
+          name: id
+          required: true
+          type: integer
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Delete a channel
+      tags:
+        - Channels
+  /api/v1/channel/enable:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Channel ID and enabled state
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.ChannelEnableRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Enable or disable a channel
+      tags:
+        - Channels
+  /api/v1/channel/fetch-model:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Channel ID
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/internal_handler.fetchModelRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {models: []string}}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Fetch models from an existing channel
+      tags:
+        - Channels
+  /api/v1/channel/fetch-model-preview:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Channel type, base URL, and API key
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/internal_handler.fetchModelPreviewRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {models: []string}}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Preview models from channel credentials (without saving)
+      tags:
+        - Channels
+  /api/v1/channel/last-sync-time:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {lastSyncTime: int}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get last model sync timestamp
+      tags:
+        - Channels
+  /api/v1/channel/list:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {channels: []Channel}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: List all channels
+      tags:
+        - Channels
+  /api/v1/channel/sync:
+    post:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: SyncResult}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Sync models from all auto-sync channels
+      tags:
+        - Channels
+  /api/v1/channel/update:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Partial channel fields to update (id required)
+          in: body
+          name: body
+          required: true
+          schema:
+            type: object
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Update channel configuration
+      tags:
+        - Channels
+  /api/v1/group/create:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Group configuration
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.GroupCreateRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: Group}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Create a new routing group
+      tags:
+        - Groups
+  /api/v1/group/delete/{id}:
+    delete:
+      parameters:
+        - description: Group ID
+          in: path
+          name: id
+          required: true
+          type: integer
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Delete a routing group
+      tags:
+        - Groups
+  /api/v1/group/list:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {groups: []Group}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: List all routing groups
+      tags:
+        - Groups
+  /api/v1/group/model-list:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {models: []string}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: List all models available across channels
+      tags:
+        - Groups
+  /api/v1/group/reorder:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Ordered group IDs
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/internal_handler.reorderRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Reorder routing groups
+      tags:
+        - Groups
+  /api/v1/group/update:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Partial group fields to update (id required)
+          in: body
+          name: body
+          required: true
+          schema:
+            type: object
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Update group configuration
+      tags:
+        - Groups
+  /api/v1/log/{id}:
+    get:
+      parameters:
+        - description: Log ID
+          in: path
+          name: id
+          required: true
+          type: integer
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: RelayLog}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+        "404":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get a single relay log by ID
+      tags:
+        - Logs
+  /api/v1/log/clear:
+    delete:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Clear all relay logs
+      tags:
+        - Logs
+  /api/v1/log/delete/{id}:
+    delete:
+      parameters:
+        - description: Log ID
+          in: path
+          name: id
+          required: true
+          type: integer
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Delete a relay log
+      tags:
+        - Logs
+  /api/v1/log/list:
+    get:
+      parameters:
+        - default: 1
+          description: Page number
+          in: query
+          name: page
+          type: integer
+        - default: 50
+          description: Page size (max 200)
+          in: query
+          name: pageSize
+          type: integer
+        - description: Filter by channel ID
+          in: query
+          name: channelId
+          type: integer
+        - description: Filter by start timestamp
+          in: query
+          name: startTime
+          type: integer
+        - description: Filter by end timestamp
+          in: query
+          name: endTime
+          type: integer
+        - description: Filter by model name
+          in: query
+          name: model
+          type: string
+        - description: Search keyword
+          in: query
+          name: keyword
+          type: string
+        - description: Filter by status (error|success)
+          in: query
+          name: status
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {logs, total, page, pageSize}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: List relay logs with pagination and filters
+      tags:
+        - Logs
+  /api/v1/log/replay/{id}:
+    post:
+      parameters:
+        - description: Log ID
+          in: path
+          name: id
+          required: true
+          type: integer
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "501":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Replay a logged request (not yet implemented)
+      tags:
+        - Logs
+  /api/v1/model/channel:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: []object}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: List models grouped by channel
+      tags:
+        - Models
+  /api/v1/model/create:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Model name and prices
+          in: body
+          name: body
+          required: true
+          schema:
+            type: object
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: LLMPrice}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+        "409":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Create a model price entry
+      tags:
+        - Models
+  /api/v1/model/delete:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Model ID
+          in: body
+          name: body
+          required: true
+          schema:
+            type: object
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Delete a model price entry
+      tags:
+        - Models
+  /api/v1/model/last-update-time:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {lastUpdateTime: string}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get last price sync timestamp
+      tags:
+        - Models
+  /api/v1/model/list:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {models: []LLMPrice}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: List all model prices
+      tags:
+        - Models
+  /api/v1/model/metadata:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: map[string]modelMeta}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get model metadata (provider, logo, etc.)
+      tags:
+        - Models
+  /api/v1/model/metadata/refresh:
+    post:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {count: int}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Refresh model metadata from models.dev
+      tags:
+        - Models
+  /api/v1/model/update:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Model ID and optional fields to update
+          in: body
+          name: body
+          required: true
+          schema:
+            type: object
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Update a model price entry
+      tags:
+        - Models
+  /api/v1/model/update-price:
+    post:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {synced: int, updated: int}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Sync model prices from models.dev
+      tags:
+        - Models
+  /api/v1/setting/:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {settings: map[string]string}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get all settings
+      tags:
+        - Settings
+  /api/v1/setting/export:
+    get:
+      parameters:
+        - description: Include relay logs (true|false)
+          in: query
+          name: include_logs
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: JSON export file
+          schema:
+            type: file
+      security:
+        - BearerAuth: []
+      summary: Export all data as JSON file
+      tags:
+        - Settings
+  /api/v1/setting/import:
+    post:
+      consumes:
+        - application/json
+        - multipart/form-data
+      parameters:
+        - description: JSON export file
+          in: formData
+          name: file
+          type: file
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: ImportResult}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Import data from JSON file or body
+      tags:
+        - Settings
+  /api/v1/setting/update:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Settings key-value pairs
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/github_com_kunish_wheel_apps_worker_internal_types.SettingsUpdateRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Update settings
+      tags:
+        - Settings
+  /api/v1/stats/apikey:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: []object}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get per-API-key statistics
+      tags:
+        - Stats
+  /api/v1/stats/channel:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {channels: []ChannelStatsItem}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get per-channel statistics
+      tags:
+        - Stats
+  /api/v1/stats/daily:
+    get:
+      parameters:
+        - description: Timezone offset (e.g. +08:00)
+          in: query
+          name: tz
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: []DailyStatsItem}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get daily statistics
+      tags:
+        - Stats
+  /api/v1/stats/global:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: GlobalStatsResponse}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get global statistics overview
+      tags:
+        - Stats
+  /api/v1/stats/hourly:
+    get:
+      parameters:
+        - description: Start date (YYYYMMDD)
+          in: query
+          name: start
+          type: string
+        - description: End date (YYYYMMDD)
+          in: query
+          name: end
+          type: string
+        - description: Timezone offset (e.g. +08:00)
+          in: query
+          name: tz
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: []HourlyStatsItem}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get hourly statistics for a date range
+      tags:
+        - Stats
+  /api/v1/stats/model:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: []ModelStatsItem}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get per-model statistics
+      tags:
+        - Stats
+  /api/v1/stats/today:
+    get:
+      parameters:
+        - description: Timezone offset (e.g. +08:00)
+          in: query
+          name: tz
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: DailyStatsItem}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get today's statistics
+      tags:
+        - Stats
+  /api/v1/stats/total:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: DailyStatsItem}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Get all-time total statistics
+      tags:
+        - Stats
+  /api/v1/user/apikey/login:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {id, name, enabled, expireAt, maxCost,
+            totalCost, supportedModels}}"
+          schema:
+            type: object
+        "404":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - ApiKeyAuth: []
+      summary: Get API key info (end-user)
+      tags:
+        - API Keys
+  /api/v1/user/apikey/stats:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {id, name, totalCost, maxCost, enabled,
+            expireAt}}"
+          schema:
+            type: object
+        "404":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - ApiKeyAuth: []
+      summary: Get API key usage stats (end-user)
+      tags:
+        - API Keys
+  /api/v1/user/change-password:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Old and new password
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/internal_handler.changePasswordRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+        "401":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Change admin password
+      tags:
+        - Auth
+  /api/v1/user/change-username:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: New username
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/internal_handler.changeUsernameRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Change admin username
+      tags:
+        - Auth
+  /api/v1/user/login:
+    post:
+      consumes:
+        - application/json
+      parameters:
+        - description: Login credentials
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/internal_handler.loginRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {token, expireAt}}"
+          schema:
+            type: object
+        "400":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+        "401":
+          description: "{success: false, error: string}"
+          schema:
+            type: object
+      summary: Admin login
+      tags:
+        - Auth
+  /api/v1/user/status:
+    get:
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: "{success: true, data: {authenticated: true}}"
+          schema:
+            type: object
+      security:
+        - BearerAuth: []
+      summary: Check authentication status
+      tags:
+        - Auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

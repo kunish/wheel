@@ -1,3 +1,10 @@
+// @title Wheel API
+// @version 1.0.0
+// @description LLM API Gateway — aggregate providers, manage load balancing, and track usage/costs.
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
 package main
 
 import (

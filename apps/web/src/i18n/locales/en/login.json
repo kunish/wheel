@@ -7,6 +7,12 @@
   "passwordPlaceholder": "Enter your password",
   "submit": "Sign In",
   "submitting": "Signing in...",
+  "apiUrl": "API Server",
+  "apiUrlPlaceholder": "https://your-wheel-server.com",
+  "apiUrlHint": "Leave empty when deployed alongside the server",
+  "configure": "Configure API Server",
+  "connectionOk": "Connected",
+  "connectionFailed": "Connection failed",
   "error": {
     "loginFailed": "Login failed. Please check your credentials."
   }

@@ -15,6 +15,10 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		c.JSON(200, gin.H{"name": "wheel", "version": "0.1.0"})
 	})
 
+	// ──── API Docs ────
+	r.GET("/docs", h.ServeDocs)
+	r.GET("/docs/openapi.json", h.ServeOpenAPISpec)
+
 	// ──── Public: User login ────
 	userGroup := r.Group("/api/v1/user")
 	userGroup.POST("/login", h.Login)

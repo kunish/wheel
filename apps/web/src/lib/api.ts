@@ -6,7 +6,7 @@ interface ApiOptions {
   headers?: Record<string, string>
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
@@ -14,6 +14,10 @@ class ApiError extends Error {
     super(message)
     this.name = "ApiError"
   }
+}
+
+export function getApiBaseUrl(): string {
+  return useAuthStore.getState().apiBaseUrl || ""
 }
 
 async function apiFetch<T>(endpoint: string, opts: ApiOptions = {}): Promise<T> {
@@ -29,7 +33,10 @@ async function apiFetch<T>(endpoint: string, opts: ApiOptions = {}): Promise<T> 
     reqHeaders.Authorization = `Bearer ${token}`
   }
 
-  const resp = await fetch(endpoint, {
+  const baseUrl = getApiBaseUrl()
+  const url = baseUrl ? `${baseUrl}${endpoint}` : endpoint
+
+  const resp = await fetch(url, {
     method,
     headers: reqHeaders,
     body: body ? JSON.stringify(body) : undefined,
@@ -209,7 +216,8 @@ export function deleteLog(id: number) {
 
 export function replayLog(id: number): Promise<Response> {
   const token = useAuthStore.getState().token
-  return fetch(`/api/v1/log/replay/${id}`, {
+  const baseUrl = getApiBaseUrl()
+  return fetch(`${baseUrl}/api/v1/log/replay/${id}`, {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -387,7 +395,8 @@ export function getLastPriceUpdateTime() {
 // Data Export/Import
 export function exportData(includeLogs: boolean = false) {
   const token = useAuthStore.getState().token
-  return fetch(`/api/v1/setting/export?include_logs=${includeLogs}`, {
+  const baseUrl = getApiBaseUrl()
+  return fetch(`${baseUrl}/api/v1/setting/export?include_logs=${includeLogs}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -396,9 +405,10 @@ export function exportData(includeLogs: boolean = false) {
 
 export function importData(file: File) {
   const token = useAuthStore.getState().token
+  const baseUrl = getApiBaseUrl()
   const formData = new FormData()
   formData.append("file", file)
-  return fetch(`/api/v1/setting/import`, {
+  return fetch(`${baseUrl}/api/v1/setting/import`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

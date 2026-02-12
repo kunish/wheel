@@ -49,6 +49,8 @@ const SystemConfigSection = lazy(() => import("./settings/system-config-section"
 
 const BackupSection = lazy(() => import("./settings/backup-section"))
 
+const ConnectionSection = lazy(() => import("./settings/connection-section"))
+
 // ───────────── API Keys types ─────────────
 
 interface ApiKeyRecord {
@@ -551,6 +553,13 @@ export default function SettingsPage() {
           }
         >
           <SystemConfigSection />
+        </Suspense>
+        <Suspense
+          fallback={
+            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
+          }
+        >
+          <ConnectionSection />
         </Suspense>
         <Suspense
           fallback={

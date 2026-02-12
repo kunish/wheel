@@ -1,4 +1,4 @@
-.PHONY: build dev test clean docker
+.PHONY: build dev test clean docker docs
 
 # Build the worker binary
 build:
@@ -19,3 +19,7 @@ clean:
 # Docker build
 docker:
 	docker build -t wheel-worker .
+
+# Generate OpenAPI docs
+docs:
+	go run github.com/swaggo/swag/cmd/swag@latest init -g cmd/worker/main.go -o docs --parseDependency
