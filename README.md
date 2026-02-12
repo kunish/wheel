@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apps/web/src/app/icon.svg" width="80" height="80" alt="Wheel Logo">
+<img src="apps/web/public/icon.svg" width="80" height="80" alt="Wheel Logo">
 
 # Wheel
 
