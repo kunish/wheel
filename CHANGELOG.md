@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/kunish/wheel/compare/v1.1.0...v1.2.0) (2026-02-12)
+
+
+### Features
+
+* **web:** support light/dark/system three-mode theme switching ([6907733](https://github.com/kunish/wheel/commit/69077337fc364ec9ca31cec4f856c9287087cec3))
+
 ## [1.1.0](https://github.com/kunish/wheel/compare/v1.0.0...v1.1.0) (2026-02-12)
 
 
