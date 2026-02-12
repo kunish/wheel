@@ -8,7 +8,7 @@ const (
 	OutboundOpenAI         OutboundType = 1
 	OutboundAnthropic      OutboundType = 2
 	OutboundGemini         OutboundType = 3
-	OutboundVolcengine     OutboundType = 4
+	OutboundOpenAIResponses OutboundType = 4
 	OutboundOpenAIEmbedding OutboundType = 5
 )
 

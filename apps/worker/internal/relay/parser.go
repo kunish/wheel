@@ -13,6 +13,9 @@ func DetectRequestType(path string) string {
 	if strings.Contains(path, "/embeddings") {
 		return "openai-embeddings"
 	}
+	if strings.Contains(path, "/responses") {
+		return "openai-responses"
+	}
 	return ""
 }
 

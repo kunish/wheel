@@ -11,7 +11,7 @@
     "1": "OpenAI",
     "2": "Anthropic",
     "3": "Gemini",
-    "4": "Volcengine",
+    "4": "OpenAI Responses",
     "5": "OpenAI Embedding"
   },
   "modeLabels": {

@@ -123,6 +123,8 @@ func buildOpenAIRequest(baseUrl, key string, body map[string]any, inboundPath, m
 	path := "/v1/chat/completions"
 	if strings.Contains(inboundPath, "/embeddings") {
 		path = "/v1/embeddings"
+	} else if strings.Contains(inboundPath, "/responses") {
+		path = "/v1/responses"
 	}
 
 	headers := map[string]string{
