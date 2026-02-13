@@ -1,5 +1,6 @@
 import type { HeroGearClockProps } from "./types"
 import { motion } from "motion/react"
+import { formatCount } from "@/lib/format"
 import {
   GEAR_AM_INNER,
   GEAR_AM_OUTER,
@@ -13,11 +14,12 @@ import {
   GEAR_PM_INNER,
   GEAR_PM_OUTER,
   GEAR_RING_R,
-  GEAR_TOOTH_H,
   gearArcPath,
   getActivityLevel,
   LEVEL_COLORS,
 } from "./types"
+
+const toRad = (deg: number) => (deg * Math.PI) / 180
 
 export function HeroGearClock({
   dayHourlyMap,
@@ -32,8 +34,6 @@ export function HeroGearClock({
   handleMouseLeave,
   children,
 }: HeroGearClockProps) {
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-
   // Count active hours for reactor energy intensity
   const activeHours = Array.from({ length: 24 }, (_, h) => {
     const hourly = dayHourlyMap.get(h)
@@ -66,7 +66,6 @@ export function HeroGearClock({
         className="pointer-events-none absolute w-full"
         style={{ animation: "reactor-ring-breathe 4s ease-in-out infinite" }}
       >
-        {/* Outermost energy ring */}
         <circle
           cx="200"
           cy="200"
@@ -76,7 +75,6 @@ export function HeroGearClock({
           strokeWidth="0.5"
           opacity={0.3}
         />
-        {/* Outer dashed containment ring */}
         <circle
           cx="200"
           cy="200"
@@ -120,7 +118,6 @@ export function HeroGearClock({
       {/* ── Main gear SVG ── */}
       <svg viewBox="-15 -15 430 430" className="relative w-full">
         <defs>
-          {/* Reactor core gradient for hub */}
           <radialGradient id="reactor-core-grad" cx="50%" cy="50%" r="50%">
             <stop
               offset="0%"
@@ -130,7 +127,6 @@ export function HeroGearClock({
             <stop offset="60%" stopColor="var(--nb-lime)" stopOpacity={0.04} />
             <stop offset="100%" stopColor="var(--nb-lime)" stopOpacity="0" />
           </radialGradient>
-          {/* Energy channel gradient for spokes */}
           <linearGradient id="spoke-energy" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="var(--nb-lime)" stopOpacity="0.3" />
             <stop offset="50%" stopColor="var(--nb-lime)" stopOpacity="0.08" />
@@ -138,41 +134,34 @@ export function HeroGearClock({
           </linearGradient>
         </defs>
 
-        {/* ── Rotating gear teeth ring ── */}
+        {/* ── Static gear teeth — 12 teeth aligned to hour segment boundaries ── */}
         <g
           style={{
-            transformOrigin: `${GEAR_CX}px ${GEAR_CY}px`,
             filter: "drop-shadow(2px 2px 0 color-mix(in srgb, var(--nb-shadow) 25%, transparent))",
-            transform: `rotate(${gearAngle}deg)`,
-            transition: "transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
-          {Array.from({ length: 24 }, (_, i) => {
-            const seg = Math.floor(i / 2)
-            const sub = i % 2
-            const segCenter = seg * 30 - 90
-            const toothAngle = segCenter + (sub === 0 ? -7 : 7)
-            const hw = 4.5
-            const mid = toRad(toothAngle)
+          {Array.from({ length: 12 }, (_, i) => {
+            const boundaryAngle = i * 30 - 90
+            const hw = 5.5
+            const mid = toRad(boundaryAngle)
             const perp = mid + Math.PI / 2
             const ix1 = GEAR_CX + GEAR_RING_R * Math.cos(mid) + hw * Math.cos(perp)
             const iy1 = GEAR_CY + GEAR_RING_R * Math.sin(mid) + hw * Math.sin(perp)
             const ix2 = GEAR_CX + GEAR_RING_R * Math.cos(mid) - hw * Math.cos(perp)
             const iy2 = GEAR_CY + GEAR_RING_R * Math.sin(mid) - hw * Math.sin(perp)
-            const ox1 = GEAR_CX + GEAR_OUTER_R * Math.cos(mid) + (hw - 1) * Math.cos(perp)
-            const oy1 = GEAR_CY + GEAR_OUTER_R * Math.sin(mid) + (hw - 1) * Math.sin(perp)
-            const ox2 = GEAR_CX + GEAR_OUTER_R * Math.cos(mid) - (hw - 1) * Math.cos(perp)
-            const oy2 = GEAR_CY + GEAR_OUTER_R * Math.sin(mid) - (hw - 1) * Math.sin(perp)
+            const ox1 = GEAR_CX + GEAR_OUTER_R * Math.cos(mid) + (hw - 1.5) * Math.cos(perp)
+            const oy1 = GEAR_CY + GEAR_OUTER_R * Math.sin(mid) + (hw - 1.5) * Math.sin(perp)
+            const ox2 = GEAR_CX + GEAR_OUTER_R * Math.cos(mid) - (hw - 1.5) * Math.cos(perp)
+            const oy2 = GEAR_CY + GEAR_OUTER_R * Math.sin(mid) - (hw - 1.5) * Math.sin(perp)
             return (
               <path
                 key={`tooth-${i}`}
                 d={`M ${ix1} ${iy1} L ${ox1} ${oy1} L ${ox2} ${oy2} L ${ix2} ${iy2} Z`}
                 fill="var(--primary)"
-                opacity={0.25}
+                opacity={0.2}
               />
             )
           })}
-          {/* Outer gear ring */}
           <circle
             cx={GEAR_CX}
             cy={GEAR_CY}
@@ -194,31 +183,57 @@ export function HeroGearClock({
           const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
           const startDeg = i * 30 + GEAR_BASE + GEAR_GAP
           const isCurrentHour = isToday && h === nowHour
+          const midDeg = startDeg + GEAR_ARC_SPAN / 2
+          const labelR = (GEAR_PM_INNER + GEAR_PM_OUTER) / 2
 
           return (
-            <path
-              key={`pm-${h}`}
-              d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_PM_INNER, GEAR_PM_OUTER)}
-              fill={hLevel === -1 ? "transparent" : LEVEL_COLORS[hLevel]}
-              stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
-              strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
-              strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
-              opacity={hLevel === -1 ? 0.3 : 1}
-              className="cursor-pointer transition-all hover:opacity-80"
-              style={isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined}
-              onClick={() => navigateToHour(selectedDayDateStr, h)}
-              onMouseEnter={(e) =>
-                handleMouseEnter(e, {
-                  label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
-                  metrics: hourly ?? null,
-                })
-              }
-              onMouseLeave={handleMouseLeave}
-            />
+            <g key={`pm-${h}`}>
+              <path
+                d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_PM_INNER, GEAR_PM_OUTER)}
+                fill={hLevel === -1 ? "transparent" : LEVEL_COLORS[hLevel]}
+                stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
+                strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
+                strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
+                opacity={hLevel === -1 ? 0.3 : 1}
+                className="cursor-pointer transition-all hover:opacity-80"
+                style={
+                  isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined
+                }
+                onClick={() => navigateToHour(selectedDayDateStr, h)}
+                onMouseEnter={(e) =>
+                  handleMouseEnter(e, {
+                    label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
+                    metrics: hourly ?? null,
+                  })
+                }
+                onMouseLeave={handleMouseLeave}
+              />
+              {/* Hour number on arc */}
+              <text
+                x={GEAR_CX + labelR * Math.cos(toRad(midDeg))}
+                y={GEAR_CY + labelR * Math.sin(toRad(midDeg))}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fill={
+                  isCurrentHour
+                    ? "var(--nb-lime)"
+                    : hLevel > 0
+                      ? "var(--foreground)"
+                      : "var(--muted-foreground)"
+                }
+                fontSize="8"
+                fontWeight={isCurrentHour ? "900" : "700"}
+                fontFamily="inherit"
+                opacity={hLevel === -1 ? 0.35 : isCurrentHour ? 1 : 0.7}
+                pointerEvents="none"
+              >
+                {h}
+              </text>
+            </g>
           )
         })}
 
-        {/* ── Divider ring between AM / PM — reactor containment ring ── */}
+        {/* ── Divider ring between AM / PM ── */}
         <circle
           cx={GEAR_CX}
           cy={GEAR_CY}
@@ -228,7 +243,6 @@ export function HeroGearClock({
           strokeWidth="1.5"
           pointerEvents="none"
         />
-        {/* Energy trace on divider */}
         <circle
           cx={GEAR_CX}
           cy={GEAR_CY}
@@ -256,32 +270,57 @@ export function HeroGearClock({
           const hLevel = isFutureHour ? -1 : getActivityLevel(hCount)
           const startDeg = i * 30 + GEAR_BASE + GEAR_GAP
           const isCurrentHour = isToday && h === nowHour
+          const midDeg = startDeg + GEAR_ARC_SPAN / 2
+          const labelR = (GEAR_AM_INNER + GEAR_AM_OUTER) / 2
 
           return (
-            <path
-              key={`am-${h}`}
-              d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_AM_INNER, GEAR_AM_OUTER)}
-              fill={hLevel === -1 ? "transparent" : LEVEL_COLORS[hLevel]}
-              stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
-              strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
-              strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
-              opacity={hLevel === -1 ? 0.3 : 1}
-              className="cursor-pointer transition-all hover:opacity-80"
-              style={isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined}
-              onClick={() => navigateToHour(selectedDayDateStr, h)}
-              onMouseEnter={(e) =>
-                handleMouseEnter(e, {
-                  label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
-                  metrics: hourly ?? null,
-                })
-              }
-              onMouseLeave={handleMouseLeave}
-            />
+            <g key={`am-${h}`}>
+              <path
+                d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_AM_INNER, GEAR_AM_OUTER)}
+                fill={hLevel === -1 ? "transparent" : LEVEL_COLORS[hLevel]}
+                stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
+                strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
+                strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
+                opacity={hLevel === -1 ? 0.3 : 1}
+                className="cursor-pointer transition-all hover:opacity-80"
+                style={
+                  isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined
+                }
+                onClick={() => navigateToHour(selectedDayDateStr, h)}
+                onMouseEnter={(e) =>
+                  handleMouseEnter(e, {
+                    label: `${selectedDisplayDate} ${h.toString().padStart(2, "0")}:00`,
+                    metrics: hourly ?? null,
+                  })
+                }
+                onMouseLeave={handleMouseLeave}
+              />
+              {/* Hour number on arc */}
+              <text
+                x={GEAR_CX + labelR * Math.cos(toRad(midDeg))}
+                y={GEAR_CY + labelR * Math.sin(toRad(midDeg))}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fill={
+                  isCurrentHour
+                    ? "var(--nb-lime)"
+                    : hLevel > 0
+                      ? "var(--foreground)"
+                      : "var(--muted-foreground)"
+                }
+                fontSize="8"
+                fontWeight={isCurrentHour ? "900" : "700"}
+                fontFamily="inherit"
+                opacity={hLevel === -1 ? 0.35 : isCurrentHour ? 1 : 0.7}
+                pointerEvents="none"
+              >
+                {h}
+              </text>
+            </g>
           )
         })}
 
         {/* ── Reactor core hub ── */}
-        {/* Outer glow ring around hub */}
         <circle
           cx={GEAR_CX}
           cy={GEAR_CY}
@@ -293,7 +332,6 @@ export function HeroGearClock({
           pointerEvents="none"
           style={{ animation: "reactor-core-pulse 3s ease-in-out infinite" }}
         />
-        {/* Hub fill */}
         <circle
           cx={GEAR_CX}
           cy={GEAR_CY}
@@ -303,7 +341,6 @@ export function HeroGearClock({
           strokeWidth="2.5"
           pointerEvents="none"
         />
-        {/* Reactor energy fill inside hub */}
         <circle
           cx={GEAR_CX}
           cy={GEAR_CY}
@@ -322,7 +359,6 @@ export function HeroGearClock({
           const y2 = GEAR_CY + GEAR_RING_R * Math.sin(angle)
           return (
             <g key={`spoke-${i}`} pointerEvents="none">
-              {/* Energy glow line */}
               <line
                 x1={x1}
                 y1={y1}
@@ -333,7 +369,6 @@ export function HeroGearClock({
                 opacity={0.06}
                 strokeLinecap="round"
               />
-              {/* Structural spoke */}
               <line
                 x1={x1}
                 y1={y1}
@@ -347,7 +382,7 @@ export function HeroGearClock({
           )
         })}
 
-        {/* ── Inner reactor ring (decorative frame) ── */}
+        {/* ── Inner reactor ring ── */}
         <circle
           cx={GEAR_CX}
           cy={GEAR_CY}
@@ -359,11 +394,41 @@ export function HeroGearClock({
           pointerEvents="none"
         />
 
-        {/* ── Clock hour labels ── */}
+        {/* ── Request count labels on active PM arcs ── */}
+        {Array.from({ length: 12 }, (_, i) => {
+          const h = i + 12
+          const isFutureHour = isToday && h > nowHour
+          if (isFutureHour) return null
+          const hourly = dayHourlyMap.get(h)
+          const hCount = (hourly?.request_success ?? 0) + (hourly?.request_failed ?? 0)
+          if (hCount === 0) return null
+          const startDeg = i * 30 + GEAR_BASE + GEAR_GAP
+          const midDeg = startDeg + GEAR_ARC_SPAN / 2
+          const countR = GEAR_PM_OUTER + 10
+          return (
+            <text
+              key={`pm-count-${h}`}
+              x={GEAR_CX + countR * Math.cos(toRad(midDeg))}
+              y={GEAR_CY + countR * Math.sin(toRad(midDeg))}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="var(--foreground)"
+              fontSize="7"
+              fontWeight="800"
+              fontFamily="inherit"
+              opacity={0.5}
+              pointerEvents="none"
+            >
+              {formatCount(hCount).value}
+            </text>
+          )
+        })}
+
+        {/* ── 12-hour clock position markers (outside teeth) ── */}
         {Array.from({ length: 12 }, (_, i) => {
           const displayHour = i === 0 ? 12 : i
           const midAngle = i * 30 - 90
-          const labelR = GEAR_RING_R + GEAR_TOOTH_H / 2 + 12
+          const labelR = GEAR_OUTER_R + 12
           const x = GEAR_CX + labelR * Math.cos(toRad(midAngle))
           const y = GEAR_CY + labelR * Math.sin(toRad(midAngle))
           const isCardinal = i % 3 === 0
@@ -386,38 +451,6 @@ export function HeroGearClock({
           )
         })}
 
-        {/* ── AM / PM labels ── */}
-        <text
-          x={GEAR_CX}
-          y={GEAR_CY - (GEAR_PM_INNER + GEAR_PM_OUTER) / 2}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="var(--muted-foreground)"
-          fontSize="7"
-          fontWeight="800"
-          fontFamily="inherit"
-          letterSpacing="2"
-          opacity={0.45}
-          pointerEvents="none"
-        >
-          PM
-        </text>
-        <text
-          x={GEAR_CX}
-          y={GEAR_CY - (GEAR_AM_INNER + GEAR_AM_OUTER) / 2}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="var(--muted-foreground)"
-          fontSize="7"
-          fontWeight="800"
-          fontFamily="inherit"
-          letterSpacing="2"
-          opacity={0.45}
-          pointerEvents="none"
-        >
-          AM
-        </text>
-
         {/* ── Current hour hand (today only) ── */}
         {isToday &&
           (() => {
@@ -430,7 +463,6 @@ export function HeroGearClock({
             const hy = GEAR_CY + handLen * Math.sin(toRad(handAngle))
             return (
               <g pointerEvents="none">
-                {/* Hand glow */}
                 <line
                   x1={GEAR_CX}
                   y1={GEAR_CY}
@@ -441,7 +473,6 @@ export function HeroGearClock({
                   strokeLinecap="round"
                   opacity={0.15}
                 />
-                {/* Hand line */}
                 <line
                   x1={GEAR_CX}
                   y1={GEAR_CY}
@@ -456,8 +487,6 @@ export function HeroGearClock({
               </g>
             )
           })()}
-
-        {/* ── Center stats removed — rendered via HTML overlay below ── */}
       </svg>
 
       {/* ── HTML overlay for hub content (children) ── */}

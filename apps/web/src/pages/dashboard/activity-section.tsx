@@ -516,13 +516,12 @@ export function ActivitySection({
   const { t: tc } = useTranslation("common")
   const gearAngle = useGearRotation()
   const firstDay = useMemo(() => getFirstDayOfWeek(i18n.language), [i18n.language])
-  const [view, setViewRaw] = useState<HeatmapView>(getStoredView)
-  const setView = useCallback((v: HeatmapView) => {
-    setViewRaw(v)
+  const [view, setView] = useState<HeatmapView>(getStoredView)
+  useEffect(() => {
     try {
-      localStorage.setItem(HEATMAP_VIEW_KEY, v)
+      localStorage.setItem(HEATMAP_VIEW_KEY, view)
     } catch {}
-  }, [])
+  }, [view])
   const [activeTooltip, setActiveTooltip] = useState<HeatmapTooltip | null>(null)
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null)
   const [weekOffset, setWeekOffset] = useState(0)
@@ -838,34 +837,6 @@ export function ActivitySection({
       {/* ── Day view: Gear Clock + day nav ── */}
       {view === "day" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <InlineStats
-            items={[
-              {
-                label: t("stats.requests"),
-                raw: gearData.reqCount,
-                format: formatCount,
-                icon: MessageSquare,
-              },
-              {
-                label: t("stats.inputTokens"),
-                raw: gearData.inTokens,
-                format: formatCount,
-                icon: ArrowDownToLine,
-              },
-              {
-                label: t("stats.outputTokens"),
-                raw: gearData.outTokens,
-                format: formatCount,
-                icon: ArrowUpFromLine,
-              },
-              {
-                label: t("stats.cost"),
-                raw: gearData.totalCost,
-                format: formatMoney,
-                icon: DollarSign,
-              },
-            ]}
-          />
           <GearClockFit>
             <HeroGearClock
               dayHourlyMap={dayHourlyMap}
@@ -951,11 +922,11 @@ export function ActivitySection({
               })()
 
               return (
-                <div className="relative flex items-center gap-3">
+                <div className="relative flex items-center gap-2">
                   <NavArrow direction="left" onClick={() => shiftDay(-1)} />
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-base font-bold">{selectedDisplayDate}</span>
-                    <span className="text-muted-foreground text-xs font-medium">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-sm font-bold">{selectedDisplayDate}</span>
+                    <span className="text-muted-foreground text-[11px] font-medium">
                       {selectedDayWeekday}
                     </span>
                   </div>
@@ -964,6 +935,7 @@ export function ActivitySection({
                     onClick={() => shiftDay(1)}
                     disabled={isFutureDate || isToday}
                   />
+
                   <div className="ml-auto flex items-center gap-3">
                     {!isToday && (
                       <button
@@ -1102,37 +1074,35 @@ export function ActivitySection({
           )
 
           return (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
-              <InlineStats
-                items={[
-                  {
-                    label: t("stats.requests"),
-                    raw: monthTotalReq,
-                    format: formatCount,
-                    icon: MessageSquare,
-                  },
-                  {
-                    label: t("stats.inputTokens"),
-                    raw: monthTotalIn,
-                    format: formatCount,
-                    icon: ArrowDownToLine,
-                  },
-                  {
-                    label: t("stats.outputTokens"),
-                    raw: monthTotalOut,
-                    format: formatCount,
-                    icon: ArrowUpFromLine,
-                  },
-                  {
-                    label: t("stats.cost"),
-                    raw: monthTotalCost,
-                    format: formatMoney,
-                    icon: DollarSign,
-                  },
-                ]}
-              />
+            <div className="flex min-h-0 flex-1 flex-col px-2">
+              {/* Stats row */}
+              <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-0.5 py-1">
+                {[
+                  { label: "REQ", raw: monthTotalReq, format: formatCount },
+                  { label: "IN", raw: monthTotalIn, format: formatCount },
+                  { label: "OUT", raw: monthTotalOut, format: formatCount },
+                  { label: "$", raw: monthTotalCost, format: formatMoney },
+                ].map((item) => {
+                  const formatted = item.format(item.raw)
+                  return (
+                    <div key={item.label} className="flex items-center gap-1">
+                      <span className="text-muted-foreground text-[10px] font-bold">
+                        {item.label}
+                      </span>
+                      <span className="text-[11px] font-bold tabular-nums">
+                        <AnimatedNumber value={item.raw} formatter={(n) => item.format(n).value} />
+                        {formatted.unit && (
+                          <span className="text-muted-foreground ml-0.5 text-[9px] font-medium">
+                            {formatted.unit}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
 
-              <div className="flex min-h-0 flex-1 items-center justify-center">
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 <ReactorGrid
                   monthDays={monthDays}
                   weekdayLabels={weekdayLabels}
@@ -1144,7 +1114,7 @@ export function ActivitySection({
                 />
               </div>
 
-              <div className="mt-auto shrink-0">
+              <div className="shrink-0">
                 <div className="relative flex items-center gap-3">
                   <NavArrow direction="left" onClick={() => setMonthOffset((o) => o - 1)} />
                   <span className="text-base font-bold">{monthLabel}</span>
