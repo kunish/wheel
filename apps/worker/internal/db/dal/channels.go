@@ -11,7 +11,9 @@ import (
 
 func ListChannels(ctx context.Context, db *bun.DB) ([]types.Channel, error) {
 	var channels []types.Channel
-	err := db.NewSelect().Model(&channels).Scan(ctx)
+	err := db.NewSelect().Model(&channels).
+		OrderExpr("\"order\" ASC, id ASC").
+		Scan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -171,4 +173,17 @@ func IncrementChannelKeyCostTx(ctx context.Context, tx bun.Tx, keyID int, cost f
 		Where("id = ?", keyID).
 		Exec(ctx)
 	return err
+}
+
+func ReorderChannels(ctx context.Context, db *bun.DB, orderedIDs []int) error {
+	for i, id := range orderedIDs {
+		_, err := db.NewUpdate().Table("channels").
+			Set("\"order\" = ?", i).
+			Where("id = ?", id).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `channels` ADD `order` integer DEFAULT 0 NOT NULL;

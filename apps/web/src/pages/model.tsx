@@ -69,6 +69,7 @@ import {
   listChannels,
   listGroups,
   listModelPrices,
+  reorderChannels,
   reorderGroups,
   syncModelPrices,
   updateChannel,
@@ -373,6 +374,12 @@ export default function ModelPage() {
     onError: (err: Error) => toast.error(err.message),
   })
 
+  const channelReorderMut = useMutation({
+    mutationFn: reorderChannels,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels"] }),
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   // ─── Price mutations ──────────────────────────────
 
   const syncPriceMut = useMutation({
@@ -491,6 +498,23 @@ export default function ModelPage() {
       return
     }
 
+    // ─── Channel reorder ──────────────────────
+    if (dragData.type === "channel") {
+      const activeId = String(active.id)
+      const overId = String(over.id)
+
+      if (activeId.startsWith("sortable-channel-") && overId.startsWith("sortable-channel-")) {
+        if (activeId === overId) return
+        const oldIndex = channels.findIndex((ch) => `sortable-channel-${ch.id}` === activeId)
+        const newIndex = channels.findIndex((ch) => `sortable-channel-${ch.id}` === overId)
+        if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+        const reordered = arrayMove(channels, oldIndex, newIndex)
+        channelReorderMut.mutate(reordered.map((ch) => ch.id))
+        return
+      }
+    }
+
     // ─── Cross-area drop (channel/model → group) ─
     const dropData = over.data.current as { groupId: number } | undefined
     if (!dropData?.groupId) return
@@ -589,6 +613,7 @@ export default function ModelPage() {
 
   const channelMap = useMemo(() => new Map(channels.map((ch) => [ch.id, ch])), [channels])
   const groupIds = useMemo(() => groups.map((g) => `sortable-group-${g.id}`), [groups])
+  const channelIds = useMemo(() => channels.map((ch) => `sortable-channel-${ch.id}`), [channels])
 
   // ─── Render ────────────────────────────────────
 
@@ -661,31 +686,33 @@ export default function ModelPage() {
               ) : channels.length === 0 ? (
                 <p className="text-muted-foreground text-sm">{t("emptyChannels")}</p>
               ) : (
-                <div className="flex flex-col gap-3">
-                  <AnimatePresence initial={false}>
-                    {channels.map((ch) => (
-                      <motion.div
-                        key={ch.id}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <DraggableChannel
-                          channel={ch}
-                          highlighted={highlightedId === ch.id}
-                          refCallback={(el) => setChannelRef(ch.id, el)}
-                          onEdit={() => openEditChannel(ch)}
-                          onDelete={() => setDeleteChannelConfirm(ch)}
-                          onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
-                          enablePending={channelEnableMut.isPending}
-                          forceCollapsed={channelsCollapsed}
-                          priceMap={priceMap}
-                        />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
+                <SortableContext items={channelIds} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col gap-3">
+                    <AnimatePresence initial={false}>
+                      {channels.map((ch) => (
+                        <motion.div
+                          key={ch.id}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <DraggableChannel
+                            channel={ch}
+                            highlighted={highlightedId === ch.id}
+                            refCallback={(el) => setChannelRef(ch.id, el)}
+                            onEdit={() => openEditChannel(ch)}
+                            onDelete={() => setDeleteChannelConfirm(ch)}
+                            onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
+                            enablePending={channelEnableMut.isPending}
+                            forceCollapsed={channelsCollapsed}
+                            priceMap={priceMap}
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </SortableContext>
               )}
             </ScrollArea>
           </div>
@@ -1020,8 +1047,8 @@ function DraggableChannel({
   priceMap: Map<string, ModelPrice>
 }) {
   const { t } = useTranslation("model")
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `channel-${channel.id}`,
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `sortable-channel-${channel.id}`,
     data: { type: "channel", channel } satisfies DragDataChannel,
   })
 
@@ -1042,12 +1069,18 @@ function DraggableChannel({
     if (highlighted && collapsed) setCollapsed(false)
   }
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
   return (
     <Card
       ref={(node) => {
         setNodeRef(node)
         refCallback?.(node)
       }}
+      style={style}
       className={cn(
         "overflow-hidden border-l-4 transition-all",
         channel.enabled ? "border-l-nb-lime" : "border-l-muted-foreground/30",

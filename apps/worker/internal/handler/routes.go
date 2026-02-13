@@ -50,6 +50,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/channel/fetch-model-preview", h.FetchModelPreview)
 	admin.POST("/channel/sync", h.SyncAllModels)
 	admin.GET("/channel/last-sync-time", h.LastSyncTime)
+	admin.POST("/channel/reorder", h.ReorderChannels)
 
 	// Group routes
 	admin.GET("/group/list", h.ListGroups)

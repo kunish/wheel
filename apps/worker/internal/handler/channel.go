@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -224,6 +225,34 @@ func (h *Handler) DeleteChannel(c *gin.Context) {
 	successNoData(c)
 }
 
+// ReorderChannels godoc
+// @Summary Reorder channels
+// @Tags Channels
+// @Accept json
+// @Produce json
+// @Param body body object true "Ordered channel IDs"
+// @Success 200 {object} object "{success: true}"
+// @Failure 400 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/channel/reorder [post]
+func (h *Handler) ReorderChannels(c *gin.Context) {
+	var req struct {
+		OrderedIds []int `json:"orderedIds"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := dal.ReorderChannels(c.Request.Context(), h.DB, req.OrderedIds); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.Cache.Delete("channels")
+	successNoData(c)
+}
+
 // ──── Fetch Model / Sync ────
 
 type fetchModelRequest struct {
@@ -257,7 +286,7 @@ func (h *Handler) FetchModel(c *gin.Context) {
 		return
 	}
 
-	models, err := fetchModelsFromChannel(channel)
+	models, err := fetchModelsFromChannel(channel, h.Cache)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -308,7 +337,7 @@ func (h *Handler) FetchModelPreview(c *gin.Context) {
 		},
 	}
 
-	models, err := fetchModelsFromChannel(pseudoChannel)
+	models, err := fetchModelsFromChannel(pseudoChannel, h.Cache)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -356,7 +385,37 @@ func (h *Handler) LastSyncTime(c *gin.Context) {
 
 // ──── Model fetch helpers ────
 
-func fetchModelsFromChannel(channel *types.Channel) ([]string, error) {
+const browserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+func setBrowserHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+}
+
+
+func fallbackModelsFromMetadata(kv *cache.MemoryKV, providerKey string) []string {
+	cached, ok := cache.Get[map[string]modelMeta](kv, metadataKVKey)
+	if !ok || cached == nil {
+		// Try fetching fresh metadata
+		metadata, err := fetchAndFlattenMetadata()
+		if err != nil {
+			return nil
+		}
+		kv.Put(metadataKVKey, metadata, metadataTTL)
+		cached = &metadata
+	}
+
+	var models []string
+	for modelID, meta := range *cached {
+		if meta.Provider == providerKey {
+			models = append(models, modelID)
+		}
+	}
+	sort.Strings(models)
+	return models
+}
+
+func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]string, error) {
 	var key *types.ChannelKey
 	for i := range channel.Keys {
 		if channel.Keys[i].Enabled {
@@ -381,7 +440,13 @@ func fetchModelsFromChannel(channel *types.Channel) ([]string, error) {
 
 	switch channel.Type {
 	case types.OutboundAnthropic:
-		return fetchAnthropicModels(ctx, baseUrl, key.ChannelKey)
+		models, err := fetchAnthropicModels(ctx, baseUrl, key.ChannelKey)
+		if err != nil && kv != nil {
+			if fb := fallbackModelsFromMetadata(kv, "anthropic"); len(fb) > 0 {
+				return fb, nil
+			}
+		}
+		return models, err
 	case types.OutboundGemini:
 		return fetchGeminiModels(ctx, baseUrl, key.ChannelKey)
 	default:
@@ -392,6 +457,7 @@ func fetchModelsFromChannel(channel *types.Channel) ([]string, error) {
 func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models", nil)
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	setBrowserHeaders(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -399,11 +465,16 @@ func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenAI models API returned %d", resp.StatusCode)
+		snippet := string(body)
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		return nil, fmt.Errorf("OpenAI models API returned %d: %s", resp.StatusCode, snippet)
 	}
 
-	body, _ := io.ReadAll(resp.Body)
 	var result struct {
 		Data []struct {
 			ID string `json:"id"`
@@ -421,39 +492,63 @@ func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 }
 
 func fetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
-	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models", nil)
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	var allModels []string
+	afterID := ""
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	for {
+		url := baseUrl + "/v1/models?limit=100"
+		if afterID != "" {
+			url += "&after_id=" + afterID
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Anthropic models API returned %d", resp.StatusCode)
+		req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req.Header.Set("x-api-key", apiKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+		setBrowserHeaders(req)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+
+		if resp.StatusCode != http.StatusOK {
+			snippet := string(body)
+			if len(snippet) > 200 {
+				snippet = snippet[:200]
+			}
+			return nil, fmt.Errorf("Anthropic models API returned %d: %s", resp.StatusCode, snippet)
+		}
+
+		var result struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+			HasMore bool   `json:"has_more"`
+			LastID  string `json:"last_id"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+
+		for _, m := range result.Data {
+			allModels = append(allModels, m.ID)
+		}
+
+		if !result.HasMore || result.LastID == "" {
+			break
+		}
+		afterID = result.LastID
 	}
 
-	body, _ := io.ReadAll(resp.Body)
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	models := make([]string, 0, len(result.Data))
-	for _, m := range result.Data {
-		models = append(models, m.ID)
-	}
-	return models, nil
+	return allModels, nil
 }
 
 func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models?key="+apiKey, nil)
+	setBrowserHeaders(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -461,11 +556,16 @@ func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Gemini models API returned %d", resp.StatusCode)
+		snippet := string(body)
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		return nil, fmt.Errorf("Gemini models API returned %d: %s", resp.StatusCode, snippet)
 	}
 
-	body, _ := io.ReadAll(resp.Body)
 	var result struct {
 		Models []struct {
 			Name string `json:"name"`
@@ -477,11 +577,7 @@ func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 
 	models := make([]string, 0, len(result.Models))
 	for _, m := range result.Models {
-		name := m.Name
-		if strings.HasPrefix(name, "models/") {
-			name = name[7:]
-		}
-		models = append(models, name)
+		models = append(models, strings.TrimPrefix(m.Name, "models/"))
 	}
 	return models, nil
 }
@@ -506,7 +602,7 @@ func syncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*types.
 			continue
 		}
 
-		upstreamModels, err := fetchModelsFromChannel(ch)
+		upstreamModels, err := fetchModelsFromChannel(ch, kv)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: %s", ch.Name, err.Error()))
 			continue

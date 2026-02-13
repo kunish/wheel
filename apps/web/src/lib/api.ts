@@ -161,6 +161,13 @@ export function reorderGroups(orderedIds: number[]) {
   })
 }
 
+export function reorderChannels(orderedIds: number[]) {
+  return apiFetch<{ success: boolean }>("/api/v1/channel/reorder", {
+    method: "POST",
+    body: { orderedIds },
+  })
+}
+
 export function getModelList() {
   return apiFetch<{ success: boolean; data: { models: string[] } }>("/api/v1/group/model-list")
 }

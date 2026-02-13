@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,7 +20,8 @@ import (
 type SyncResult = types.SyncResult
 
 // FetchModelsFromChannel fetches model names from an upstream channel provider.
-func FetchModelsFromChannel(channel types.Channel) ([]string, error) {
+// When kv is non-nil and Anthropic API fails (e.g. Cloudflare), falls back to models.dev metadata.
+func FetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string, error) {
 	// Find first enabled key
 	var apiKey string
 	for _, k := range channel.Keys {
@@ -45,12 +47,76 @@ func FetchModelsFromChannel(channel types.Channel) ([]string, error) {
 
 	switch channel.Type {
 	case types.OutboundAnthropic:
-		return fetchAnthropicModels(ctx, baseUrl, apiKey)
+		models, err := fetchAnthropicModels(ctx, baseUrl, apiKey)
+		if err != nil && kv != nil {
+			if fb := fallbackModelsFromMetadata(kv, "anthropic"); len(fb) > 0 {
+				return fb, nil
+			}
+		}
+		return models, err
 	case types.OutboundGemini:
 		return fetchGeminiModels(ctx, baseUrl, apiKey)
 	default:
 		return fetchOpenAIModels(ctx, baseUrl, apiKey)
 	}
+}
+
+const browserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+func setBrowserHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+}
+
+func fallbackModelsFromMetadata(kv *cache.MemoryKV, providerKey string) []string {
+	cached, ok := cache.Get[map[string]string](kv, "model-metadata-providers")
+	if !ok || cached == nil {
+		metadata, err := fetchModelsDevProviders()
+		if err != nil {
+			return nil
+		}
+		kv.Put("model-metadata-providers", metadata, 86400)
+		cached = &metadata
+	}
+	var models []string
+	for modelID, provider := range *cached {
+		if provider == providerKey {
+			models = append(models, modelID)
+		}
+	}
+	sort.Strings(models)
+	return models
+}
+
+func fetchModelsDevProviders() (map[string]string, error) {
+	resp, err := http.Get("https://models.dev/api.json")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("models.dev returned %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	type modelEntry struct {
+		ID string `json:"id"`
+	}
+	type providerEntry struct {
+		Models map[string]modelEntry `json:"models"`
+	}
+	var data map[string]providerEntry
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	for providerKey, provider := range data {
+		for _, model := range provider.Models {
+			if model.ID != "" {
+				result[model.ID] = providerKey
+			}
+		}
+	}
+	return result, nil
 }
 
 func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
@@ -59,6 +125,7 @@ func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	setBrowserHeaders(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -66,13 +133,17 @@ func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("OpenAI models API returned %d", resp.StatusCode)
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		snippet := string(body)
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		return nil, fmt.Errorf("OpenAI models API returned %d: %s", resp.StatusCode, snippet)
 	}
 
 	var result struct {
@@ -92,42 +163,64 @@ func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 }
 
 func fetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	var allModels []string
+	afterID := ""
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	for {
+		url := baseUrl + "/v1/models?limit=100"
+		if afterID != "" {
+			url += "&after_id=" + afterID
+		}
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Anthropic models API returned %d", resp.StatusCode)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("x-api-key", apiKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+		setBrowserHeaders(req)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != 200 {
+			snippet := string(body)
+			if len(snippet) > 200 {
+				snippet = snippet[:200]
+			}
+			return nil, fmt.Errorf("Anthropic models API returned %d: %s", resp.StatusCode, snippet)
+		}
+
+		var result struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+			HasMore bool   `json:"has_more"`
+			LastID  string `json:"last_id"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+
+		for _, m := range result.Data {
+			allModels = append(allModels, m.ID)
+		}
+
+		if !result.HasMore || result.LastID == "" {
+			break
+		}
+		afterID = result.LastID
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	models := make([]string, 0, len(result.Data))
-	for _, m := range result.Data {
-		models = append(models, m.ID)
-	}
-	return models, nil
+	return allModels, nil
 }
 
 func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
@@ -135,6 +228,7 @@ func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 	if err != nil {
 		return nil, err
 	}
+	setBrowserHeaders(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -142,13 +236,17 @@ func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Gemini models API returned %d", resp.StatusCode)
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		snippet := string(body)
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		return nil, fmt.Errorf("Gemini models API returned %d: %s", resp.StatusCode, snippet)
 	}
 
 	var result struct {
@@ -162,11 +260,7 @@ func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 
 	models := make([]string, 0, len(result.Models))
 	for _, m := range result.Models {
-		name := m.Name
-		if strings.HasPrefix(name, "models/") {
-			name = name[7:]
-		}
-		models = append(models, name)
+		models = append(models, strings.TrimPrefix(m.Name, "models/"))
 	}
 	return models, nil
 }
@@ -185,7 +279,7 @@ func SyncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*SyncRe
 			continue
 		}
 
-		upstreamModels, err := FetchModelsFromChannel(channel)
+		upstreamModels, err := FetchModelsFromChannel(channel, kv)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: %v", channel.Name, err))
 			continue

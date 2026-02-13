@@ -50,6 +50,7 @@ type Channel struct {
 	CustomHeader   CustomHeaderList `bun:"custom_header"       json:"customHeader"`
 	ParamOverride  *string          `bun:"param_override"      json:"paramOverride"`
 	ChannelProxy   *string          `bun:"channel_proxy"       json:"channelProxy"`
+	Order          int              `bun:"\"order\",default:0" json:"order"`
 }
 
 // GroupItem links a channel to a group with routing metadata.
