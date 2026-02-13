@@ -139,58 +139,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build worker
-        run: go build -o tmp/worker ./cmd/worker/
-        working-directory: apps/worker
-
-      - name: Seed demo data
-        run: ./tmp/worker seed
-        working-directory: apps/worker
-        env:
-          DATA_PATH: ./seed-data
-
       - name: Install Playwright Chromium
         run: npx playwright install chromium --with-deps
         working-directory: apps/web
 
-      - name: Start worker and capture screenshots
-        run: |
-          # Start worker in background
-          ../worker/tmp/worker &
-          WORKER_PID=$!
-
-          # Wait for worker to be ready
-          for i in $(seq 1 30); do
-            if curl -s http://localhost:8787/api/v1/user/info > /dev/null 2>&1; then
-              echo "Worker ready"
-              break
-            fi
-            sleep 1
-          done
-
-          # Start vite dev server in background
-          npx vite --port 15173 --strictPort &
-          VITE_PID=$!
-
-          # Wait for vite to be ready
-          for i in $(seq 1 30); do
-            if curl -s http://localhost:15173 > /dev/null 2>&1; then
-              echo "Vite ready"
-              break
-            fi
-            sleep 1
-          done
-
-          # Run screenshot script
-          npx tsx scripts/screenshots.ts || true
-
-          # Cleanup
-          kill $VITE_PID $WORKER_PID 2>/dev/null || true
+      - name: Capture screenshots
+        run: npx tsx scripts/screenshots.ts
         working-directory: apps/web
-        env:
-          DATA_PATH: ../worker/seed-data
-          PORT: "8787"
-          VITE_API_BASE_URL: http://localhost:8787
 
       - name: Commit screenshots
         env:

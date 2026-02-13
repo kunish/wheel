@@ -53,7 +53,7 @@ async function waitForReady(url: string, label: string, timeoutMs = 30_000) {
   throw new Error(`${label} did not become ready within ${timeoutMs}ms`)
 }
 
-function startWorker(): ChildProcess {
+function startWorker(): Promise<ChildProcess> {
   // Build worker first
   console.log("Building worker...")
   const build = spawn("go", ["build", "-o", "tmp/worker", "./cmd/worker/"], {
@@ -61,10 +61,12 @@ function startWorker(): ChildProcess {
     stdio: "inherit",
   })
 
-  return new Promise<ChildProcess>((resolve, reject) => {
+  const seedDataPath = resolve(WORKER_DIR, "seed-data")
+
+  return new Promise<ChildProcess>((res, rej) => {
     build.on("close", (code) => {
       if (code !== 0) {
-        reject(new Error(`Worker build failed with code ${code}`))
+        rej(new Error(`Worker build failed with code ${code}`))
         return
       }
 
@@ -75,7 +77,7 @@ function startWorker(): ChildProcess {
         env: {
           ...process.env,
           PORT: String(WORKER_PORT),
-          DATA_PATH: resolve(WORKER_DIR, "seed-data"),
+          DATA_PATH: seedDataPath,
         },
       })
       processes.push(worker)
@@ -86,7 +88,7 @@ function startWorker(): ChildProcess {
         if (idx >= 0) processes.splice(idx, 1)
 
         if (seedCode !== 0) {
-          reject(new Error(`Worker seed failed with code ${seedCode}`))
+          rej(new Error(`Worker seed failed with code ${seedCode}`))
           return
         }
 
@@ -97,15 +99,15 @@ function startWorker(): ChildProcess {
           env: {
             ...process.env,
             PORT: String(WORKER_PORT),
-            DATA_PATH: resolve(WORKER_DIR, "seed-data"),
+            DATA_PATH: seedDataPath,
           },
         })
         processes.push(server)
-        server.on("error", reject)
-        resolve(server)
+        server.on("error", rej)
+        res(server)
       })
     })
-    build.on("error", reject)
+    build.on("error", rej)
   })
 }
 
@@ -129,8 +131,8 @@ function startWebDev(): ChildProcess {
 async function login(page: Page) {
   await page.goto(`${WEB_URL}/login`)
   await page.waitForLoadState("networkidle")
-  await page.fill('input[type="text"], input[name="username"]', "admin")
-  await page.fill('input[type="password"], input[name="password"]', "admin")
+  await page.fill("#username", "admin")
+  await page.fill("#password", "admin")
   await page.click('button[type="submit"]')
   await page.waitForURL("**/dashboard")
   // Wait for dashboard data to load
@@ -183,7 +185,7 @@ async function captureScreenshots() {
 async function main() {
   try {
     await startWorker()
-    await waitForReady(`${WORKER_URL}/api/v1/user/info`, "Worker")
+    await waitForReady(WORKER_URL, "Worker")
 
     startWebDev()
     await waitForReady(WEB_URL, "Web dev server")
