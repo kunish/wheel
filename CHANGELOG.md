@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/kunish/wheel/compare/v1.2.1...v1.3.0) (2026-02-13)
+
+
+### Features
+
+* add channel drag-and-drop reorder + Anthropic model fetch fallback ([5aa6f91](https://github.com/kunish/wheel/commit/5aa6f91b9641a2dda22e46459e69f2b7c05ae418))
+* add enabled toggle for group items ([8b08ba5](https://github.com/kunish/wheel/commit/8b08ba5f0c21db49874214d9850a8674c5564268))
+
 ## [1.2.1](https://github.com/kunish/wheel/compare/v1.2.0...v1.2.1) (2026-02-13)
 
 
