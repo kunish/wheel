@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/kunish/wheel/compare/v1.5.1...v1.5.2) (2026-02-13)
+
+
+### Bug Fixes
+
+* **ci:** use pnpm exec instead of npx for tsx ([4aa8a58](https://github.com/kunish/wheel/commit/4aa8a58c52d168d8e21f9a36f3993b236389b99f))
+
 ## [1.5.1](https://github.com/kunish/wheel/compare/v1.5.0...v1.5.1) (2026-02-13)
 
 
