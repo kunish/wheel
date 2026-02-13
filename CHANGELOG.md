@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/kunish/wheel/compare/v1.5.0...v1.5.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* fix screenshot script failures ([663e047](https://github.com/kunish/wheel/commit/663e047ba46327595a9a5d4d796b8d41f2f0eb19))
+
 ## [1.5.0](https://github.com/kunish/wheel/compare/v1.4.1...v1.5.0) (2026-02-13)
 
 
