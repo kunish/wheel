@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/kunish/wheel/compare/v1.4.0...v1.4.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* improve dashboard clock alignment and layout ([a539ad1](https://github.com/kunish/wheel/commit/a539ad12b2509919ac5a372d36b421ffe9f91890))
+
 ## [1.4.0](https://github.com/kunish/wheel/compare/v1.3.0...v1.4.0) (2026-02-13)
 
 
