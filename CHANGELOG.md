@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/kunish/wheel/compare/v1.2.0...v1.2.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* **ci:** set VITE_BASE_PATH for GitHub Pages deployment ([52755bb](https://github.com/kunish/wheel/commit/52755bb4859d6424a6681bb5e4ebb59c3df27505))
+
 ## [1.2.0](https://github.com/kunish/wheel/compare/v1.1.0...v1.2.0) (2026-02-12)
 
 
