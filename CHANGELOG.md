@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/kunish/wheel/compare/v1.3.0...v1.4.0) (2026-02-13)
+
+
+### Features
+
+* add model source tracking with three-category display ([2dd46b2](https://github.com/kunish/wheel/commit/2dd46b287de79e0308e799bf93856a63f44a7af2))
+
+
+### Bug Fixes
+
+* resolve content overflow in edit group dialog ([469b8f8](https://github.com/kunish/wheel/commit/469b8f8fa21c03e9475cd08f41f4c0cf9e5823f2))
+
 ## [1.3.0](https://github.com/kunish/wheel/compare/v1.2.1...v1.3.0) (2026-02-13)
 
 
