@@ -33,6 +33,7 @@ type Observer struct {
 	ttfbSeconds        otelmetric.Float64Histogram
 	circuitBreakerState otelmetric.Int64UpDownCounter
 	activeStreams      otelmetric.Int64UpDownCounter
+	logDropsTotal     otelmetric.Int64Counter
 }
 
 // New creates an Observer based on config flags.
@@ -147,6 +148,12 @@ func (o *Observer) registerMetrics() error {
 
 	o.activeStreams, err = meter.Int64UpDownCounter("wheel_active_streams",
 		otelmetric.WithDescription("Currently active streaming connections"))
+	if err != nil {
+		return err
+	}
+
+	o.logDropsTotal, err = meter.Int64Counter("wheel_log_drops_total",
+		otelmetric.WithDescription("Total log entries dropped due to full buffer"))
 	if err != nil {
 		return err
 	}

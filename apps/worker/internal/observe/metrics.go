@@ -114,3 +114,11 @@ func (o *Observer) StreamEnded(ctx context.Context) {
 	}
 	o.activeStreams.Add(ctx, -1)
 }
+
+// RecordLogDrop increments the log drops counter.
+func (o *Observer) RecordLogDrop(ctx context.Context) {
+	if o == nil {
+		return
+	}
+	o.logDropsTotal.Add(ctx, 1)
+}

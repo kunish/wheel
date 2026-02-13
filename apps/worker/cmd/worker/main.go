@@ -80,8 +80,18 @@ func main() {
 	// ── WebSocket Hub ──
 	hub := ws.New()
 
+	// ── Observability (must be before LogWriter so it can record drop metrics) ──
+	obs, err := observe.New(cfg.MetricsEnabled, cfg.OtelEnabled, cfg.OtelEndpoint, cfg.OtelServiceName)
+	if err != nil {
+		log.Fatalf("Failed to initialize observability: %v", err)
+	}
+	if obs != nil {
+		defer obs.Shutdown(context.Background())
+		relay.SetCircuitObserver(obs)
+	}
+
 	// ── LogWriter (batched async log persistence) ──
-	logWriter := db.NewLogWriter(logDatabase, database, hub.Broadcast, hub)
+	logWriter := db.NewLogWriter(logDatabase, database, hub.Broadcast, hub, obs, kv)
 
 	// Use a cancellable context for background services
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -95,16 +105,6 @@ func main() {
 
 	// ── Background Log Cleanup ──
 	db.StartLogCleanup(ctx, database, logDatabase)
-
-	// ── Observability ──
-	obs, err := observe.New(cfg.MetricsEnabled, cfg.OtelEnabled, cfg.OtelEndpoint, cfg.OtelServiceName)
-	if err != nil {
-		log.Fatalf("Failed to initialize observability: %v", err)
-	}
-	if obs != nil {
-		defer obs.Shutdown(context.Background())
-		relay.SetCircuitObserver(obs)
-	}
 
 	// ── Handlers ──
 	h := &handler.Handler{

@@ -3,11 +3,14 @@ package db
 import (
 	"context"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/uptrace/bun"
 
+	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
+	"github.com/kunish/wheel/apps/worker/internal/observe"
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
@@ -42,10 +45,13 @@ type LogWriter struct {
 	mainDB        *bun.DB
 	broadcast     BroadcastFunc
 	streamTracker StreamTracker
+	observer      *observe.Observer
+	statsCache    *cache.MemoryKV
+	dropCount     atomic.Int64
 }
 
 // NewLogWriter creates a LogWriter with sensible defaults.
-func NewLogWriter(logDB, mainDB *bun.DB, broadcast BroadcastFunc, streamTracker StreamTracker) *LogWriter {
+func NewLogWriter(logDB, mainDB *bun.DB, broadcast BroadcastFunc, streamTracker StreamTracker, obs *observe.Observer, statsCache *cache.MemoryKV) *LogWriter {
 	return &LogWriter{
 		ch:            make(chan logEntry, 1000),
 		countThresh:   50,
@@ -54,13 +60,27 @@ func NewLogWriter(logDB, mainDB *bun.DB, broadcast BroadcastFunc, streamTracker 
 		mainDB:        mainDB,
 		broadcast:     broadcast,
 		streamTracker: streamTracker,
+		observer:      obs,
+		statsCache:    statsCache,
 	}
 }
 
 // Submit enqueues a log entry for batched persistence.
-// It blocks if the internal buffer is full (backpressure).
-func (w *LogWriter) Submit(rl types.RelayLog, cost *CostInfo, streamID string) {
-	w.ch <- logEntry{Log: rl, Cost: cost, StreamID: streamID}
+// It never blocks: if the buffer is full the entry is dropped and false is returned.
+func (w *LogWriter) Submit(rl types.RelayLog, cost *CostInfo, streamID string) bool {
+	select {
+	case w.ch <- logEntry{Log: rl, Cost: cost, StreamID: streamID}:
+		return true
+	default:
+		w.dropCount.Add(1)
+		w.observer.RecordLogDrop(context.Background())
+		return false
+	}
+}
+
+// DroppedCount returns the total number of log entries dropped due to a full buffer.
+func (w *LogWriter) DroppedCount() int64 {
+	return w.dropCount.Load()
 }
 
 // Run consumes the channel in a loop, flushing on count or time threshold.
@@ -126,6 +146,11 @@ func (w *LogWriter) flush(entries []logEntry) {
 		return
 	}
 
+	// Invalidate stats cache after successful log insert
+	if w.statsCache != nil {
+		w.statsCache.DeletePrefix("stats:")
+	}
+
 	// 2. Aggregate cost updates per api_key and channel_key, then apply in a single transaction
 	apiKeyCosts := make(map[int]float64)
 	channelKeyCosts := make(map[int]float64)
@@ -155,20 +180,32 @@ func (w *LogWriter) flush(entries []logEntry) {
 		}
 	}
 
-	// 3. Broadcast log-created events (after successful write)
+	// 3. Broadcast log-created events asynchronously (after successful write)
 	if w.broadcast != nil {
-		w.broadcast("stats-updated")
+		// Build broadcast payloads before launching goroutine since entries
+		// shares backing array with the caller's buffer and may be overwritten.
+		type broadcastItem struct {
+			summary  map[string]any
+			streamID string
+		}
+		items := make([]broadcastItem, len(entries))
 		for i, e := range entries {
 			summary := logSummary(&logs[i])
 			if e.StreamID != "" {
 				summary["streamId"] = e.StreamID
 			}
-			w.broadcast("log-created", summary)
-
-			if e.StreamID != "" && w.streamTracker != nil {
-				w.streamTracker.UntrackStream(e.StreamID)
-			}
+			items[i] = broadcastItem{summary: summary, streamID: e.StreamID}
 		}
+
+		go func() {
+			w.broadcast("stats-updated")
+			for _, item := range items {
+				w.broadcast("log-created", item.summary)
+				if item.streamID != "" && w.streamTracker != nil {
+					w.streamTracker.UntrackStream(item.streamID)
+				}
+			}
+		}()
 	}
 }
 

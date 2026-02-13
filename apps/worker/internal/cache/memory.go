@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 )
@@ -68,6 +69,17 @@ func (m *MemoryKV) Put(key string, value any, ttlSeconds int) {
 func (m *MemoryKV) Delete(key string) {
 	m.mu.Lock()
 	delete(m.store, key)
+	m.mu.Unlock()
+}
+
+// DeletePrefix removes all keys that start with the given prefix.
+func (m *MemoryKV) DeletePrefix(prefix string) {
+	m.mu.Lock()
+	for k := range m.store {
+		if strings.HasPrefix(k, prefix) {
+			delete(m.store, k)
+		}
+	}
 	m.mu.Unlock()
 }
 

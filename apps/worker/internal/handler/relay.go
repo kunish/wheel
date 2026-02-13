@@ -670,7 +670,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 	// Async error log
 	go h.asyncErrorLog(
 		model, lastAttemptChannelID, lastAttemptChannelName,
-		body, lastError, attempts, startTime,
+		body, lastError, attempts, startTime, lastStreamId,
 	)
 
 	if retryAfterSecs > 0 {
@@ -839,6 +839,7 @@ func (h *RelayHandler) asyncErrorLog(
 	lastError string,
 	attempts []attemptRecord,
 	startTime time.Time,
+	streamID string,
 ) {
 	logBody := serializeForLog(body)
 
@@ -854,10 +855,11 @@ func (h *RelayHandler) asyncErrorLog(
 		ActualModelName:  model,
 		UseTime:          int(time.Since(startTime).Milliseconds()),
 		RequestContent:   logBody,
+		ResponseContent:  lastError,
 		Error:            lastError,
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
-	}, nil, "")
+	}, nil, streamID)
 }
 
 // ── Cache Helpers ───────────────────────────────────────────────
