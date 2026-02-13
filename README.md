@@ -16,86 +16,6 @@
 
 ---
 
-## Features
-
-### Relay Proxy
-
-- **多提供商聚合** — OpenAI、OpenAI Responses、Anthropic、Google Gemini，统一为 OpenAI 兼容接口
-- **协议自动转换** — OpenAI ↔ Anthropic 格式双向转换，包括 tool calling、system prompt、thinking 参数
-- **SSE 流式转发** — 首 token 超时检测（可配置），超时自动 failover 到下一通道
-- **3 轮重试** — 遍历分组内所有通道，自动跳过 429 限速的 key，上一次失败的错误信息会传递给客户端
-- **4 种负载均衡** — Round Robin / Random / Failover（优先级） / Weighted（加权随机）
-- **熔断器** — 按通道 key 追踪连续失败，自动跳过并指数退避冷却（可配置阈值与上限）
-- **会话保持** — 按 API Key + 模型维度的通道亲和，可配置 TTL
-- **Embeddings 代理** — 支持 `/v1/embeddings` 端点转发
-- **`/v1/models` 端点** — 自动检测请求格式，返回 OpenAI 或 Anthropic 格式的模型列表
-
-### Channel Management
-
-- **通道管理** — 增删改查，启用/禁用，批量 key 管理
-- **多 Base URL** — 每个通道支持多个端点地址
-- **模型自动发现** — 从上游提供商拉取可用模型列表
-- **模型自动同步** — 定时从上游同步模型变更，自动更新分组（每 6 小时）
-- **自动分组** — Exact（精确匹配）/ Fuzzy（前缀匹配）两种策略
-- **自定义请求头** — 按通道注入额外 HTTP 头
-- **参数覆盖** — 按通道覆盖请求参数（JSON merge）
-- **通道级代理** — 为特定通道设置 HTTP 代理
-
-### Group Management
-
-- **分组管理** — 增删改查，拖拽排序
-- **通道-模型配对** — 每个分组可包含多个通道的不同模型
-- **优先级/权重** — 为 Failover 和 Weighted 模式配置
-- **首 token 超时** — 每个分组可独立设置超时阈值
-- **会话保持时长** — 每个分组可独立设置 TTL
-
-### API Key Management
-
-- **API Key 管理** — 增删改查，自动生成密钥（`sk-wheel-*` 前缀）
-- **模型白名单** — 限制 key 可访问的模型
-- **用量配额** — 设置最大成本限额
-- **过期时间** — 设置 key 有效期
-- **用量追踪** — 每个 key 的累计成本实时统计
-
-### Cost & Pricing
-
-- **自动定价同步** — 从 [models.dev](https://models.dev) 同步 9 家提供商定价（OpenAI、Anthropic、Google、DeepSeek、xAI、阿里、智谱、Minimax、月之暗面），每 6 小时自动更新
-- **手动定价管理** — 增删改查自定义模型价格
-- **缓存 token 计费** — 支持 Anthropic cache_read/cache_write、OpenAI cached_tokens
-- **请求级成本计算** — 每次请求实时计算并累计到 API Key 和通道 Key
-
-### Monitoring & Statistics
-
-- **实时仪表盘** — WebSocket 推送，数据即时更新
-- **活跃度热力图** — 日视图 / 周视图 / 月视图 / 年视图，点击单元格跳转到对应日志
-- **成本趋势图** — 今日（小时）/ 近 7 天 / 近 30 天
-- **通道排行** — 按成本 / 请求量排名，动画切换
-- **模型统计** — 请求量、token 用量、成本、延迟，可排序
-- **多维统计** — 全局 / 每日 / 每小时 / 按通道 / 按模型 / 按 API Key
-
-### Request Logging
-
-- **完整日志记录** — 请求/响应内容（智能截断），token 用量分解
-- **重试时间线** — 每次尝试的通道、模型、耗时、错误信息
-- **高级过滤** — 时间范围、模型、通道、状态、关键词搜索
-- **请求重放** — 一键重新执行历史请求
-- **自动清理** — 可配置日志保留天数
-
-### Data Management
-
-- **JSON 导出** — 完整数据库备份（通道、分组、Key、设置，可选日志）
-- **JSON 导入** — ID 自动重映射，按名称去重，导入结果摘要
-- **系统配置** — 图形化配置熔断器阈值、日志保留等参数
-
-### UI
-
-- **双语界面** — 中文 / English，自动检测浏览器语言
-- **深色模式** — 支持亮色 / 暗色主题切换
-
----
-
-## Screenshots
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/dashboard-light.png">
@@ -105,15 +25,11 @@
 <details>
 <summary>更多截图 / More Screenshots</summary>
 
-### Model Management
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/model-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/model-light.png">
   <img alt="Model Management" src="docs/screenshots/model-light.png" width="100%">
 </picture>
-
-### Groups
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/groups-dark.png">
@@ -121,15 +37,11 @@
   <img alt="Groups" src="docs/screenshots/groups-light.png" width="100%">
 </picture>
 
-### Request Logs
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logs-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/logs-light.png">
   <img alt="Request Logs" src="docs/screenshots/logs-light.png" width="100%">
 </picture>
-
-### Settings
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
@@ -141,69 +53,29 @@
 
 ---
 
-## Architecture
+## Features
 
-```
-apps/
-  worker/     API Backend  (Go — Gin + SQLite + Bun ORM)
-  web/        Dashboard    (React + Vite + React Router + shadcn/ui + Tailwind CSS)
-```
-
-**数据库**
-
-Worker 使用两个独立的 SQLite 数据库文件，均存放在 `DATA_PATH` 目录下：
-
-| 文件            | 用途       | 说明                                               |
-| --------------- | ---------- | -------------------------------------------------- |
-| `wheel.db`      | 主数据库   | 通道、分组、API Key、设置、定价等配置数据          |
-| `wheel-logs.db` | 日志数据库 | 请求日志（高频写入），独立文件避免与配置数据库争用 |
-
-日志数据库自动创建在 `DATA_PATH` 目录下，无需额外配置。
-
-**启动时自动迁移** — Worker 启动时会自动执行数据库迁移，无需手动操作：
-
-- 主数据库：读取 `drizzle/` 目录下的 SQL 迁移文件，按顺序执行（兼容 Drizzle ORM 格式）
-- 日志数据库：自动创建 `relay_logs` 表和索引
+- **多提供商聚合** — OpenAI / Anthropic / Gemini 统一为 OpenAI 兼容接口，协议自动转换
+- **智能路由** — 4 种负载均衡（Round Robin / Random / Failover / Weighted），3 轮重试，熔断器，会话保持
+- **SSE 流式转发** — 首 token 超时检测，超时自动 failover
+- **通道管理** — 多 Base URL、模型自动发现与同步、自定义请求头与参数覆盖
+- **分组管理** — 通道-模型配对，优先级/权重，独立超时与会话保持配置
+- **API Key 管理** — 模型白名单、用量配额、过期时间
+- **成本管理** — 从 [models.dev](https://models.dev) 自动同步 9 家提供商定价，缓存 token 计费，请求级成本计算
+- **实时监控** — WebSocket 仪表盘，活跃度热力图，成本趋势，通道/模型/Key 多维统计
+- **请求日志** — 完整请求/响应记录，重试时间线，高级过滤，一键重放
+- **数据管理** — JSON 导入/导出，图形化系统配置
+- **双语 & 主题** — 中文 / English，亮色 / 暗色 / 跟随系统
 
 ---
 
 ## Deploy
 
-### Option 1: Vercel + Docker
-
-Web 仪表盘部署到 Vercel，Worker 后端 Docker 自部署。最简单的上手方式。
-
-**Step 1 — 部署 Worker**
-
-```bash
-docker run -d \
-  -p 8787:8787 \
-  -v wheel-data:/app/data \
-  -e JWT_SECRET=$(openssl rand -hex 32) \
-  ghcr.io/kunish/wheel-worker
-```
-
-**Step 2 — 部署 Web 到 Vercel**
-
-点击按钮一键部署，填入 Worker 的公网地址（如 `https://api.your-domain.com`）作为 `VITE_API_BASE_URL`：
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel&env=VITE_API_BASE_URL&envDescription=Worker%20API%20Base%20URL&envLink=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel%23environment-variables&project-name=wheel)
-
-默认管理员账号：`admin` / `admin`，请登录后立即修改。
-
----
-
-### Option 2: Docker Self-Hosted
-
-一键部署 Worker + Web，使用 SQLite 存储，无需云服务账号。
-
-需要一个反向代理（如 Caddy、Nginx）处理 HTTPS 和路由分流。
-
-**docker-compose.yml**：
+### Docker Compose（推荐）
 
 ```yaml
 volumes:
-  worker-data: # 包含 wheel.db（配置）和 wheel-logs.db（日志）
+  worker-data:
 
 services:
   worker:
@@ -211,10 +83,8 @@ services:
     restart: always
     environment:
       JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       DATA_PATH: /app/data
-      PORT: 8787
     volumes:
       - worker-data:/app/data
 
@@ -225,65 +95,42 @@ services:
       - worker
 ```
 
-**Caddyfile**（推荐）：
-
-```
-your-domain.com {
-    handle /api/* {
-        reverse_proxy worker:8787
-    }
-    handle /v1/* {
-        reverse_proxy worker:8787
-    }
-    handle {
-        reverse_proxy web:3000
-    }
-}
-```
-
 ```bash
-# 设置环境变量
 echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
-
-# 启动
 docker compose up -d
 ```
 
-默认管理员账号：`admin` / `admin`，请登录后立即修改。
+需要反向代理（Caddy / Nginx）将 `/api/*` 和 `/v1/*` 转发到 worker:8787，其余转发到 web:3000。
 
----
+默认管理员：`admin` / `admin`，请登录后立即修改。
 
-### Option 3: Manual Build
+### Vercel + Docker
 
-#### 前置条件
+Worker 用上面的 Docker 部署，Web 点击上方 Vercel 按钮部署，填入 Worker 公网地址作为 `VITE_API_BASE_URL`。
 
-- Go >= 1.24（Worker）
-- Node.js >= 22, pnpm >= 10（Web）
+### 手动构建
 
 ```bash
-# Worker
-cd apps/worker
-go build -o wheel ./cmd/worker
-JWT_SECRET=your-secret ./wheel
+# Worker (Go >= 1.24)
+cd apps/worker && go build -o wheel ./cmd/worker && JWT_SECRET=your-secret ./wheel
 
-# Web
-pnpm install
-pnpm --filter @wheel/web build
-# 使用任意静态文件服务器托管 apps/web/dist 目录
+# Web (Node >= 22, pnpm >= 10)
+pnpm install && pnpm --filter @wheel/web build
+# 静态文件服务器托管 apps/web/dist
 ```
 
 ---
 
 ## Environment Variables
 
-| 变量                | 组件         | 描述                                             | 必填              | 默认值   |
-| ------------------- | ------------ | ------------------------------------------------ | ----------------- | -------- |
-| `JWT_SECRET`        | Worker       | JWT 签名密钥                                     | Yes               | —        |
-| `ADMIN_USERNAME`    | Worker       | 管理员用户名                                     | No                | `admin`  |
-| `ADMIN_PASSWORD`    | Worker       | 管理员密码                                       | No                | `admin`  |
-| `DATA_PATH`         | Worker       | 数据目录路径，包含 `wheel.db` 和 `wheel-logs.db` | No                | `./data` |
-| `PORT`              | Worker       | HTTP 端口                                        | No                | `8787`   |
-| `VITE_API_BASE_URL` | Web (Vercel) | Worker API 地址                                  | Vercel 部署时必填 | —        |
+| 变量                | 组件   | 描述                                 | 默认值   |
+| ------------------- | ------ | ------------------------------------ | -------- |
+| `JWT_SECRET`        | Worker | JWT 签名密钥（必填）                 | —        |
+| `ADMIN_USERNAME`    | Worker | 管理员用户名                         | `admin`  |
+| `ADMIN_PASSWORD`    | Worker | 管理员密码                           | `admin`  |
+| `DATA_PATH`         | Worker | 数据目录路径                         | `./data` |
+| `PORT`              | Worker | HTTP 端口                            | `8787`   |
+| `VITE_API_BASE_URL` | Web    | Worker API 地址（Vercel 部署时必填） | —        |
 
 ---
 
@@ -291,13 +138,7 @@ pnpm --filter @wheel/web build
 
 ```bash
 pnpm install
-
-# 同时启动 Worker 和 Web
-pnpm dev
-
-# 或分别启动
-pnpm dev:worker    # http://localhost:8787
-pnpm dev:web       # http://localhost:3000
+pnpm dev          # 同时启动 Worker + Web
 ```
 
 ---
