@@ -86,7 +86,7 @@ function SortableDialogItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-md border p-2",
+        "flex min-w-0 items-center gap-2 rounded-md border p-2",
         isDragging && "opacity-50",
         !item.enabled && "opacity-50",
       )}
@@ -105,7 +105,7 @@ function SortableDialogItem({
         value={item.channelId ? String(item.channelId) : ""}
         onValueChange={(v) => onUpdate({ channelId: Number(v) })}
       >
-        <SelectTrigger className="w-36 shrink-0">
+        <SelectTrigger className="w-24 shrink-0">
           <SelectValue placeholder={t("groupDialog.channelPlaceholder")} />
         </SelectTrigger>
         <SelectContent>
@@ -221,7 +221,7 @@ export default function GroupDialog({
             {form.id ? t("groupDialog.editTitle") : t("groupDialog.createTitle")}
           </DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-4 py-2">
+        <div className="flex min-w-0 flex-col gap-4 py-2">
           <div className="flex flex-col gap-2">
             <Label>{t("groupDialog.name")}</Label>
             <div className="relative">
