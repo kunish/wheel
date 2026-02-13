@@ -77,12 +77,17 @@ func CreateGroup(ctx context.Context, db *bun.DB, g types.Group, items []types.G
 
 	if len(items) > 0 {
 		for _, item := range items {
+			enabled := true
+			if item.Enabled != nil {
+				enabled = *item.Enabled
+			}
 			gi := &types.GroupItem{
 				GroupID:   g.ID,
 				ChannelID: item.ChannelID,
 				ModelName: item.ModelName,
 				Priority:  item.Priority,
 				Weight:    item.Weight,
+				Enabled:   enabled,
 			}
 			if _, err := db.NewInsert().Model(gi).Exec(ctx); err != nil {
 				return nil, err
@@ -117,12 +122,17 @@ func UpdateGroup(ctx context.Context, db *bun.DB, id int, data map[string]any, i
 			return err
 		}
 		for _, item := range items {
+			enabled := true
+			if item.Enabled != nil {
+				enabled = *item.Enabled
+			}
 			gi := &types.GroupItem{
 				GroupID:   id,
 				ChannelID: item.ChannelID,
 				ModelName: item.ModelName,
 				Priority:  item.Priority,
 				Weight:    item.Weight,
+				Enabled:   enabled,
 			}
 			if _, err := db.NewInsert().Model(gi).Exec(ctx); err != nil {
 				return err

@@ -61,6 +61,7 @@ type GroupItem struct {
 	ModelName     string `bun:"model_name"          json:"modelName"`
 	Priority      int    `bun:"priority"            json:"priority"`
 	Weight        int    `bun:"weight"              json:"weight"`
+	Enabled       bool   `bun:"enabled,default:true" json:"enabled"`
 }
 
 // Group defines a routing group of channels.

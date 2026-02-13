@@ -50,6 +50,7 @@ func (h *Handler) CreateGroup(c *gin.Context) {
 		Name:              req.Name,
 		Mode:              types.GroupMode(req.Mode),
 		FirstTokenTimeOut: req.FirstTokenTimeOut,
+		SessionKeepTime:   req.SessionKeepTime,
 	}
 
 	created, err := dal.CreateGroup(c.Request.Context(), h.DB, g, req.Items)

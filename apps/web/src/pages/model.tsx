@@ -515,6 +515,7 @@ export default function ModelPage() {
           modelName: dragData.model,
           priority: 0,
           weight: 1,
+          enabled: true,
         },
       ]
     } else if (dragData.type === "channel") {
@@ -534,6 +535,7 @@ export default function ModelPage() {
           modelName: m,
           priority: 0,
           weight: 1,
+          enabled: true,
         }))
       if (newItems.length === 0) {
         toast.info(t("toast.allModelsAlreadyInGroup"))
@@ -580,7 +582,7 @@ export default function ModelPage() {
       mode: g.mode,
       firstTokenTimeOut: g.firstTokenTimeOut,
       sessionKeepTime: g.sessionKeepTime ?? 0,
-      items: g.items ?? [],
+      items: (g.items ?? []).map((it) => ({ ...it, enabled: it.enabled ?? true })),
     })
     setGroupDialogOpen(true)
   }

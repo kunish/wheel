@@ -73,12 +73,14 @@ type GroupItemInput struct {
 	ModelName string `json:"modelName"`
 	Priority  int    `json:"priority,omitempty"`
 	Weight    int    `json:"weight,omitempty"`
+	Enabled   *bool  `json:"enabled,omitempty"`
 }
 
 type GroupCreateRequest struct {
 	Name              string           `json:"name"`
 	Mode              int              `json:"mode"`
 	FirstTokenTimeOut int              `json:"firstTokenTimeOut,omitempty"`
+	SessionKeepTime   int              `json:"sessionKeepTime,omitempty"`
 	Items             []GroupItemInput  `json:"items"`
 }
 
@@ -87,6 +89,7 @@ type GroupUpdateRequest struct {
 	Name              *string          `json:"name,omitempty"`
 	Mode              *int             `json:"mode,omitempty"`
 	FirstTokenTimeOut *int             `json:"firstTokenTimeOut,omitempty"`
+	SessionKeepTime   *int             `json:"sessionKeepTime,omitempty"`
 	Items             []GroupItemInput  `json:"items,omitempty"`
 }
 

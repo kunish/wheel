@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import ChannelModelPickerDialog from "./channel-model-picker-dialog"
 import ModelPickerDialog from "./model-picker-dialog"
@@ -31,6 +32,7 @@ export interface GroupItemForm {
   modelName: string
   priority: number
   weight: number
+  enabled: boolean
 }
 
 export interface GroupFormData {
@@ -83,7 +85,11 @@ function SortableDialogItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn("flex items-center gap-2 rounded-md border p-2", isDragging && "opacity-50")}
+      className={cn(
+        "flex items-center gap-2 rounded-md border p-2",
+        isDragging && "opacity-50",
+        !item.enabled && "opacity-50",
+      )}
     >
       <button
         {...attributes}
@@ -128,7 +134,12 @@ function SortableDialogItem({
           onChange={(e) => onUpdate({ weight: Number(e.target.value) })}
         />
       )}
-      <Button variant="ghost" size="icon" className="ml-auto shrink-0" onClick={onRemove}>
+      <Switch
+        checked={item.enabled}
+        onCheckedChange={(checked) => onUpdate({ enabled: checked })}
+        className="shrink-0"
+      />
+      <Button variant="ghost" size="icon" className="shrink-0" onClick={onRemove}>
         <X className="h-4 w-4" />
       </Button>
     </div>
@@ -344,7 +355,10 @@ export default function GroupDialog({
             // Adding new item
             setForm({
               ...form,
-              items: [...form.items, { channelId, modelName: modelId, priority: 0, weight: 1 }],
+              items: [
+                ...form.items,
+                { channelId, modelName: modelId, priority: 0, weight: 1, enabled: true },
+              ],
             })
           }
           setEditingItemIndex(null)

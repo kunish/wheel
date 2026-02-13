@@ -13,21 +13,28 @@ var rrCounters sync.Map
 
 // SelectChannelOrder returns group items ordered according to the load-balancing mode.
 func SelectChannelOrder(mode types.GroupMode, items []types.GroupItem, groupID int) []types.GroupItem {
-	if len(items) == 0 {
-		return items
+	// Filter out disabled items first
+	enabled := make([]types.GroupItem, 0, len(items))
+	for _, it := range items {
+		if it.Enabled {
+			enabled = append(enabled, it)
+		}
+	}
+	if len(enabled) == 0 {
+		return enabled
 	}
 
 	switch mode {
 	case types.GroupModeRoundRobin:
-		return roundRobin(items, groupID)
+		return roundRobin(enabled, groupID)
 	case types.GroupModeRandom:
-		return randomOrder(items)
+		return randomOrder(enabled)
 	case types.GroupModeFailover:
-		return failoverOrder(items)
+		return failoverOrder(enabled)
 	case types.GroupModeWeighted:
-		return weightedOrder(items)
+		return weightedOrder(enabled)
 	default:
-		return items
+		return enabled
 	}
 }
 
