@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/kunish/wheel/compare/v1.4.1...v1.5.0) (2026-02-13)
+
+
+### Features
+
+* add mock data seed, automated screenshots, and CI integration ([36dfb1b](https://github.com/kunish/wheel/commit/36dfb1b457d2f51dd4ea477deae07928eb17ff00))
+
 ## [1.4.1](https://github.com/kunish/wheel/compare/v1.4.0...v1.4.1) (2026-02-13)
 
 
