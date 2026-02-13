@@ -144,7 +144,7 @@ jobs:
         working-directory: apps/web
 
       - name: Capture screenshots
-        run: npx tsx scripts/screenshots.ts
+        run: pnpm exec tsx scripts/screenshots.ts
         working-directory: apps/web
 
       - name: Commit screenshots

@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:api": "swagger2openapi ../worker/docs/swagger.json -o src/lib/openapi.json && openapi-typescript src/lib/openapi.json -o src/lib/api.gen.d.ts && rm src/lib/openapi.json",
-    "screenshots": "npx playwright install chromium && npx tsx scripts/screenshots.ts"
+    "screenshots": "pnpm exec playwright install chromium && pnpm exec tsx scripts/screenshots.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
