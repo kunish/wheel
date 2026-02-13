@@ -94,6 +94,53 @@
 
 ---
 
+## Screenshots
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/dashboard-light.png">
+  <img alt="Dashboard" src="docs/screenshots/dashboard-light.png" width="100%">
+</picture>
+
+<details>
+<summary>更多截图 / More Screenshots</summary>
+
+### Model Management
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/model-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/model-light.png">
+  <img alt="Model Management" src="docs/screenshots/model-light.png" width="100%">
+</picture>
+
+### Groups
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/groups-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/groups-light.png">
+  <img alt="Groups" src="docs/screenshots/groups-light.png" width="100%">
+</picture>
+
+### Request Logs
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logs-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/logs-light.png">
+  <img alt="Request Logs" src="docs/screenshots/logs-light.png" width="100%">
+</picture>
+
+### Settings
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/settings-light.png">
+  <img alt="Settings" src="docs/screenshots/settings-light.png" width="100%">
+</picture>
+
+</details>
+
+---
+
 ## Architecture
 
 ```

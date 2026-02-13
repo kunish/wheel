@@ -11,6 +11,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/handler"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
+	"github.com/kunish/wheel/apps/worker/internal/seed"
 	"github.com/kunish/wheel/apps/worker/internal/ws"
 )
 
@@ -60,6 +62,14 @@ func main() {
 
 	if err := db.MigrateLogDB(logDatabase.DB); err != nil {
 		log.Fatalf("Failed to migrate log database: %v", err)
+	}
+
+	// ── Seed subcommand ──
+	if len(os.Args) > 1 && os.Args[1] == "seed" {
+		if err := seed.Run(context.Background(), database, logDatabase); err != nil {
+			log.Fatalf("Seed failed: %v", err)
+		}
+		return
 	}
 
 	// ── Cache ──

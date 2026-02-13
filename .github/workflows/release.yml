@@ -112,3 +112,96 @@ jobs:
     steps:
       - uses: actions/deploy-pages@v4
         id: deployment
+
+  screenshots:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: apps/worker/go.sum
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build worker
+        run: go build -o tmp/worker ./cmd/worker/
+        working-directory: apps/worker
+
+      - name: Seed demo data
+        run: ./tmp/worker seed
+        working-directory: apps/worker
+        env:
+          DATA_PATH: ./seed-data
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+        working-directory: apps/web
+
+      - name: Start worker and capture screenshots
+        run: |
+          # Start worker in background
+          ../worker/tmp/worker &
+          WORKER_PID=$!
+
+          # Wait for worker to be ready
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:8787/api/v1/user/info > /dev/null 2>&1; then
+              echo "Worker ready"
+              break
+            fi
+            sleep 1
+          done
+
+          # Start vite dev server in background
+          npx vite --port 15173 --strictPort &
+          VITE_PID=$!
+
+          # Wait for vite to be ready
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:15173 > /dev/null 2>&1; then
+              echo "Vite ready"
+              break
+            fi
+            sleep 1
+          done
+
+          # Run screenshot script
+          npx tsx scripts/screenshots.ts || true
+
+          # Cleanup
+          kill $VITE_PID $WORKER_PID 2>/dev/null || true
+        working-directory: apps/web
+        env:
+          DATA_PATH: ../worker/seed-data
+          PORT: "8787"
+          VITE_API_BASE_URL: http://localhost:8787
+
+      - name: Commit screenshots
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/
+          if git diff --staged --quiet; then
+            echo "No screenshot changes to commit"
+          else
+            git commit -m "docs: update screenshots for $TAG_NAME"
+            git push
+          fi
