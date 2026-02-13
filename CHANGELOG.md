@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/kunish/wheel/compare/v1.5.2...v1.5.3) (2026-02-13)
+
+
+### Bug Fixes
+
+* **ci:** add tsx as devDependency for screenshot script ([962b99f](https://github.com/kunish/wheel/commit/962b99f873c47b7d7e4be13887517d808c7bae34))
+
 ## [1.5.2](https://github.com/kunish/wheel/compare/v1.5.1...v1.5.2) (2026-02-13)
 
 
