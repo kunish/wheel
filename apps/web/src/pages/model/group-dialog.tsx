@@ -66,7 +66,7 @@ function SortableDialogItem({
   id: string
   item: GroupItemForm
   mode: number
-  channelOptions: { id: number; name: string; model: string[] }[]
+  channelOptions: { id: number; name: string; model: string[]; fetchedModel: string[] }[]
   onEdit: () => void
   onUpdate: (patch: Partial<GroupItemForm>) => void
   onRemove: () => void
@@ -161,7 +161,7 @@ export default function GroupDialog({
   onOpenChange: (open: boolean) => void
   form: GroupFormData
   setForm: (f: GroupFormData) => void
-  channelOptions: { id: number; name: string; model: string[] }[]
+  channelOptions: { id: number; name: string; model: string[]; fetchedModel: string[] }[]
   onSave: () => void
   isPending: boolean
 }) {
@@ -204,6 +204,7 @@ export default function GroupDialog({
         channelId: ch.id,
         channelName: ch.name,
         models: ch.model.filter(Boolean).sort(),
+        fetchedModels: ch.fetchedModel ?? [],
       }))
   }, [channelOptions])
 

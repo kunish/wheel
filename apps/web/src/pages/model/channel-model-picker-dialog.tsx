@@ -1,6 +1,7 @@
 import { Search } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { ModelSourceBadge } from "@/components/model-source-badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -17,6 +18,7 @@ export interface ChannelModelEntry {
   channelId: number
   channelName: string
   models: string[]
+  fetchedModels: string[]
 }
 
 export default function ChannelModelPickerDialog({
@@ -41,12 +43,20 @@ export default function ChannelModelPickerDialog({
     const q = search.toLowerCase()
     const result: Record<
       string,
-      { modelId: string; channelId: number; channelName: string; logoUrl: string }[]
+      {
+        modelId: string
+        channelId: number
+        channelName: string
+        logoUrl: string
+        isApiFetched: boolean
+      }[]
     > = {}
 
     for (const ch of channelModels) {
       // Quick filter by channel
       if (channelFilter !== null && ch.channelId !== channelFilter) continue
+
+      const fetchedSet = new Set(ch.fetchedModels ?? [])
 
       for (const modelId of ch.models) {
         const meta = rawMap ? fuzzyLookup(rawMap, modelId) : null
@@ -66,6 +76,7 @@ export default function ChannelModelPickerDialog({
           channelId: ch.channelId,
           channelName: ch.channelName,
           logoUrl: meta?.logoUrl || "",
+          isApiFetched: fetchedSet.has(modelId),
         })
       }
     }
@@ -162,6 +173,7 @@ export default function ChannelModelPickerDialog({
                           />
                         )}
                         <span className="flex-1 truncate">{m.modelId}</span>
+                        <ModelSourceBadge modelId={m.modelId} isApiFetched={m.isApiFetched} />
                         <span className="text-muted-foreground shrink-0 text-xs">
                           {m.channelName}
                         </span>

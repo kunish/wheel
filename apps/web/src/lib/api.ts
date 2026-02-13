@@ -120,7 +120,7 @@ export function deleteChannel(id: number) {
 }
 
 export function fetchChannelModelsPreview(data: { type: number; baseUrl: string; key: string }) {
-  return apiFetch<{ success: boolean; data: { models: string[] } }>(
+  return apiFetch<{ success: boolean; data: { models: string[]; isFallback?: boolean } }>(
     "/api/v1/channel/fetch-model-preview",
     {
       method: "POST",

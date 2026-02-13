@@ -151,6 +151,10 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 	if v, ok := body["channelProxy"]; ok {
 		data["channel_proxy"] = v
 	}
+	if v, ok := body["fetchedModel"]; ok {
+		jsonBytes, _ := json.Marshal(v)
+		data["fetched_model"] = string(jsonBytes)
+	}
 
 	ctx := c.Request.Context()
 
@@ -286,7 +290,7 @@ func (h *Handler) FetchModel(c *gin.Context) {
 		return
 	}
 
-	models, err := fetchModelsFromChannel(channel, h.Cache)
+	models, _, err := fetchModelsFromChannel(channel, h.Cache)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -337,13 +341,13 @@ func (h *Handler) FetchModelPreview(c *gin.Context) {
 		},
 	}
 
-	models, err := fetchModelsFromChannel(pseudoChannel, h.Cache)
+	models, isFallback, err := fetchModelsFromChannel(pseudoChannel, h.Cache)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	successJSON(c, gin.H{"models": models})
+	successJSON(c, gin.H{"models": models, "isFallback": isFallback})
 }
 
 // SyncAllModels godoc
@@ -393,6 +397,7 @@ func setBrowserHeaders(req *http.Request) {
 }
 
 
+
 func fallbackModelsFromMetadata(kv *cache.MemoryKV, providerKey string) []string {
 	cached, ok := cache.Get[map[string]modelMeta](kv, metadataKVKey)
 	if !ok || cached == nil {
@@ -415,7 +420,10 @@ func fallbackModelsFromMetadata(kv *cache.MemoryKV, providerKey string) []string
 	return models
 }
 
-func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]string, error) {
+// fetchModelsFromChannel returns (models, isFallback, error).
+// isFallback is true when the result came from models.dev metadata
+// instead of the real upstream API (e.g. Anthropic API blocked by Cloudflare).
+func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]string, bool, error) {
 	var key *types.ChannelKey
 	for i := range channel.Keys {
 		if channel.Keys[i].Enabled {
@@ -424,7 +432,7 @@ func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]strin
 		}
 	}
 	if key == nil {
-		return []string{}, nil
+		return []string{}, false, nil
 	}
 
 	baseUrl := ""
@@ -432,7 +440,7 @@ func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]strin
 		baseUrl = strings.TrimRight(channel.BaseUrls[0].URL, "/")
 	}
 	if baseUrl == "" {
-		return []string{}, nil
+		return []string{}, false, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -443,14 +451,16 @@ func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]strin
 		models, err := fetchAnthropicModels(ctx, baseUrl, key.ChannelKey)
 		if err != nil && kv != nil {
 			if fb := fallbackModelsFromMetadata(kv, "anthropic"); len(fb) > 0 {
-				return fb, nil
+				return fb, true, nil
 			}
 		}
-		return models, err
+		return models, false, err
 	case types.OutboundGemini:
-		return fetchGeminiModels(ctx, baseUrl, key.ChannelKey)
+		models, err := fetchGeminiModels(ctx, baseUrl, key.ChannelKey)
+		return models, false, err
 	default:
-		return fetchOpenAIModels(ctx, baseUrl, key.ChannelKey)
+		models, err := fetchOpenAIModels(ctx, baseUrl, key.ChannelKey)
+		return models, false, err
 	}
 }
 
@@ -602,7 +612,7 @@ func syncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*types.
 			continue
 		}
 
-		upstreamModels, err := fetchModelsFromChannel(ch, kv)
+		upstreamModels, isFallback, err := fetchModelsFromChannel(ch, kv)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: %s", ch.Name, err.Error()))
 			continue
@@ -632,9 +642,15 @@ func syncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*types.
 			}
 		}
 
-		// Update channel model list
+		// Update channel model list; only mark as fetched if from real API
 		modelJSON, _ := json.Marshal(upstreamModels)
-		dal.UpdateChannel(ctx, db, ch.ID, map[string]interface{}{"model": string(modelJSON)})
+		updates := map[string]interface{}{
+			"model": string(modelJSON),
+		}
+		if !isFallback {
+			updates["fetched_model"] = string(modelJSON)
+		}
+		dal.UpdateChannel(ctx, db, ch.ID, updates)
 
 		result.SyncedChannels++
 	}

@@ -43,6 +43,7 @@ type Channel struct {
 	BaseUrls       BaseUrlList      `bun:"base_urls"           json:"baseUrls"`
 	Keys           []ChannelKey     `bun:"-"                   json:"keys"`
 	Model          StringList       `bun:"model"               json:"model"`
+	FetchedModel   StringList       `bun:"fetched_model"       json:"fetchedModel"`
 	CustomModel    string           `bun:"custom_model"        json:"customModel"`
 	Proxy          bool             `bun:"proxy"               json:"proxy"`
 	AutoSync       bool             `bun:"auto_sync"           json:"autoSync"`

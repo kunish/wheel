@@ -39,6 +39,7 @@ import { useSearchParams } from "react-router"
 import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
+import { ModelSourceBadge } from "@/components/model-source-badge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -107,6 +108,7 @@ interface ChannelRecord {
   type: number
   enabled: boolean
   model: string[]
+  fetchedModel: string[]
   customModel: string
   baseUrls: { url: string; delay: number }[]
   keys: { channelKey: string; remark: string }[]
@@ -586,6 +588,7 @@ export default function ModelPage() {
       baseUrls: ch.baseUrls?.length ? ch.baseUrls : [{ url: "", delay: 0 }],
       keys: ch.keys?.length ? ch.keys : [{ channelKey: "", remark: "" }],
       model: ch.model ?? [],
+      fetchedModel: ch.fetchedModel ?? [],
       customModel: ch.customModel ?? "",
       paramOverride: ch.paramOverride ?? "",
     })
@@ -1053,6 +1056,7 @@ function DraggableChannel({
   })
 
   const modelNames = parseModels(channel.model)
+  const fetchedSet = useMemo(() => new Set(channel.fetchedModel ?? []), [channel.fetchedModel])
   const [collapsed, setCollapsed] = useState(true)
 
   // Sync with parent's expand/collapse all toggle
@@ -1154,6 +1158,7 @@ function DraggableChannel({
                       channelId={channel.id}
                       channelName={channel.name}
                       priceMap={priceMap}
+                      isApiFetched={fetchedSet.has(m)}
                     />
                   )}
                 />
@@ -1173,11 +1178,13 @@ function DraggableModelTag({
   channelId,
   channelName,
   priceMap,
+  isApiFetched,
 }: {
   model: string
   channelId: number
   channelName: string
   priceMap: Map<string, ModelPrice>
+  isApiFetched: boolean
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `model-${channelId}-${model}`,
@@ -1194,7 +1201,9 @@ function DraggableModelTag({
       modelId={model}
       className={cn("hover:bg-accent cursor-grab", isDragging && "opacity-40")}
       price={price ? { inputPrice: price.inputPrice, outputPrice: price.outputPrice } : undefined}
-    />
+    >
+      <ModelSourceBadge modelId={model} isApiFetched={isApiFetched} />
+    </ModelCard>
   )
 }
 
@@ -1483,6 +1492,8 @@ function GroupItemList({
     const isDisabled = ch?.enabled === false
     const price = priceMap.get(item.modelName)
     const originalIndex = itemIndexMap.get(item)
+    const fetchedModels = ch?.fetchedModel ?? []
+    const isApiFetched = fetchedModels.includes(item.modelName)
     return (
       <ModelCard
         key={`${item.channelId}-${item.modelName}-${idx}`}
@@ -1495,6 +1506,7 @@ function GroupItemList({
             : undefined
         }
       >
+        <ModelSourceBadge modelId={item.modelName} isApiFetched={isApiFetched} />
         <span className="text-muted-foreground text-[10px]">
           {ch?.name ?? `#${item.channelId}`}
         </span>

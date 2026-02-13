@@ -96,7 +96,7 @@ func CreateChannel(ctx context.Context, db *bun.DB, ch types.Channel, keys []typ
 
 var allowedChannelCols = map[string]bool{
 	"name": true, "type": true, "enabled": true, "base_urls": true,
-	"model": true, "custom_model": true, "proxy": true, "auto_sync": true,
+	"model": true, "fetched_model": true, "custom_model": true, "proxy": true, "auto_sync": true,
 	"auto_group": true, "custom_header": true, "param_override": true,
 	"channel_proxy": true,
 }

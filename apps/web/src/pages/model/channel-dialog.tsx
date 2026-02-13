@@ -1,9 +1,11 @@
-import { Download, Eye, EyeOff, Loader2 } from "lucide-react"
+import { Download, Eye, EyeOff, Loader2, X } from "lucide-react"
 import { useMemo, useState } from "react"
+
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
+import { ModelSourceBadge } from "@/components/model-source-badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -26,6 +28,7 @@ export interface ChannelFormData {
   baseUrls: { url: string; delay: number }[]
   keys: { channelKey: string; remark: string }[]
   model: string[]
+  fetchedModel: string[]
   customModel: string
   paramOverride: string
 }
@@ -37,6 +40,7 @@ export const EMPTY_CHANNEL_FORM: ChannelFormData = {
   baseUrls: [{ url: "", delay: 0 }],
   keys: [{ channelKey: "", remark: "" }],
   model: [],
+  fetchedModel: [],
   customModel: "",
   paramOverride: "",
 }
@@ -46,13 +50,16 @@ export const EMPTY_CHANNEL_FORM: ChannelFormData = {
 function ModelTagInput({
   value,
   onChange,
+  fetchedModels,
 }: {
   value: string[]
   onChange: (value: string[]) => void
+  fetchedModels?: string[]
 }) {
   const { t } = useTranslation("model")
   const [input, setInput] = useState("")
   const tags = value ?? []
+  const fetchedSet = useMemo(() => new Set(fetchedModels ?? []), [fetchedModels])
 
   function addTags(raw: string) {
     const newTags = raw
@@ -107,7 +114,9 @@ function ModelTagInput({
           <GroupedModelList
             models={tags}
             renderModel={(tag) => (
-              <ModelCard key={tag} modelId={tag} onRemove={() => removeTag(tag)} />
+              <ModelCard key={tag} modelId={tag} onRemove={() => removeTag(tag)}>
+                <ModelSourceBadge modelId={tag} isApiFetched={fetchedSet.has(tag)} />
+              </ModelCard>
             )}
           />
         </div>
@@ -145,12 +154,17 @@ function FetchModelsButton({
         key,
       })
       const models = res.data.models
+      const isFallback = res.data.isFallback === true
       if (models.length === 0) {
         toast.info(t("channelDialog.fetchNoModels"))
         return
       }
-      setForm({ ...form, model: models })
-      toast.success(t("channelDialog.fetchSuccess", { count: models.length }))
+      setForm({ ...form, model: models, fetchedModel: isFallback ? [] : models })
+      if (isFallback) {
+        toast.info(t("channelDialog.fetchFallback", { count: models.length }))
+      } else {
+        toast.success(t("channelDialog.fetchSuccess", { count: models.length }))
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("channelDialog.fetchError"))
     } finally {
@@ -280,9 +294,25 @@ export default function ChannelDialog({
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <Label>{t("channelDialog.models")}</Label>
-              <FetchModelsButton form={form} setForm={setForm} />
+              <div className="flex items-center gap-1">
+                {form.model.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setForm({ ...form, model: [], fetchedModel: [] })}
+                  >
+                    <X className="mr-1 h-3 w-3" />
+                    {t("clearAll", { ns: "model" })}
+                  </Button>
+                )}
+                <FetchModelsButton form={form} setForm={setForm} />
+              </div>
             </div>
-            <ModelTagInput value={form.model} onChange={(model) => setForm({ ...form, model })} />
+            <ModelTagInput
+              value={form.model}
+              onChange={(model) => setForm({ ...form, model })}
+              fetchedModels={form.fetchedModel}
+            />
           </div>
 
           <div className="flex flex-col gap-2">

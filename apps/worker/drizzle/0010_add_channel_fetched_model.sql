@@ -1,0 +1,1 @@
+ALTER TABLE `channels` ADD `fetched_model` text DEFAULT '[]' NOT NULL;

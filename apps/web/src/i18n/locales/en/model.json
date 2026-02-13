@@ -89,7 +89,8 @@
     "fetchError": "Failed to fetch models",
     "fetchFillFirst": "Please fill in Base URL and API Key first",
     "fetchNoModels": "No models found from this provider",
-    "fetchSuccess": "Fetched {{count}} models"
+    "fetchSuccess": "Fetched {{count}} models",
+    "fetchFallback": "API unreachable, loaded {{count}} models from models.dev"
   },
 
   "groupDialog": {
@@ -114,7 +115,10 @@
     "searchPlaceholder": "Search models...",
     "allChannels": "All Channels",
     "noChannelsConfigured": "No channels have models configured",
-    "noModelsFound": "No models found"
+    "noModelsFound": "No models found",
+    "apiVerified": "Fetched from API",
+    "modelsdev": "Known on models.dev",
+    "manual": "manual"
   },
 
   "modelPicker": {
