@@ -30,7 +30,19 @@ type circuitEntry struct {
 var (
 	breakers   = make(map[string]*circuitEntry)
 	breakersMu sync.RWMutex
+
+	circuitObserver CircuitObserver
 )
+
+// CircuitObserver is called when circuit breaker state changes.
+type CircuitObserver interface {
+	SetCircuitBreakerState(ctx context.Context, channel string, delta int64)
+}
+
+// SetCircuitObserver sets the observer for circuit breaker state changes.
+func SetCircuitObserver(obs CircuitObserver) {
+	circuitObserver = obs
+}
 
 func circuitKey(channelID, keyID int, modelName string) string {
 	return fmt.Sprintf("%d:%d:%s", channelID, keyID, modelName)
@@ -142,9 +154,13 @@ func RecordSuccess(channelID, keyID int, modelName string) {
 	if !ok {
 		return
 	}
+	wasOpen := entry.state == CircuitOpen || entry.state == CircuitHalfOpen
 	entry.state = CircuitClosed
 	entry.consecutiveFailures = 0
 	entry.tripCount = 0
+	if wasOpen && circuitObserver != nil {
+		go circuitObserver.SetCircuitBreakerState(context.Background(), key, -1)
+	}
 }
 
 // RecordFailure records a failed request, potentially tripping the circuit breaker.
@@ -164,6 +180,9 @@ func RecordFailure(channelID, keyID int, modelName string, ctx context.Context, 
 		if entry.consecutiveFailures >= threshold {
 			entry.state = CircuitOpen
 			entry.tripCount++
+			if circuitObserver != nil {
+				go circuitObserver.SetCircuitBreakerState(context.Background(), key, 1)
+			}
 		}
 
 	case CircuitHalfOpen:

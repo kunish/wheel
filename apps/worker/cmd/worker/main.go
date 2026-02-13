@@ -22,6 +22,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/handler"
+	"github.com/kunish/wheel/apps/worker/internal/observe"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/seed"
 	"github.com/kunish/wheel/apps/worker/internal/ws"
@@ -95,6 +96,16 @@ func main() {
 	// ── Background Log Cleanup ──
 	db.StartLogCleanup(ctx, database, logDatabase)
 
+	// ── Observability ──
+	obs, err := observe.New(cfg.MetricsEnabled, cfg.OtelEnabled, cfg.OtelEndpoint, cfg.OtelServiceName)
+	if err != nil {
+		log.Fatalf("Failed to initialize observability: %v", err)
+	}
+	if obs != nil {
+		defer obs.Shutdown(context.Background())
+		relay.SetCircuitObserver(obs)
+	}
+
 	// ── Handlers ──
 	h := &handler.Handler{
 		DB:     database,
@@ -110,12 +121,18 @@ func main() {
 		Broadcast:     hub.Broadcast,
 		StreamTracker: hub,
 		LogWriter:     logWriter,
+		Observer:      obs,
 	}
 
 	// ── Router ──
 	r := gin.Default()
 	h.RegisterRoutes(r)
 	rh.RegisterRelayRoutes(r)
+
+	// Prometheus metrics endpoint
+	if metricsHandler := obs.MetricsHandler(); metricsHandler != nil {
+		r.GET("/metrics", gin.WrapH(metricsHandler))
+	}
 
 	// WebSocket endpoint
 	r.GET("/api/v1/ws", hub.HandleWS)

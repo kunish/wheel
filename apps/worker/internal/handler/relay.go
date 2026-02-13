@@ -14,6 +14,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
+	"github.com/kunish/wheel/apps/worker/internal/observe"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/types"
 	"github.com/uptrace/bun"
@@ -53,6 +54,7 @@ type RelayHandler struct {
 	Broadcast     BroadcastFunc
 	StreamTracker StreamTracker
 	LogWriter     *db.LogWriter
+	Observer      *observe.Observer
 }
 
 // RegisterRelayRoutes registers the /v1/* relay routes on a Gin engine.
@@ -197,6 +199,11 @@ func (h *RelayHandler) handleModels(c *gin.Context) {
 func (h *RelayHandler) handleRelay(c *gin.Context) {
 	startTime := time.Now()
 	path := c.Request.URL.Path
+
+	// Start relay span (no-op if tracing disabled)
+	ctx, relaySpan := h.Observer.StartRelaySpan(c.Request.Context(), "", "", 0)
+	defer relaySpan.End()
+	c.Request = c.Request.WithContext(ctx)
 
 	// Parse request type
 	requestType := relay.DetectRequestType(path)
@@ -360,12 +367,16 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					Msg:          msg,
 				})
 				lastError = msg
+				h.Observer.AddCircuitBreakerEvent(c.Request.Context(), channel.Name, channel.ID)
 				continue
 			}
 
 			attemptStart := time.Now()
 			attemptCount++
 			currentAttemptNum := attemptCount
+
+			// Start attempt span
+			attemptCtx, attemptSpan := h.Observer.StartAttemptSpan(c.Request.Context(), currentAttemptNum, channel.Name, channel.ID)
 
 			// Build upstream request
 			isAnthropicPassthrough := isAnthropicInbound && channel.Type == types.OutboundAnthropic
@@ -391,11 +402,14 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 				upstreamBodyForLog = &s
 			}
 
+			_ = attemptCtx // used for span context propagation
+
 			if stream {
 				// ── Streaming path ──
 				// We need to directly write to the response writer for SSE
 				streamId := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), channel.ID, apiKeyId)
 				lastStreamId = streamId
+				h.Observer.StreamStarted(c.Request.Context())
 
 				// Estimate input tokens from request body size
 				bodyJSON, _ := json.Marshal(body)
@@ -454,6 +468,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 				if proxyErr != nil {
 					keyId := selectedKey.ID
 					errMsg := proxyErr.Error()
+					attemptDuration := int(time.Since(attemptStart).Milliseconds())
 					attempts = append(attempts, attemptRecord{
 						ChannelID:    channel.ID,
 						ChannelKeyID: &keyId,
@@ -461,11 +476,13 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 						ModelName:    targetModel,
 						AttemptNum:   currentAttemptNum,
 						Status:       "failed",
-						Duration:     int(time.Since(attemptStart).Milliseconds()),
+						Duration:     attemptDuration,
 						Sticky:       stickyPtr,
 						Msg:          errMsg,
 					})
 					lastError = errMsg
+					h.Observer.EndAttemptSpan(attemptSpan, 0, attemptDuration, proxyErr)
+					h.Observer.RecordRetry(c.Request.Context(), channel.Name, targetModel)
 
 					// Record circuit breaker failure async
 					go relay.RecordFailure(channel.ID, selectedKey.ID, targetModel, context.Background(), h.DB)
@@ -484,11 +501,13 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					if h.StreamTracker != nil {
 						h.StreamTracker.UntrackStream(streamId)
 					}
+					h.Observer.StreamEnded(c.Request.Context())
 					continue
 				}
 
 				// Stream succeeded — record success
 				keyId := selectedKey.ID
+				attemptDuration := int(time.Since(attemptStart).Milliseconds())
 				attempts = append(attempts, attemptRecord{
 					ChannelID:    channel.ID,
 					ChannelKeyID: &keyId,
@@ -496,9 +515,10 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					ModelName:    targetModel,
 					AttemptNum:   currentAttemptNum,
 					Status:       "success",
-					Duration:     int(time.Since(attemptStart).Milliseconds()),
+					Duration:     attemptDuration,
 					Sticky:       stickyPtr,
 				})
+				h.Observer.EndAttemptSpan(attemptSpan, 200, attemptDuration, nil)
 
 				relay.RecordSuccess(channel.ID, selectedKey.ID, targetModel)
 				if sessionKeepTime > 0 {
@@ -515,6 +535,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					body, upstreamBodyForLog, streamInfo, attempts, startTime,
 					streamId,
 				)
+				h.Observer.StreamEnded(c.Request.Context())
 				return // Response already written by ProxyStreaming
 
 			} else {
@@ -530,6 +551,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 				if proxyErr != nil {
 					keyId := selectedKey.ID
 					errMsg := proxyErr.Error()
+					attemptDuration := int(time.Since(attemptStart).Milliseconds())
 					attempts = append(attempts, attemptRecord{
 						ChannelID:    channel.ID,
 						ChannelKeyID: &keyId,
@@ -537,11 +559,13 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 						ModelName:    targetModel,
 						AttemptNum:   currentAttemptNum,
 						Status:       "failed",
-						Duration:     int(time.Since(attemptStart).Milliseconds()),
+						Duration:     attemptDuration,
 						Sticky:       stickyPtr,
 						Msg:          errMsg,
 					})
 					lastError = errMsg
+					h.Observer.EndAttemptSpan(attemptSpan, 0, attemptDuration, proxyErr)
+					h.Observer.RecordRetry(c.Request.Context(), channel.Name, targetModel)
 
 					go relay.RecordFailure(channel.ID, selectedKey.ID, targetModel, context.Background(), h.DB)
 
@@ -558,6 +582,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 
 				// Non-stream succeeded
 				keyId := selectedKey.ID
+				attemptDuration := int(time.Since(attemptStart).Milliseconds())
 				attempts = append(attempts, attemptRecord{
 					ChannelID:    channel.ID,
 					ChannelKeyID: &keyId,
@@ -565,9 +590,10 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					ModelName:    targetModel,
 					AttemptNum:   currentAttemptNum,
 					Status:       "success",
-					Duration:     int(time.Since(attemptStart).Milliseconds()),
+					Duration:     attemptDuration,
 					Sticky:       stickyPtr,
 				})
+				h.Observer.EndAttemptSpan(attemptSpan, 200, attemptDuration, nil)
 
 				relay.RecordSuccess(channel.ID, selectedKey.ID, targetModel)
 				if sessionKeepTime > 0 {
@@ -631,6 +657,15 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 			h.StreamTracker.UntrackStream(lastStreamId)
 		}
 	}
+
+	// Record exhaustion metrics
+	obsErrType := "exhausted"
+	if rateLimited {
+		obsErrType = "rate_limited"
+	}
+	h.Observer.RecordRequest(c.Request.Context(), lastAttemptChannelName, model, "", exhaustedStatus)
+	h.Observer.RecordError(c.Request.Context(), lastAttemptChannelName, model, obsErrType)
+	h.Observer.RecordDuration(c.Request.Context(), lastAttemptChannelName, model, time.Since(startTime))
 
 	// Async error log
 	go h.asyncErrorLog(
@@ -717,6 +752,19 @@ func (h *RelayHandler) asyncStreamLog(
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
 	}, costInfo, streamId)
+
+	// Record observability metrics
+	ctx := context.Background()
+	h.Observer.RecordRequest(ctx, channel.Name, targetModel, "", 200)
+	h.Observer.RecordDuration(ctx, channel.Name, targetModel, time.Since(startTime))
+	h.Observer.RecordTokens(ctx, channel.Name, targetModel, "input", streamInfo.InputTokens)
+	h.Observer.RecordTokens(ctx, channel.Name, targetModel, "output", streamInfo.OutputTokens)
+	if cost > 0 {
+		h.Observer.RecordCost(ctx, channel.Name, targetModel, cost)
+	}
+	if streamInfo.FirstTokenTime > 0 {
+		h.Observer.RecordTTFB(ctx, channel.Name, targetModel, streamInfo.FirstTokenTime)
+	}
 }
 
 func (h *RelayHandler) asyncNonStreamLog(
@@ -771,6 +819,16 @@ func (h *RelayHandler) asyncNonStreamLog(
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
 	}, costInfo, "")
+
+	// Record observability metrics
+	ctx := context.Background()
+	h.Observer.RecordRequest(ctx, channel.Name, targetModel, "", 200)
+	h.Observer.RecordDuration(ctx, channel.Name, targetModel, time.Since(startTime))
+	h.Observer.RecordTokens(ctx, channel.Name, targetModel, "input", result.InputTokens)
+	h.Observer.RecordTokens(ctx, channel.Name, targetModel, "output", result.OutputTokens)
+	if cost > 0 {
+		h.Observer.RecordCost(ctx, channel.Name, targetModel, cost)
+	}
 }
 
 func (h *RelayHandler) asyncErrorLog(
