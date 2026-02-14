@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -74,42 +73,34 @@ func (h *Handler) CreateGroup(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/group/update [post]
 func (h *Handler) UpdateGroup(c *gin.Context) {
-	var body map[string]interface{}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	var req types.GroupUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		errorJSON(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	idFloat, ok := body["id"].(float64)
-	if !ok {
+	if req.ID == 0 {
 		errorJSON(c, http.StatusBadRequest, "id is required")
 		return
 	}
-	id := int(idFloat)
 
 	data := make(map[string]interface{})
-	if v, ok := body["name"]; ok {
-		data["name"] = v
+	if req.Name != nil {
+		data["name"] = *req.Name
 	}
-	if v, ok := body["mode"]; ok {
-		data["mode"] = v
+	if req.Mode != nil {
+		data["mode"] = *req.Mode
 	}
-	if v, ok := body["firstTokenTimeOut"]; ok {
-		data["first_token_time_out"] = v
+	if req.FirstTokenTimeOut != nil {
+		data["first_token_time_out"] = *req.FirstTokenTimeOut
 	}
-	if v, ok := body["sessionKeepTime"]; ok {
-		data["session_keep_time"] = v
-	}
-
-	var items []types.GroupItemInput
-	replaceItems := false
-	if itemsRaw, ok := body["items"]; ok {
-		itemsJSON, _ := json.Marshal(itemsRaw)
-		json.Unmarshal(itemsJSON, &items)
-		replaceItems = true
+	if req.SessionKeepTime != nil {
+		data["session_keep_time"] = *req.SessionKeepTime
 	}
 
-	if err := dal.UpdateGroup(c.Request.Context(), h.DB, id, data, items, replaceItems); err != nil {
+	replaceItems := req.Items != nil
+
+	if err := dal.UpdateGroup(c.Request.Context(), h.DB, req.ID, data, req.Items, replaceItems); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
