@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/kunish/wheel/compare/v1.6.0...v1.6.1) (2026-02-14)
+
+
+### Bug Fixes
+
+* add missing canonical provider prefixes for model matching ([#21](https://github.com/kunish/wheel/issues/21)) ([46e7c56](https://github.com/kunish/wheel/commit/46e7c56231cd7a20184ab825b118cd1d8f87348c))
+
 ## [1.6.0](https://github.com/kunish/wheel/compare/v1.5.3...v1.6.0) (2026-02-14)
 
 
