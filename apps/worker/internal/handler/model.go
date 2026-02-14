@@ -210,7 +210,10 @@ var canonicalProviders = map[string]string{
 	"deepseek-": "deepseek",
 	"grok-":     "xai",
 	"qwen-":     "alibaba",
+	"qwen3-":    "alibaba",
 	"glm-":      "zhipuai",
+	"minimax-":  "minimax",
+	"kimi-":     "moonshotai",
 }
 
 type modelMeta struct {
