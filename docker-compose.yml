@@ -1,5 +1,7 @@
 volumes:
   worker-data:
+  prometheus-data:
+  grafana-data:
 
 services:
   worker:
@@ -16,6 +18,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       DATA_PATH: /app/data
+      METRICS_ENABLED: "true"
     ports:
       - 8787:8787
     volumes:
@@ -34,3 +37,29 @@ services:
       - 3000:3000
     depends_on:
       - worker
+
+  prometheus:
+    image: prom/prometheus
+    restart: always
+    ports:
+      - 9090:9090
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    depends_on:
+      - worker
+
+  grafana:
+    image: grafana/grafana
+    restart: always
+    ports:
+      - 3001:3000
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
