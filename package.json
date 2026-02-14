@@ -2,7 +2,7 @@
   "name": "wheel",
   "version": "1.5.3",
   "private": true,
-  "packageManager": "pnpm@10.29.2",
+  "packageManager": "pnpm@10.29.3",
   "scripts": {
     "dev": "npx concurrently \"pnpm --filter @wheel/web run dev\" \"cd apps/worker && make dev\"",
     "dev:web": "pnpm --filter @wheel/web run dev",
@@ -19,7 +19,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^7.4.2",
+    "@antfu/eslint-config": "^7.4.3",
     "@commitlint/cli": "^20.4.1",
     "@commitlint/config-conventional": "^20.4.1",
     "@eslint-react/eslint-plugin": "^2.12.4",
