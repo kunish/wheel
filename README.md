@@ -11,7 +11,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel&env=VITE_API_BASE_URL&envDescription=Worker%20API%20Base%20URL&envLink=https%3A%2F%2Fgithub.com%2Fkunish%2Fwheel%23environment-variables&project-name=wheel)
 
 </div>
 
@@ -109,10 +108,6 @@ docker compose up -d
 
 需要反向代理（Caddy / Nginx）将 `/api/*` 和 `/v1/*` 转发到 worker:8787，其余转发到 web:3000。
 
-### Vercel + Docker
-
-Worker 用 Docker 自部署，Web 点击上方 Vercel 按钮部署，填入 Worker 公网地址作为 `VITE_API_BASE_URL`。
-
 ### 手动构建
 
 ```bash
@@ -128,14 +123,14 @@ pnpm install && pnpm --filter @wheel/web build
 
 ## Environment Variables
 
-| 变量                | 组件   | 描述                                 | 默认值   |
-| ------------------- | ------ | ------------------------------------ | -------- |
-| `JWT_SECRET`        | Worker | JWT 签名密钥（必填）                 | —        |
-| `ADMIN_USERNAME`    | Worker | 管理员用户名                         | `admin`  |
-| `ADMIN_PASSWORD`    | Worker | 管理员密码                           | `admin`  |
-| `DATA_PATH`         | Worker | 数据目录路径                         | `./data` |
-| `PORT`              | Worker | HTTP 端口                            | `8787`   |
-| `VITE_API_BASE_URL` | Web    | Worker API 地址（Vercel 部署时必填） | —        |
+| 变量                | 组件   | 描述                              | 默认值   |
+| ------------------- | ------ | --------------------------------- | -------- |
+| `JWT_SECRET`        | Worker | JWT 签名密钥（必填）              | —        |
+| `ADMIN_USERNAME`    | Worker | 管理员用户名                      | `admin`  |
+| `ADMIN_PASSWORD`    | Worker | 管理员密码                        | `admin`  |
+| `DATA_PATH`         | Worker | 数据目录路径                      | `./data` |
+| `PORT`              | Worker | HTTP 端口                         | `8787`   |
+| `VITE_API_BASE_URL` | Web    | Worker API 地址（独立部署时必填） | —        |
 
 ---
 
