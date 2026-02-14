@@ -109,11 +109,79 @@ const LazyJsonView = lazy(() =>
 )
 
 const LazyMarkdown = lazy(() =>
-  Promise.all([import("react-markdown"), import("remark-gfm")]).then(([md, gfm]) => {
+  Promise.all([
+    import("react-markdown"),
+    import("remark-gfm"),
+    import("rehype-highlight"),
+    import("highlight.js/lib/common"),
+    import("mermaid"),
+  ]).then(([md, gfm, rehypeHL, _hljs, mermaidMod]) => {
     const ReactMarkdown = md.default
     const remarkGfm = gfm.default
+    const rehypeHighlight = rehypeHL.default
+    const mermaid = mermaidMod.default
+    mermaid.initialize({ startOnLoad: false, theme: "default" })
+
+    let mermaidCounter = 0
+
+    function MermaidBlock({ children }: { children: string }) {
+      const containerRef = React.useRef<HTMLDivElement>(null)
+      const idRef = React.useRef(`mermaid-${++mermaidCounter}`)
+
+      React.useEffect(() => {
+        const el = containerRef.current
+        if (!el) return
+        const id = idRef.current
+        const isDark = document.documentElement.classList.contains("dark")
+        mermaid.initialize({ startOnLoad: false, theme: isDark ? "dark" : "default" })
+        mermaid
+          .render(id, children.trim())
+          .then(({ svg }) => {
+            const parser = new DOMParser()
+            const doc = parser.parseFromString(svg, "image/svg+xml")
+            const svgEl = doc.documentElement
+            el.replaceChildren(svgEl)
+          })
+          .catch(() => {
+            el.textContent = children
+          })
+      }, [children])
+
+      return <div ref={containerRef} className="my-2 flex justify-center" />
+    }
+
     function LazyMarkdownInner({ children }: { children: string }) {
-      return <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      return (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight]}
+          components={{
+            code({ className, children: codeChildren, ...props }) {
+              const match = /language-mermaid/.test(className || "")
+              const text = String(codeChildren).replace(/\n$/, "")
+              if (match) {
+                return <MermaidBlock>{text}</MermaidBlock>
+              }
+              return (
+                <code className={className} {...props}>
+                  {codeChildren}
+                </code>
+              )
+            },
+            pre({ children: preChildren }) {
+              const child = React.Children.only(preChildren) as React.ReactElement<{
+                className?: string
+              }>
+              if (child?.props?.className?.includes("language-mermaid")) {
+                return <>{preChildren}</>
+              }
+              return <pre>{preChildren}</pre>
+            },
+          }}
+        >
+          {children}
+        </ReactMarkdown>
+      )
     }
     LazyMarkdownInner.displayName = "LazyMarkdown"
     return { default: LazyMarkdownInner }
@@ -900,13 +968,30 @@ export default function LogsPage() {
                   variant="outline"
                   size="icon"
                   className="h-7 w-7"
-                  disabled={
-                    detailId == null ||
-                    visibleRows.findIndex((r) => r.original.id === detailId) <= 0
-                  }
+                  disabled={(() => {
+                    const idx = visibleRows.findIndex((r) => {
+                      const log = r.original
+                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
+                      return log.id === detailId
+                    })
+                    return idx <= 0
+                  })()}
                   onClick={() => {
-                    const idx = visibleRows.findIndex((r) => r.original.id === detailId)
-                    if (idx > 0) setDetailId(visibleRows[idx - 1].original.id)
+                    const idx = visibleRows.findIndex((r) => {
+                      const log = r.original
+                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
+                      return log.id === detailId
+                    })
+                    if (idx > 0) {
+                      const prev = visibleRows[idx - 1].original
+                      if (prev._streaming && prev._streamId) {
+                        setDetailId(null)
+                        setDetailStreamId(prev._streamId)
+                      } else {
+                        setDetailStreamId(null)
+                        setDetailId(prev.id)
+                      }
+                    }
                   }}
                 >
                   <ChevronUp className="h-4 w-4" />
@@ -915,15 +1000,30 @@ export default function LogsPage() {
                   variant="outline"
                   size="icon"
                   className="h-7 w-7"
-                  disabled={
-                    detailId == null ||
-                    visibleRows.findIndex((r) => r.original.id === detailId) >=
-                      visibleRows.length - 1
-                  }
+                  disabled={(() => {
+                    const idx = visibleRows.findIndex((r) => {
+                      const log = r.original
+                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
+                      return log.id === detailId
+                    })
+                    return idx < 0 || idx >= visibleRows.length - 1
+                  })()}
                   onClick={() => {
-                    const idx = visibleRows.findIndex((r) => r.original.id === detailId)
-                    if (idx >= 0 && idx < visibleRows.length - 1)
-                      setDetailId(visibleRows[idx + 1].original.id)
+                    const idx = visibleRows.findIndex((r) => {
+                      const log = r.original
+                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
+                      return log.id === detailId
+                    })
+                    if (idx >= 0 && idx < visibleRows.length - 1) {
+                      const next = visibleRows[idx + 1].original
+                      if (next._streaming && next._streamId) {
+                        setDetailId(null)
+                        setDetailStreamId(next._streamId)
+                      } else {
+                        setDetailStreamId(null)
+                        setDetailId(next.id)
+                      }
+                    }
                   }}
                 >
                   <ChevronDown className="h-4 w-4" />
@@ -1834,6 +1934,9 @@ function ResponseChoiceBlock({
   const { text } = getMessageTextContent(choice.assistantContent)
   const [thinkingOpen, setThinkingOpen] = useState(false)
 
+  const isThinkingPhase = isStreaming && !!choice.thinkingContent && !text
+  const showThinking = thinkingOpen || isThinkingPhase
+
   return (
     <div className="border-l-nb-lime bg-nb-lime/15 dark:bg-nb-lime/10 rounded-md border-2 border-l-4">
       <div className="flex items-center gap-2 px-3 py-2">
@@ -1877,13 +1980,16 @@ function ResponseChoiceBlock({
               })}
             </span>
             <ChevronDown
-              className={`text-muted-foreground ml-auto h-3 w-3 transition-transform ${thinkingOpen ? "rotate-180" : ""}`}
+              className={`text-muted-foreground ml-auto h-3 w-3 transition-transform ${showThinking ? "rotate-180" : ""}`}
             />
           </button>
-          {thinkingOpen && (
+          {showThinking && (
             <div className="border-border/50 border-t px-3 py-2">
               <pre className="text-muted-foreground max-h-64 overflow-auto text-[11px] leading-relaxed whitespace-pre-wrap">
                 {choice.thinkingContent}
+                {isThinkingPhase && (
+                  <span className="bg-muted-foreground ml-0.5 inline-block h-[1em] w-[2px] animate-pulse align-text-bottom" />
+                )}
               </pre>
             </div>
           )}
@@ -1902,6 +2008,9 @@ function ResponseChoiceBlock({
             >
               <LazyMarkdown>{text}</LazyMarkdown>
             </Suspense>
+            {isStreaming && (
+              <span className="bg-foreground ml-0.5 inline-block h-[1em] w-[2px] animate-pulse align-text-bottom" />
+            )}
           </div>
         </div>
       )}

@@ -1,7 +1,43 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "highlight.js/styles/github.css";
 @plugin "@tailwindcss/typography";
+
+.dark pre code.hljs {
+  background: transparent;
+  color: #adbac7;
+}
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal,
+.dark .hljs-section,
+.dark .hljs-link {
+  color: #f47067;
+}
+.dark .hljs-string,
+.dark .hljs-attr {
+  color: #96d0ff;
+}
+.dark .hljs-title,
+.dark .hljs-name,
+.dark .hljs-type,
+.dark .hljs-built_in {
+  color: #dcbdfb;
+}
+.dark .hljs-comment,
+.dark .hljs-meta {
+  color: #768390;
+}
+.dark .hljs-number {
+  color: #6cb6ff;
+}
+.dark .hljs-addition {
+  color: #57ab5a;
+}
+.dark .hljs-deletion {
+  color: #f47067;
+}
 
 @custom-variant dark (&:is(.dark *));
 
