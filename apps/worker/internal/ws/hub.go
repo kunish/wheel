@@ -5,26 +5,40 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+)
+
+const (
+	// Per-client outbound message buffer size.
+	clientSendBuf = 64
+	// Write deadline for WebSocket writes.
+	writeWait = 5 * time.Second
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// wsClient wraps a WebSocket connection with a write mutex to prevent
-// concurrent writes, which gorilla/websocket does not support.
+// wsClient wraps a WebSocket connection with a buffered send channel.
+// A dedicated goroutine drains the channel and writes to the connection.
 type wsClient struct {
 	conn *websocket.Conn
-	mu   sync.Mutex
+	send chan []byte
 }
 
-func (c *wsClient) writeMessage(msgType int, data []byte) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.conn.WriteMessage(msgType, data)
+// writePump drains the send channel and writes messages to the WebSocket.
+// It exits when the send channel is closed, closing the connection on the way out.
+func (c *wsClient) writePump() {
+	defer c.conn.Close()
+	for msg := range c.send {
+		c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			return
+		}
+	}
 }
 
 // Hub manages WebSocket clients and broadcasts events.
@@ -52,14 +66,20 @@ func (h *Hub) HandleWS(c *gin.Context) {
 		return
 	}
 
-	client := &wsClient{conn: conn}
+	client := &wsClient{
+		conn: conn,
+		send: make(chan []byte, clientSendBuf),
+	}
 
 	// Send current active streams snapshot to the new client
 	h.streamMu.RLock()
 	for _, payload := range h.activeStreams {
 		msg := map[string]any{"event": "log-stream-start", "data": payload}
 		if data, err := json.Marshal(msg); err == nil {
-			client.writeMessage(websocket.TextMessage, data)
+			select {
+			case client.send <- data:
+			default:
+			}
 		}
 	}
 	h.streamMu.RUnlock()
@@ -68,13 +88,16 @@ func (h *Hub) HandleWS(c *gin.Context) {
 	h.clients[client] = struct{}{}
 	h.mu.Unlock()
 
+	// Start write pump
+	go client.writePump()
+
 	// Read loop — keep connection alive and detect disconnects.
 	go func() {
 		defer func() {
 			h.mu.Lock()
 			delete(h.clients, client)
 			h.mu.Unlock()
-			conn.Close()
+			close(client.send) // stops writePump → closes conn
 		}()
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
@@ -99,7 +122,7 @@ func (h *Hub) UntrackStream(streamId string) {
 }
 
 // Broadcast sends a JSON event to all connected WebSocket clients.
-// Matches the BroadcastFunc signature: func(event string, data ...any)
+// Non-blocking: messages are dropped for clients whose buffer is full.
 func (h *Hub) Broadcast(event string, data ...any) {
 	msg := map[string]any{"event": event}
 	if len(data) > 0 {
@@ -116,9 +139,10 @@ func (h *Hub) Broadcast(event string, data ...any) {
 	defer h.mu.RUnlock()
 
 	for client := range h.clients {
-		if err := client.writeMessage(websocket.TextMessage, payload); err != nil {
-			log.Printf("[ws] write error: %v", err)
-			// Close will be handled by the read loop detecting the broken connection
+		select {
+		case client.send <- payload:
+		default:
+			// Client buffer full — drop message to avoid blocking the caller.
 		}
 	}
 }

@@ -529,7 +529,7 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 					go dal.UpdateChannelKeyStatus(context.Background(), h.DB, selectedKey.ID, 0)
 				}
 
-				// Async logging
+				// Async logging (log-created event will remove the pending stream entry on the frontend)
 				go h.asyncStreamLog(
 					model, targetModel, channel, selectedKey, apiKeyId,
 					body, upstreamBodyForLog, streamInfo, attempts, startTime,

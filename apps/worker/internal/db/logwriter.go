@@ -55,7 +55,7 @@ func NewLogWriter(logDB, mainDB *bun.DB, broadcast BroadcastFunc, streamTracker 
 	return &LogWriter{
 		ch:            make(chan logEntry, 1000),
 		countThresh:   50,
-		timeThresh:    2 * time.Second,
+		timeThresh:    200 * time.Millisecond,
 		logDB:         logDB,
 		mainDB:        mainDB,
 		broadcast:     broadcast,
@@ -87,14 +87,13 @@ func (w *LogWriter) DroppedCount() int64 {
 // It blocks until ctx is cancelled or the channel is closed.
 func (w *LogWriter) Run(ctx context.Context) {
 	buf := make([]logEntry, 0, w.countThresh)
-	timer := time.NewTimer(w.timeThresh)
-	defer timer.Stop()
+	var timer *time.Timer
+	var timerC <-chan time.Time
 
 	for {
 		select {
 		case entry, ok := <-w.ch:
 			if !ok {
-				// Channel closed — flush remaining
 				if len(buf) > 0 {
 					w.flush(buf)
 				}
@@ -104,18 +103,29 @@ func (w *LogWriter) Run(ctx context.Context) {
 			if len(buf) >= w.countThresh {
 				w.flush(buf)
 				buf = buf[:0]
-				timer.Reset(w.timeThresh)
+				if timer != nil {
+					timer.Stop()
+					timer = nil
+					timerC = nil
+				}
+			} else if timer == nil {
+				// First entry after idle — start flush timer
+				timer = time.NewTimer(w.timeThresh)
+				timerC = timer.C
 			}
 
-		case <-timer.C:
+		case <-timerC:
 			if len(buf) > 0 {
 				w.flush(buf)
 				buf = buf[:0]
 			}
-			timer.Reset(w.timeThresh)
+			timer = nil
+			timerC = nil
 
 		case <-ctx.Done():
-			// Drain remaining items from channel
+			if timer != nil {
+				timer.Stop()
+			}
 			close(w.ch)
 			for entry := range w.ch {
 				buf = append(buf, entry)

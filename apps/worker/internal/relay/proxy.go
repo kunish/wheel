@@ -392,18 +392,20 @@ func processAnthropicPassthrough(line string, state *streamingState, markFirstTo
 		return
 	}
 
+	evType, _ := ev["type"].(string)
+
 	if !state.firstTokenReceived {
-		evType, _ := ev["type"].(string)
 		if evType == "message_start" || evType == "content_block_start" || evType == "content_block_delta" {
 			markFirstToken()
 		}
 	}
 
-	evType, _ := ev["type"].(string)
-
 	if evType == "message_start" {
 		if msg, ok := ev["message"].(map[string]any); ok {
 			if usage, ok := msg["usage"].(map[string]any); ok {
+				if inTok := toInt(usage["input_tokens"]); inTok > 0 {
+					state.inputTokens = inTok
+				}
 				state.cacheReadTokens = toInt(usage["cache_read_input_tokens"])
 				state.cacheCreationTokens = toInt(usage["cache_creation_input_tokens"])
 			}
@@ -414,13 +416,11 @@ func processAnthropicPassthrough(line string, state *streamingState, markFirstTo
 		if usage, ok := ev["usage"].(map[string]any); ok {
 			inTok := toInt(usage["input_tokens"])
 			outTok := toInt(usage["output_tokens"])
-			if inTok > 0 || outTok > 0 {
-				if inTok > 0 {
-					state.inputTokens = inTok
-				}
-				if outTok > 0 {
-					state.outputTokens = outTok
-				}
+			if inTok > 0 {
+				state.inputTokens = inTok
+			}
+			if outTok > 0 {
+				state.outputTokens = outTok
 			}
 		}
 	}
@@ -473,11 +473,14 @@ func processAnthropicConverted(
 		state.cacheCreationTokens = chunk.cacheCreationTokens
 	}
 
+	if chunk.inputTokens > 0 {
+		state.inputTokens = chunk.inputTokens
+	}
+	if chunk.outputTokens > 0 {
+		state.outputTokens = chunk.outputTokens
+	}
+
 	if chunk.done {
-		if chunk.inputTokens > 0 || chunk.outputTokens > 0 {
-			state.inputTokens = chunk.inputTokens
-			state.outputTokens = chunk.outputTokens
-		}
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	} else if chunk.data != nil {
@@ -592,6 +595,8 @@ func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
 			},
 		}
 		if extra != nil {
+			result.inputTokens = extra.inputTokens
+			result.outputTokens = extra.outputTokens
 			result.cacheReadTokens = extra.cacheReadTokens
 			result.cacheCreationTokens = extra.cacheCreationTokens
 		}
@@ -617,11 +622,12 @@ func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
 					msgModel = model
 				}
 			}
-			var cr, cc int
+			var cr, cc, inTok int
 			if msg != nil {
 				if usage, ok := msg["usage"].(map[string]any); ok {
 					cr = toInt(usage["cache_read_input_tokens"])
 					cc = toInt(usage["cache_creation_input_tokens"])
+					inTok = toInt(usage["input_tokens"])
 				}
 			}
 			return makeChunk(
@@ -630,7 +636,7 @@ func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
 					"delta":         map[string]any{"role": "assistant", "content": ""},
 					"finish_reason": nil,
 				}},
-				&anthropicSSEResult{cacheReadTokens: cr, cacheCreationTokens: cc},
+				&anthropicSSEResult{cacheReadTokens: cr, cacheCreationTokens: cc, inputTokens: inTok},
 			)
 
 		case "content_block_start":
