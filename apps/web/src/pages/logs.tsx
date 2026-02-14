@@ -34,7 +34,6 @@ import {
   Wrench,
   X,
 } from "lucide-react"
-import { useTheme } from "next-themes"
 import * as React from "react"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -42,6 +41,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
 import { ModelCombobox } from "@/components/model-combobox"
+import { useTheme } from "@/components/theme-provider"
 import { formatRangeSummary, TimeRangePicker } from "@/components/time-range-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

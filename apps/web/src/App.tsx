@@ -16,7 +16,7 @@ function LoadingFallback() {
 
 export function App() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider defaultTheme="system" disableTransitionOnChange>
       <QueryProvider>
         <Suspense fallback={<LoadingFallback />}>
           <AppRouter />

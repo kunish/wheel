@@ -11,10 +11,10 @@ import {
   Sun,
 } from "lucide-react"
 import { motion } from "motion/react"
-import { useTheme } from "next-themes"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation } from "react-router"
+import { useTheme } from "@/components/theme-provider"
 import {
   AlertDialog,
   AlertDialogAction,
