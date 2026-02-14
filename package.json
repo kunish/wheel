@@ -1,6 +1,6 @@
 {
   "name": "wheel",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "private": true,
   "packageManager": "pnpm@10.29.3",
   "scripts": {
