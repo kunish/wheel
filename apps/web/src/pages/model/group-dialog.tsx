@@ -148,6 +148,16 @@ function SortableDialogItem({
 
 // ─── Group Dialog ──────────────────────────────
 
+interface GroupDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  form: GroupFormData
+  setForm: (f: GroupFormData) => void
+  channelOptions: { id: number; name: string; model: string[]; fetchedModel: string[] }[]
+  onSave: () => void
+  isPending: boolean
+}
+
 export default function GroupDialog({
   open,
   onOpenChange,
@@ -156,15 +166,7 @@ export default function GroupDialog({
   channelOptions,
   onSave,
   isPending,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  form: GroupFormData
-  setForm: (f: GroupFormData) => void
-  channelOptions: { id: number; name: string; model: string[]; fetchedModel: string[] }[]
-  onSave: () => void
-  isPending: boolean
-}) {
+}: GroupDialogProps) {
   const { t } = useTranslation("model")
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   // null = closed, -1 = adding new item, >= 0 = editing item at index

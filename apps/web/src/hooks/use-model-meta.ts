@@ -1,6 +1,6 @@
-import type { ModelMeta } from "@/lib/api"
+import type { ModelMeta } from "@/lib/api-client"
 import { useQuery } from "@tanstack/react-query"
-import { getModelMetadata } from "@/lib/api"
+import { getModelMetadata } from "@/lib/api-client"
 
 export function useModelMetadataQuery() {
   return useQuery({

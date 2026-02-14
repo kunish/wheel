@@ -1,4 +1,4 @@
-import type { StatsDaily, StatsHourly } from "@/lib/api"
+import type { StatsDaily, StatsHourly } from "@/lib/api-client"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
@@ -16,13 +16,12 @@ import { formatCount, formatMoney } from "@/lib/format"
 
 const PERIODS = ["1", "7", "30"] as const
 
-export default function ChartSection({
-  dailyData,
-  hourlyData,
-}: {
+export interface ChartSectionProps {
   dailyData?: StatsDaily[]
   hourlyData?: StatsHourly[]
-}) {
+}
+
+export function ChartSection({ dailyData, hourlyData }: ChartSectionProps) {
   const { t } = useTranslation("dashboard")
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1")
 

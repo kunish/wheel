@@ -8,6 +8,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/middleware"
+	"github.com/kunish/wheel/apps/worker/internal/types"
 	"github.com/uptrace/bun"
 )
 
@@ -21,7 +22,7 @@ type Handler struct {
 
 // JSON helpers
 
-func successJSON(c *gin.Context, data interface{}) {
+func successJSON(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
@@ -35,23 +36,18 @@ func errorJSON(c *gin.Context, status int, msg string) {
 
 // ──── User Routes ────
 
-type loginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 // Login godoc
 // @Summary Admin login
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param body body loginRequest true "Login credentials"
+// @Param body body types.LoginRequest true "Login credentials"
 // @Success 200 {object} object "{success: true, data: {token, expireAt}}"
 // @Failure 400 {object} object "{success: false, error: string}"
 // @Failure 401 {object} object "{success: false, error: string}"
 // @Router /api/v1/user/login [post]
 func (h *Handler) Login(c *gin.Context) {
-	var req loginRequest
+	var req types.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errorJSON(c, http.StatusBadRequest, "Invalid request body")
 		return

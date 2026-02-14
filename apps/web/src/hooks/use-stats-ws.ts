@@ -5,23 +5,31 @@ import { useAuthStore } from "@/lib/store/auth"
 const WS_RECONNECT_INTERVAL = 3000
 
 function getWsUrl() {
-  const apiBaseUrl = useAuthStore.getState().apiBaseUrl
+  const { token, apiBaseUrl } = useAuthStore.getState()
+  let base: string
   if (apiBaseUrl) {
     const url = new URL(apiBaseUrl)
     const proto = url.protocol === "https:" ? "wss:" : "ws:"
-    return `${proto}//${url.host}/api/v1/ws`
+    base = `${proto}//${url.host}/api/v1/ws`
+  } else {
+    const wsBase = import.meta.env.VITE_API_BASE_URL
+    if (wsBase) {
+      const url = new URL(wsBase)
+      const proto = url.protocol === "https:" ? "wss:" : "ws:"
+      base = `${proto}//${url.host}/api/v1/ws`
+    } else {
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+      if (import.meta.env.DEV) {
+        base = `${proto}//${window.location.hostname}:8787/api/v1/ws`
+      } else {
+        base = `${proto}//${window.location.host}/api/v1/ws`
+      }
+    }
   }
-  const wsBase = import.meta.env.VITE_API_BASE_URL
-  if (wsBase) {
-    const url = new URL(wsBase)
-    const proto = url.protocol === "https:" ? "wss:" : "ws:"
-    return `${proto}//${url.host}/api/v1/ws`
+  if (token) {
+    base += `?token=${encodeURIComponent(token)}`
   }
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-  if (import.meta.env.DEV) {
-    return `${proto}//${window.location.hostname}:8787/api/v1/ws`
-  }
-  return `${proto}//${window.location.host}/api/v1/ws`
+  return base
 }
 
 // ── Global singleton WS with pub/sub ──

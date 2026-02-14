@@ -487,10 +487,17 @@ func mapOpenAIFinishReason(reason string) string {
 }
 
 func copyBody(body map[string]any) map[string]any {
-	out := make(map[string]any, len(body))
-	for k, v := range body {
-		out[k] = v
+	data, err := json.Marshal(body)
+	if err != nil {
+		// Fallback to shallow copy if marshal fails
+		out := make(map[string]any, len(body))
+		for k, v := range body {
+			out[k] = v
+		}
+		return out
 	}
+	var out map[string]any
+	json.Unmarshal(data, &out)
 	return out
 }
 

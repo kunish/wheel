@@ -41,7 +41,7 @@ import {
   deleteApiKey,
   listApiKeys,
   updateApiKey,
-} from "@/lib/api"
+} from "@/lib/api-client"
 
 // ───────────── Lazy-loaded sections ─────────────
 

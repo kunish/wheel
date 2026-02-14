@@ -1,33 +1,19 @@
-import type { ExpandedState, GroupingState, SortingState } from "@tanstack/react-table"
-import type { LogEntry } from "./logs/columns"
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  flexRender,
-  getCoreRowModel,
-  getExpandedRowModel,
-  getGroupedRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table"
+import type { LogEntry } from "./columns"
+import type { LogDetail, StreamingOverlay } from "./types"
 import {
   AlertCircle,
-  ArrowUp,
   Bot,
   Braces,
   Brain,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Code2,
   Copy,
-  FileText,
   Image,
   Loader2,
   MessageSquare,
   Play,
-  RefreshCw,
   Search,
   Settings2,
   User,
@@ -35,53 +21,25 @@ import {
   X,
 } from "lucide-react"
 import * as React from "react"
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
+import { Link } from "react-router"
 import { toast } from "sonner"
 import { ModelBadge } from "@/components/model-badge"
-import { ModelCombobox } from "@/components/model-combobox"
 import { useTheme } from "@/components/theme-provider"
-import { formatRangeSummary, TimeRangePicker } from "@/components/time-range-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { TooltipProvider } from "@/components/ui/tooltip"
 import { useModelMeta } from "@/hooks/use-model-meta"
-import { useWsEvent } from "@/hooks/use-stats-ws"
-import {
-  listChannels as apiListChannels,
-  getLog,
-  getModelList,
-  listLogs,
-  replayLog,
-} from "@/lib/api"
-import { createLogColumns, formatCost, formatDuration } from "./logs/columns"
-import { buildFilterSearchParams, countMatches, parseLogFilters } from "./logs/log-filters"
+import { formatCost, formatDuration } from "./columns"
+import { countMatches } from "./log-filters"
+import { useLogReplay } from "./log-replay"
 
-// Hoisted constant arrays to avoid re-creation on every render
+// Hoisted constant array to avoid re-creation on every render
 const DETAIL_SKELETON_ITEMS = Array.from({ length: 9 })
-const SKELETON_ROWS_8 = Array.from({ length: 8 })
-const SKELETON_ROWS_10 = Array.from({ length: 10 })
 
 // --- Dynamic imports: heavy libs only needed inside the detail panel ---
 const LazyJsonView = lazy(() =>
@@ -212,883 +170,157 @@ function repairTruncatedJson(text: string): { data: unknown; truncated: boolean 
   }
 }
 
-// Hoist row model factories outside the component to maintain stable references
-const coreRowModel = getCoreRowModel<LogEntry>()
-const sortedRowModel = getSortedRowModel<LogEntry>()
-const groupedRowModel = getGroupedRowModel<LogEntry>()
-const expandedRowModel = getExpandedRowModel<LogEntry>()
+// ── Public component: LogDetailSheet ──
 
-interface LogDetail {
-  id: number
-  time: number
-  requestModelName: string
-  actualModelName: string
-  channelName: string
-  channelId: number
-  inputTokens: number
-  outputTokens: number
-  cost: number
-  ftut: number
-  useTime: number
-  requestContent: string
-  upstreamContent: string | null
-  responseContent: string
-  error: string
-  attempts: Array<{
-    channelId: number
-    channelKeyId?: number
-    channelName: string
-    modelName: string
-    attemptNum: number
-    status: "success" | "failed" | "circuit_break" | "skipped"
-    duration: number
-    sticky?: boolean
-    msg?: string
-  }>
-  totalAttempts: number
+interface LogDetailSheetProps {
+  detailId: number | null
+  detailStreamId: string | null
+  detailTab: string
+  detail: LogDetail | null
+  pendingStreams: Map<string, LogEntry>
+  streamingOverlay: StreamingOverlay | null
+  logs: LogEntry[]
+  onClose: () => void
+  onNavigate: (log: LogEntry) => void
+  onTabChange: (tab: string) => void
 }
 
-export default function LogsPage() {
+export function LogDetailSheet({
+  detailId,
+  detailStreamId,
+  detailTab,
+  detail,
+  pendingStreams,
+  streamingOverlay,
+  logs,
+  onClose,
+  onNavigate,
+  onTabChange,
+}: LogDetailSheetProps) {
   const { t } = useTranslation("logs")
-  const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
-  const { pathname } = useLocation()
 
-  // Derive filter state from URL search params
-  const filters = parseLogFilters(searchParams)
-  const { page, model, status, channelId, keyword, pageSize, startTime, endTime } = filters
-
-  // Local state for controlled text inputs (synced to URL via debounce)
-  const [keywordInput, setKeywordInput] = useState(keyword)
-
-  // Sync local input state when URL changes externally (e.g., deep links from dashboard)
-  const prevKeywordRef = useRef(keyword)
-  if (prevKeywordRef.current !== keyword) {
-    prevKeywordRef.current = keyword
-    setKeywordInput(keyword)
-  }
-
-  // Helper to update URL search params — resets page to 1 unless page itself is being updated
-  const updateFilter = useCallback(
-    (updates: Record<string, string | number | undefined | null>) => {
-      const params = buildFilterSearchParams(searchParams, updates)
-      const query = params.toString()
-      navigate(query ? `${pathname}?${query}` : pathname, { replace: true })
-    },
-    [searchParams, pathname, navigate],
-  )
-
-  // Debounced sync for text inputs
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
-  const debouncedUpdateFilter = useCallback(
-    (key: string, value: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        updateFilter({ [key]: value || undefined })
-      }, 300)
-    },
-    [updateFilter],
-  )
-
-  const [detailId, setDetailId] = useState<number | null>(null)
-  const detailIdRef = useRef(detailId)
-  detailIdRef.current = detailId
-  const [detailTab, setDetailTab] = useState("overview")
-
-  // Track which streamId the detail panel is viewing (null = viewing a DB log)
-  const [detailStreamId, setDetailStreamId] = useState<string | null>(null)
-  const detailStreamIdRef = useRef(detailStreamId)
-  detailStreamIdRef.current = detailStreamId
-
-  // Streaming overlay: real-time content from log-streaming WS events
-  const [streamingOverlay, setStreamingOverlay] = useState<{
-    thinkingContent: string
-    responseContent: string
-  } | null>(null)
-  // Clear streaming overlay when switching detail panels
-  const prevDetailIdRef = useRef(detailId)
-  if (prevDetailIdRef.current !== detailId) {
-    prevDetailIdRef.current = detailId
-    setStreamingOverlay(null)
-  }
-
-  const [pendingStreams, setPendingStreams] = useState<Map<string, LogEntry>>(new Map())
-  const [pendingCount, setPendingCount] = useState(0)
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [grouping, setGrouping] = useState<GroupingState>([])
-  const [expanded, setExpanded] = useState<ExpandedState>(true)
-
-  const hasFilters =
-    model !== "" ||
-    status !== "all" ||
-    keyword !== "" ||
-    channelId !== undefined ||
-    startTime !== undefined
-  const isFirstPage = page === 1
-
-  const { data, isLoading, isFetching, isError, refetch } = useQuery({
-    queryKey: ["logs", page, pageSize, model, status, channelId, keyword, startTime, endTime],
-    queryFn: () =>
-      listLogs({
-        page,
-        pageSize,
-        ...(model ? { model } : {}),
-        ...(status !== "all" ? { status } : {}),
-        ...(channelId ? { channelId } : {}),
-        ...(keyword ? { keyword } : {}),
-        ...(startTime ? { startTime } : {}),
-        ...(endTime ? { endTime } : {}),
-      }),
-    placeholderData: keepPreviousData,
-  })
-
-  const { data: detailData } = useQuery({
-    queryKey: ["log-detail", detailId],
-    queryFn: () => getLog(detailId!),
-    enabled: detailId !== null && detailStreamId === null,
-  })
-
-  const { data: channelsData } = useQuery({
-    queryKey: ["channels-for-filter"],
-    queryFn: apiListChannels,
-    staleTime: 5 * 60 * 1000,
-  })
-  const channels = (channelsData?.data?.channels ?? []) as Array<{ id: number; name: string }>
-
-  const { data: modelsData } = useQuery({
-    queryKey: ["models-for-filter"],
-    queryFn: getModelList,
-    staleTime: 5 * 60 * 1000,
-  })
-  const modelOptions = (modelsData?.data?.models ?? []) as string[]
-
-  // Listen for log-created WebSocket events (reuses global WS connection)
-  const filtersRef = useRef({
-    page,
-    pageSize,
-    model,
-    status,
-    channelId,
-    keyword,
-    startTime,
-    endTime,
-    isFirstPage,
-    hasFilters,
-  })
-  filtersRef.current = {
-    page,
-    pageSize,
-    model,
-    status,
-    channelId,
-    keyword,
-    startTime,
-    endTime,
-    isFirstPage,
-    hasFilters,
-  }
-
-  // Listen for log-stream-start: create a pending entry for the streaming request
-  useWsEvent("log-stream-start", (data) => {
-    if (!data?.streamId) return
-    const f = filtersRef.current
-    if (!f.isFirstPage || f.hasFilters) return
-    setPendingStreams((prev) => {
-      const next = new Map(prev)
-      next.set(data.streamId, {
-        id: -Date.now(),
-        time: data.time ?? Math.floor(Date.now() / 1000),
-        requestModelName: data.requestModelName ?? "",
-        actualModelName: data.actualModelName ?? "",
-        channelId: data.channelId ?? 0,
-        channelName: data.channelName ?? "",
-        inputTokens: data.estimatedInputTokens ?? 0,
-        outputTokens: 0,
-        ftut: 0,
-        useTime: 0,
-        cost: 0,
-        error: "",
-        totalAttempts: 0,
-        _streaming: true,
-        _streamId: data.streamId,
-        _startedAt: Date.now(),
-        _inputPrice: data.inputPrice ?? 0,
-        _outputPrice: data.outputPrice ?? 0,
-        _estimatedInputTokens: data.estimatedInputTokens ?? 0,
-      })
-      return next
+  // Find current index in logs for prev/next navigation
+  const currentIdx = useMemo(() => {
+    return logs.findIndex((log) => {
+      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
+      return log.id === detailId
     })
-  })
-
-  // Listen for log-streaming WS events: update pending entry useTime + streaming overlay for detail panel
-  useWsEvent("log-streaming", (data) => {
-    if (!data?.streamId) return
-
-    // Update pending entry useTime, estimated tokens, and cost
-    setPendingStreams((prev) => {
-      const entry = prev.get(data.streamId)
-      if (!entry) return prev
-      const next = new Map(prev)
-      const contentLen = (data.responseLength ?? 0) + (data.thinkingLength ?? 0)
-      const estimatedOutputTokens = Math.floor(contentLen / 3)
-      const inputPrice = (entry as any)._inputPrice ?? 0
-      const outputPrice = (entry as any)._outputPrice ?? 0
-      const estimatedInputTokens = (entry as any)._estimatedInputTokens ?? 0
-      const estimatedCost =
-        (estimatedInputTokens * inputPrice + estimatedOutputTokens * outputPrice) / 1_000_000
-      next.set(data.streamId, {
-        ...entry,
-        useTime: Date.now() - (entry._startedAt ?? Date.now()),
-        outputTokens: estimatedOutputTokens,
-        cost: estimatedCost,
-      })
-      return next
-    })
-
-    // Streaming overlay for detail panel (when viewing a pending stream)
-    const currentStreamId = detailStreamIdRef.current
-    if (currentStreamId === data.streamId) {
-      setStreamingOverlay({
-        thinkingContent: data.thinkingContent ?? "",
-        responseContent: data.responseContent ?? "",
-      })
-    }
-  })
-
-  useWsEvent("log-created", (data) => {
-    if (!data?.log) return
-
-    // Remove corresponding pending stream entry
-    if (data.streamId) {
-      setPendingStreams((prev) => {
-        if (!prev.has(data.streamId)) return prev
-        const next = new Map(prev)
-        next.delete(data.streamId)
-        return next
-      })
-
-      // If detail panel is viewing this stream, switch to the real log ID
-      if (detailStreamIdRef.current === data.streamId) {
-        setDetailStreamId(null)
-        setDetailId(data.log.id)
-        setStreamingOverlay(null)
-      }
-    }
-
-    // Clear streaming overlay & refresh detail panel if viewing this log
-    const currentDetailId = detailIdRef.current
-    if (currentDetailId !== null && data.log.id === currentDetailId) {
-      setStreamingOverlay(null)
-      queryClient.invalidateQueries({ queryKey: ["log-detail", currentDetailId] })
-    }
-
-    const f = filtersRef.current
-    if (f.isFirstPage && !f.hasFilters) {
-      queryClient.setQueryData(
-        [
-          "logs",
-          f.page,
-          f.pageSize,
-          f.model,
-          f.status,
-          f.channelId,
-          f.keyword,
-          f.startTime,
-          f.endTime,
-        ],
-        (
-          old:
-            | { data?: { logs: LogEntry[]; total: number; page: number; pageSize: number } }
-            | undefined,
-        ) => {
-          if (!old?.data) return old
-          const newLogs = [data.log as LogEntry, ...old.data.logs].slice(0, f.pageSize)
-          return {
-            ...old,
-            data: {
-              ...old.data,
-              logs: newLogs,
-              total: old.data.total + 1,
-            },
-          }
-        },
-      )
-    } else {
-      setPendingCount((c) => c + 1)
-    }
-  })
-
-  // Listen for log-stream-end: remove pending entry (failed/exhausted stream)
-  useWsEvent("log-stream-end", (data) => {
-    if (!data?.streamId) return
-    setPendingStreams((prev) => {
-      if (!prev.has(data.streamId)) return prev
-      const next = new Map(prev)
-      next.delete(data.streamId)
-      return next
-    })
-  })
-
-  // Reset pending count when navigating to page 1 or clearing filters
-  const prevFirstPageRef = useRef(isFirstPage)
-  const prevHasFiltersRef = useRef(hasFilters)
-  if (prevFirstPageRef.current !== isFirstPage || prevHasFiltersRef.current !== hasFilters) {
-    prevFirstPageRef.current = isFirstPage
-    prevHasFiltersRef.current = hasFilters
-    if (isFirstPage && !hasFilters) {
-      setPendingCount(0)
-    }
-  }
-
-  const handleShowNew = useCallback(() => {
-    // Clear all filters and go to page 1
-    navigate(pathname, { replace: true })
-    setKeywordInput("")
-    setPendingCount(0)
-    queryClient.invalidateQueries({ queryKey: ["logs"] })
-  }, [queryClient, navigate, pathname])
-
-  const logs = useMemo(() => {
-    const dbLogs = (data?.data?.logs ?? []) as LogEntry[]
-    if (pendingStreams.size === 0) return dbLogs
-    const pending = Array.from(pendingStreams.values()).sort((a, b) => b.time - a.time)
-    return [...pending, ...dbLogs]
-  }, [data, pendingStreams])
-  const total = data?.data?.total ?? 0
-  const totalPages = Math.ceil(total / pageSize)
-  const detail = (detailData?.data ?? null) as LogDetail | null
-
-  // Real-time elapsed time update for pending streams (1s interval)
-  useEffect(() => {
-    if (pendingStreams.size === 0) return
-    const interval = setInterval(() => {
-      setPendingStreams((prev) => {
-        const next = new Map(prev)
-        for (const [key, entry] of next) {
-          next.set(key, {
-            ...entry,
-            useTime: Date.now() - (entry._startedAt ?? Date.now()),
-          })
-        }
-        return next
-      })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [pendingStreams.size > 0]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const columns = useMemo(() => createLogColumns(setDetailId, t), [t])
-
-  const table = useReactTable({
-    data: logs,
-    columns,
-    state: { sorting, grouping, expanded },
-    onSortingChange: setSorting,
-    onGroupingChange: setGrouping,
-    onExpandedChange: setExpanded,
-    enableSortingRemoval: true,
-    getCoreRowModel: coreRowModel,
-    getSortedRowModel: sortedRowModel,
-    getGroupedRowModel: groupedRowModel,
-    getExpandedRowModel: expandedRowModel,
-  })
-
-  // Flat data rows for detail panel navigation (skip group headers)
-  const visibleRows = useMemo(
-    () => table.getRowModel().rows.filter((r) => !r.getIsGrouped()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [table.getRowModel().rows],
-  )
-
-  // Pagination controls (reused top and bottom)
-  const paginationControls = (
-    <div className="flex items-center gap-2">
-      <Select value={String(pageSize)} onValueChange={(v) => updateFilter({ size: v })}>
-        <SelectTrigger className="h-8 w-20 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="50">50</SelectItem>
-          <SelectItem value="100">100</SelectItem>
-          <SelectItem value="200">200</SelectItem>
-          <SelectItem value="500">500</SelectItem>
-        </SelectContent>
-      </Select>
-      <span className="text-muted-foreground text-sm tabular-nums">
-        {page}/{totalPages || 1}
-      </span>
-      <Button
-        variant="outline"
-        size="icon-xs"
-        disabled={page <= 1}
-        onClick={() => updateFilter({ page: page - 1 })}
-      >
-        <ChevronLeft className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        variant="outline"
-        size="icon-xs"
-        disabled={page >= totalPages}
-        onClick={() => updateFilter({ page: page + 1 })}
-      >
-        <ChevronRight className="h-3.5 w-3.5" />
-      </Button>
-    </div>
-  )
+  }, [logs, detailId, detailStreamId])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {/* Sticky header: Title + Filters + Pagination */}
-      <div className="bg-background shrink-0 space-y-4 pb-4">
-        {/* Header: Title + Total + Pagination */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-baseline gap-3">
-            <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
-            <span className="text-muted-foreground text-sm">
-              {t("totalCount", { count: total })}
-            </span>
-            {pendingCount > 0 && (
+    <Sheet
+      open={detailId !== null || detailStreamId !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <SheetContent side="right" className="w-full sm:max-w-2xl">
+        <SheetHeader className="shrink-0 border-b">
+          <div className="flex items-center justify-between pr-8">
+            <SheetTitle className="flex items-center gap-2">
+              {detailStreamId ? (
+                <>
+                  {t("detail.title", { id: "..." })}
+                  <Badge variant="outline" className="animate-pulse gap-1 text-xs">
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    {t("columns.streaming")}
+                  </Badge>
+                </>
+              ) : (
+                <>
+                  {t("detail.title", { id: detailId })}
+                  {detail && (
+                    <Badge variant={detail.error ? "destructive" : "default"} className="text-xs">
+                      {detail.error ? t("detail.error") : t("detail.ok")}
+                    </Badge>
+                  )}
+                </>
+              )}
+            </SheetTitle>
+            <div className="flex items-center gap-1">
               <Button
                 variant="outline"
-                size="xs"
-                className="animate-pulse gap-1"
-                onClick={handleShowNew}
-              >
-                <ArrowUp className="h-3 w-3" />
-                {t("newLogs", { count: pendingCount })}
-              </Button>
-            )}
-          </div>
-          {totalPages > 0 && paginationControls}
-        </div>
-
-        {/* Filter Bar */}
-        <div className="flex flex-col gap-2">
-          {/* Filters: search, model, channel, status, time */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[200px] flex-1">
-              <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-              <Input
-                placeholder={t("searchPlaceholder")}
-                value={keywordInput}
-                onChange={(e) => {
-                  setKeywordInput(e.target.value)
-                  debouncedUpdateFilter("q", e.target.value)
-                }}
-                className="pl-9"
-              />
-              {keywordInput && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
-                  onClick={() => {
-                    setKeywordInput("")
-                    updateFilter({ q: undefined })
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-            <ModelCombobox
-              models={modelOptions}
-              value={model}
-              onChange={(v) => updateFilter({ model: v || undefined })}
-            />
-            <Select
-              value={channelId ? String(channelId) : "all"}
-              onValueChange={(v) => {
-                updateFilter({ channel: v === "all" ? undefined : v })
-              }}
-            >
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder={t("filter.allChannels")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("filter.allChannels")}</SelectItem>
-                {channels.map((ch) => (
-                  <SelectItem key={ch.id} value={String(ch.id)}>
-                    {ch.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={status}
-              onValueChange={(v) => {
-                updateFilter({ status: v })
-              }}
-            >
-              <SelectTrigger className="w-28">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("filter.all")}</SelectItem>
-                <SelectItem value="success">{t("filter.success")}</SelectItem>
-                <SelectItem value="error">{t("filter.error")}</SelectItem>
-              </SelectContent>
-            </Select>
-            <TimeRangePicker
-              from={startTime}
-              to={endTime}
-              onChange={(from, to) =>
-                updateFilter({ from: from ?? undefined, to: to ?? undefined })
-              }
-            />
-          </div>
-
-          {/* Active filter chips */}
-          {hasFilters && (
-            <div className="flex flex-wrap gap-1.5">
-              {keyword && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  {t("chips.search", { value: keyword })}
-                  <button
-                    onClick={() => {
-                      setKeywordInput("")
-                      updateFilter({ q: undefined })
-                    }}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              )}
-              {model && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  {t("chips.model", { value: model })}
-                  <button
-                    onClick={() => {
-                      updateFilter({ model: undefined })
-                    }}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              )}
-              {channelId && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  {t("chips.channel", {
-                    value: channels.find((c) => c.id === channelId)?.name ?? channelId,
-                  })}
-                  <button onClick={() => updateFilter({ channel: undefined })}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              )}
-              {status !== "all" && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  {t("chips.status", { value: status })}
-                  <button onClick={() => updateFilter({ status: "all" })}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              )}
-              {(startTime || endTime) && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  {t("chips.time", { value: formatRangeSummary(startTime, endTime, t) })}
-                  <button onClick={() => updateFilter({ from: undefined, to: undefined })}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs"
+                size="icon"
+                className="h-7 w-7"
+                disabled={currentIdx <= 0}
                 onClick={() => {
-                  navigate(pathname, { replace: true })
-                  setKeywordInput("")
+                  if (currentIdx > 0) onNavigate(logs[currentIdx - 1])
                 }}
               >
-                {t("chips.clearAll")}
+                <ChevronUp className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                disabled={currentIdx < 0 || currentIdx >= logs.length - 1}
+                onClick={() => {
+                  if (currentIdx >= 0 && currentIdx < logs.length - 1)
+                    onNavigate(logs[currentIdx + 1])
+                }}
+              >
+                <ChevronDown className="h-4 w-4" />
               </Button>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Scrollable content area */}
-      {isError ? (
-        <Card className="flex flex-col items-center justify-center gap-3 py-12">
-          <AlertCircle className="text-destructive h-8 w-8" />
-          <p className="text-muted-foreground text-sm">{t("loadError")}</p>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetch()}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            {t("actions.retry", { ns: "common" })}
-          </Button>
-        </Card>
-      ) : isLoading ? (
-        <LogTableSkeleton rows={pageSize > 20 ? 10 : 8} />
-      ) : (
-        <div
-          className={`min-h-0 flex-1 overflow-auto transition-opacity duration-150 ${isFetching ? "pointer-events-none opacity-50" : ""}`}
-        >
-          <TooltipProvider delayDuration={300}>
-            <table className="w-full caption-bottom text-sm">
-              <thead className="bg-muted sticky top-0 z-10 [&_tr]:border-b-2">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <TableHead
-                        key={header.id}
-                        className={
-                          (header.column.columnDef.meta as { className?: string })?.className
-                        }
-                      >
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </thead>
-              <TableBody>
-                {table.getRowModel().rows.map((row) => {
-                  if (row.getIsGrouped()) {
-                    return (
-                      <TableRow key={row.id} className="bg-muted/30">
-                        <TableCell colSpan={columns.length}>
-                          <button
-                            className="flex items-center gap-1.5 text-sm font-medium"
-                            onClick={row.getToggleExpandedHandler()}
-                          >
-                            <ChevronRight
-                              className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
-                            />
-                            {String(row.groupingValue)}
-                            <Badge variant="secondary" className="text-xs">
-                              {row.subRows.length}
-                            </Badge>
-                          </button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  }
-                  const log = row.original
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`hover:bg-muted/50 cursor-pointer border-b ${
-                        log._streaming
-                          ? "bg-muted/20"
-                          : log.error
-                            ? "border-l-destructive bg-destructive/5 border-l-2"
-                            : ""
-                      }`}
-                      onClick={() => {
-                        if (log._streaming && log._streamId) {
-                          setDetailStreamId(log._streamId)
-                        } else {
-                          setDetailStreamId(null)
-                          setDetailId(log.id)
-                        }
-                      }}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell
-                          key={cell.id}
-                          className={
-                            (cell.column.columnDef.meta as { className?: string })?.className
-                          }
-                        >
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
-                    </tr>
-                  )
-                })}
-                {logs.length === 0 && !isLoading && (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="py-12 text-center">
-                      <div className="flex flex-col items-center gap-2">
-                        <FileText className="text-muted-foreground/30 h-10 w-10" />
-                        <p className="text-muted-foreground">
-                          {hasFilters ? t("empty.noMatch") : t("empty.noLogs")}
-                        </p>
-                        {hasFilters && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-1"
-                            onClick={() => {
-                              navigate(pathname, { replace: true })
-                              setKeywordInput("")
-                            }}
-                          >
-                            {t("empty.clearFilters")}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </table>
-          </TooltipProvider>
-        </div>
-      )}
-
-      {/* Log Detail Side Panel */}
-      <Sheet
-        open={detailId !== null || detailStreamId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDetailId(null)
-            setDetailStreamId(null)
-          }
-        }}
-      >
-        <SheetContent side="right" className="w-full sm:max-w-2xl">
-          <SheetHeader className="shrink-0 border-b">
-            <div className="flex items-center justify-between pr-8">
-              <SheetTitle className="flex items-center gap-2">
-                {detailStreamId ? (
-                  <>
-                    {t("detail.title", { id: "..." })}
-                    <Badge variant="outline" className="animate-pulse gap-1 text-xs">
-                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                      {t("columns.streaming")}
-                    </Badge>
-                  </>
-                ) : (
-                  <>
-                    {t("detail.title", { id: detailId })}
-                    {detail && (
-                      <Badge variant={detail.error ? "destructive" : "default"} className="text-xs">
-                        {detail.error ? t("detail.error") : t("detail.ok")}
-                      </Badge>
-                    )}
-                  </>
-                )}
-              </SheetTitle>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={(() => {
-                    const idx = visibleRows.findIndex((r) => {
-                      const log = r.original
-                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
-                      return log.id === detailId
-                    })
-                    return idx <= 0
-                  })()}
-                  onClick={() => {
-                    const idx = visibleRows.findIndex((r) => {
-                      const log = r.original
-                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
-                      return log.id === detailId
-                    })
-                    if (idx > 0) {
-                      const prev = visibleRows[idx - 1].original
-                      if (prev._streaming && prev._streamId) {
-                        setDetailId(null)
-                        setDetailStreamId(prev._streamId)
-                      } else {
-                        setDetailStreamId(null)
-                        setDetailId(prev.id)
-                      }
-                    }
-                  }}
-                >
-                  <ChevronUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={(() => {
-                    const idx = visibleRows.findIndex((r) => {
-                      const log = r.original
-                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
-                      return log.id === detailId
-                    })
-                    return idx < 0 || idx >= visibleRows.length - 1
-                  })()}
-                  onClick={() => {
-                    const idx = visibleRows.findIndex((r) => {
-                      const log = r.original
-                      if (detailStreamId) return log._streaming && log._streamId === detailStreamId
-                      return log.id === detailId
-                    })
-                    if (idx >= 0 && idx < visibleRows.length - 1) {
-                      const next = visibleRows[idx + 1].original
-                      if (next._streaming && next._streamId) {
-                        setDetailId(null)
-                        setDetailStreamId(next._streamId)
-                      } else {
-                        setDetailStreamId(null)
-                        setDetailId(next.id)
-                      }
-                    }
-                  }}
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </div>
+          </div>
+        </SheetHeader>
+        {detailStreamId ? (
+          (() => {
+            const entry = pendingStreams.get(detailStreamId)
+            if (!entry) return null
+            const streamingDetail: LogDetail = {
+              id: entry.id,
+              time: entry.time,
+              requestModelName: entry.requestModelName,
+              actualModelName: entry.actualModelName,
+              channelName: entry.channelName,
+              channelId: entry.channelId,
+              inputTokens: entry.inputTokens,
+              outputTokens: entry.outputTokens,
+              cost: 0,
+              ftut: entry.ftut,
+              useTime: entry.useTime,
+              requestContent: "",
+              upstreamContent: null,
+              responseContent: "",
+              error: entry.error,
+              attempts: [],
+              totalAttempts: entry.totalAttempts,
+            }
+            return (
+              <DetailPanel
+                detail={streamingDetail}
+                activeTab={detailTab}
+                onTabChange={onTabChange}
+                streamingOverlay={streamingOverlay}
+              />
+            )
+          })()
+        ) : detail ? (
+          <DetailPanel
+            detail={detail}
+            activeTab={detailTab}
+            onTabChange={onTabChange}
+            streamingOverlay={streamingOverlay}
+          />
+        ) : (
+          <div className="flex flex-col gap-4 px-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-60" />
             </div>
-          </SheetHeader>
-          {detailStreamId ? (
-            (() => {
-              const entry = pendingStreams.get(detailStreamId)
-              if (!entry) return null
-              const streamingDetail: LogDetail = {
-                id: entry.id,
-                time: entry.time,
-                requestModelName: entry.requestModelName,
-                actualModelName: entry.actualModelName,
-                channelName: entry.channelName,
-                channelId: entry.channelId,
-                inputTokens: entry.inputTokens,
-                outputTokens: entry.outputTokens,
-                cost: 0,
-                ftut: entry.ftut,
-                useTime: entry.useTime,
-                requestContent: "",
-                upstreamContent: null,
-                responseContent: "",
-                error: entry.error,
-                attempts: [],
-                totalAttempts: entry.totalAttempts,
-              }
-              return (
-                <DetailPanel
-                  detail={streamingDetail}
-                  activeTab={detailTab}
-                  onTabChange={setDetailTab}
-                  streamingOverlay={streamingOverlay}
-                />
-              )
-            })()
-          ) : detail ? (
-            <DetailPanel
-              detail={detail}
-              activeTab={detailTab}
-              onTabChange={setDetailTab}
-              streamingOverlay={streamingOverlay}
-            />
-          ) : (
-            <div className="flex flex-col gap-4 px-4 py-4">
-              <div className="flex flex-col gap-2">
-                <Skeleton className="h-5 w-40" />
-                <Skeleton className="h-4 w-60" />
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {DETAIL_SKELETON_ITEMS.map((_, i) => (
-                  <div key={`detail-sk-${i.toString()}`} className="flex flex-col gap-1">
-                    <Skeleton className="h-3 w-16" />
-                    <Skeleton className="h-5 w-24" />
-                  </div>
-                ))}
-              </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {DETAIL_SKELETON_ITEMS.map((_, i) => (
+                <div key={`detail-sk-${i.toString()}`} className="flex flex-col gap-1">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-5 w-24" />
+                </div>
+              ))}
             </div>
-          )}
-        </SheetContent>
-      </Sheet>
-    </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -1132,8 +364,7 @@ function DetailPanel({
   streamingOverlay: { thinkingContent: string; responseContent: string } | null
 }) {
   const { t } = useTranslation("logs")
-  const [replayResult, setReplayResult] = useState<string | null>(null)
-  const [replaying, setReplaying] = useState(false)
+  const { replayResult, replaying, handleReplay } = useLogReplay()
 
   const setActiveTab = onTabChange
 
@@ -1141,52 +372,6 @@ function DetailPanel({
     /\[truncated,?\s*\d+\s*chars\s*total\]/.test(detail.requestContent) ||
     /\[\d+\s*messages?\s*omitted/.test(detail.requestContent) ||
     /\[image data omitted\]/.test(detail.requestContent)
-
-  const handleReplay = async () => {
-    setReplaying(true)
-    try {
-      const resp = await replayLog(detail.id)
-      const contentType = resp.headers.get("content-type") ?? ""
-
-      if (contentType.includes("text/event-stream")) {
-        // Streaming response: read and concatenate text deltas
-        const reader = resp.body?.getReader()
-        if (!reader) throw new Error("No response body")
-        const decoder = new TextDecoder()
-        let text = ""
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const chunk = decoder.decode(value, { stream: true })
-          for (const line of chunk.split("\n")) {
-            if (line.startsWith("data: ") && line !== "data: [DONE]") {
-              try {
-                const obj = JSON.parse(line.slice(6))
-                const delta = obj.choices?.[0]?.delta?.content
-                if (delta) text += delta
-              } catch {
-                /* skip */
-              }
-            }
-          }
-        }
-        setReplayResult(text || t("detail.emptyResponse"))
-      } else {
-        const data = (await resp.json()) as {
-          success: boolean
-          data?: { response: unknown; truncated: boolean }
-          error?: string
-        }
-        if (!data.success) throw new Error(data.error ?? t("detail.replayFailed"))
-        setReplayResult(JSON.stringify(data.data?.response, null, 2))
-      }
-      setActiveTab("replay")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("detail.replayFailed"))
-    } finally {
-      setReplaying(false)
-    }
-  }
 
   return (
     <Tabs
@@ -1312,7 +497,7 @@ function DetailPanel({
               variant="outline"
               size="sm"
               className="w-fit gap-1.5"
-              onClick={handleReplay}
+              onClick={() => handleReplay(detail.id, () => setActiveTab("replay"))}
               disabled={replaying}
             >
               {replaying ? (
@@ -2633,64 +1818,5 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
         </div>
       )}
     </div>
-  )
-}
-
-function LogTableSkeleton({ rows = 8 }: { rows?: number }) {
-  const { t } = useTranslation("logs")
-  const skeletonRows = rows > 8 ? SKELETON_ROWS_10 : SKELETON_ROWS_8
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t("columns.time")}</TableHead>
-          <TableHead>{t("columns.model")}</TableHead>
-          <TableHead>{t("columns.channel")}</TableHead>
-          <TableHead className="text-right">{t("columns.input")}</TableHead>
-          <TableHead className="text-right">{t("columns.output")}</TableHead>
-          <TableHead className="text-right">{t("columns.ttft")}</TableHead>
-          <TableHead className="text-right">{t("columns.latency")}</TableHead>
-          <TableHead className="text-right">{t("columns.cost")}</TableHead>
-          <TableHead>{t("columns.status")}</TableHead>
-          <TableHead className="w-10" />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {skeletonRows.map((_, i) => (
-          <TableRow key={`log-sk-${i.toString()}`}>
-            <TableCell>
-              <Skeleton className="h-4 w-24" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-28 rounded-full" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-4 w-20" />
-            </TableCell>
-            <TableCell className="text-right">
-              <Skeleton className="ml-auto h-4 w-12" />
-            </TableCell>
-            <TableCell className="text-right">
-              <Skeleton className="ml-auto h-4 w-12" />
-            </TableCell>
-            <TableCell className="text-right">
-              <Skeleton className="ml-auto h-4 w-14" />
-            </TableCell>
-            <TableCell className="text-right">
-              <Skeleton className="ml-auto h-4 w-14" />
-            </TableCell>
-            <TableCell className="text-right">
-              <Skeleton className="ml-auto h-4 w-12" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-10 rounded-full" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-8 w-8 rounded-md" />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
   )
 }

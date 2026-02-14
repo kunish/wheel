@@ -84,7 +84,7 @@ func (h *Handler) UpdateGroup(c *gin.Context) {
 		return
 	}
 
-	data := make(map[string]interface{})
+	data := make(map[string]any)
 	if req.Name != nil {
 		data["name"] = *req.Name
 	}

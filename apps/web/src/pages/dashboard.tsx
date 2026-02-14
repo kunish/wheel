@@ -12,7 +12,7 @@ import {
   getHourlyStats,
   getModelStats,
   getTotalStats,
-} from "@/lib/api"
+} from "@/lib/api-client"
 import { ActivitySection } from "./dashboard/activity-section"
 
 // ───────────── Inline Error ─────────────

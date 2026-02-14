@@ -88,6 +88,18 @@ function PriceForm({
 
 // ───────────── Price Dialog ─────────────
 
+interface PriceDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  form: PriceFormData
+  onChange: (f: PriceFormData) => void
+  onSubmit: () => void
+  isPending: boolean
+  title: string
+  submitLabel: string
+  nameReadonly?: boolean
+}
+
 export default function PriceDialog({
   open,
   onOpenChange,
@@ -98,17 +110,7 @@ export default function PriceDialog({
   title,
   submitLabel,
   nameReadonly,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  form: PriceFormData
-  onChange: (f: PriceFormData) => void
-  onSubmit: () => void
-  isPending: boolean
-  title: string
-  submitLabel: string
-  nameReadonly?: boolean
-}) {
+}: PriceDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>

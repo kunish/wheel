@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/kunish/wheel/apps/worker/internal/middleware"
 )
 
 const (
@@ -18,8 +20,28 @@ const (
 	writeWait = 5 * time.Second
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+// checkOrigin returns an origin checker based on the hub's allowed origins.
+// If no origins are configured (dev mode), localhost origins are allowed.
+func (h *Hub) checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	if len(h.allowedOrigins) == 0 {
+		// Dev mode: allow localhost
+		return isLocalhostOrigin(origin)
+	}
+	for _, allowed := range h.allowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// isLocalhostOrigin checks if an origin is a localhost address.
+func isLocalhostOrigin(origin string) bool {
+	return strings.Contains(origin, "://localhost") || strings.Contains(origin, "://127.0.0.1") || strings.Contains(origin, "://[::1]")
 }
 
 // wsClient wraps a WebSocket connection with a buffered send channel.
@@ -48,19 +70,36 @@ type Hub struct {
 
 	streamMu     sync.RWMutex
 	activeStreams map[string]map[string]any // streamId -> log-stream-start payload
+
+	jwtSecret      string
+	allowedOrigins []string
 }
 
 // New creates a new WebSocket Hub.
-func New() *Hub {
+func New(jwtSecret string, allowedOrigins []string) *Hub {
 	return &Hub{
-		clients:      make(map[*wsClient]struct{}),
-		activeStreams: make(map[string]map[string]any),
+		clients:        make(map[*wsClient]struct{}),
+		activeStreams:   make(map[string]map[string]any),
+		jwtSecret:      jwtSecret,
+		allowedOrigins: allowedOrigins,
 	}
 }
 
 // HandleWS is a Gin handler that upgrades HTTP to WebSocket and registers the client.
 func (h *Hub) HandleWS(c *gin.Context) {
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	// Verify JWT token from query parameter
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+		return
+	}
+	if _, err := middleware.VerifyJWT(token, h.jwtSecret); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+		return
+	}
+
+	u := websocket.Upgrader{CheckOrigin: h.checkOrigin}
+	conn, err := u.Upgrade(c.Writer, c.Request, http.Header{})
 	if err != nil {
 		log.Printf("[ws] upgrade error: %v", err)
 		return

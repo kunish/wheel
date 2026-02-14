@@ -95,6 +95,7 @@ func parseRetryDelay(resp *http.Response, body string) int64 {
 
 // ProxyNonStreaming performs a single non-streaming HTTP POST to the upstream.
 func ProxyNonStreaming(
+	client *http.Client,
 	upstreamUrl string,
 	upstreamHeaders map[string]string,
 	upstreamBody string,
@@ -109,7 +110,7 @@ func ProxyNonStreaming(
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, &ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: 502}
 	}
@@ -227,6 +228,7 @@ func (s *streamingState) appendContent(text string) {
 func ProxyStreaming(
 	w http.ResponseWriter,
 	clientCtx context.Context,
+	httpClient *http.Client,
 	upstreamUrl string,
 	upstreamHeaders map[string]string,
 	upstreamBody string,
@@ -259,7 +261,7 @@ func ProxyStreaming(
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, &ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: 502}
 	}

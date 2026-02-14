@@ -20,8 +20,9 @@ import (
 type SyncResult = types.SyncResult
 
 // FetchModelsFromChannel fetches model names from an upstream channel provider.
-// When kv is non-nil and Anthropic API fails (e.g. Cloudflare), falls back to models.dev metadata.
-func FetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string, error) {
+// Returns (models, isFallback, error). isFallback is true when the result came
+// from models.dev metadata instead of the real upstream API.
+func FetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string, bool, error) {
 	// Find first enabled key
 	var apiKey string
 	for _, k := range channel.Keys {
@@ -31,7 +32,7 @@ func FetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string
 		}
 	}
 	if apiKey == "" {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	baseUrl := ""
@@ -39,7 +40,7 @@ func FetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string
 		baseUrl = strings.TrimRight(channel.BaseUrls[0].URL, "/")
 	}
 	if baseUrl == "" {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -47,17 +48,19 @@ func FetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string
 
 	switch channel.Type {
 	case types.OutboundAnthropic:
-		models, err := fetchAnthropicModels(ctx, baseUrl, apiKey)
+		models, err := FetchAnthropicModels(ctx, baseUrl, apiKey)
 		if err != nil && kv != nil {
 			if fb := fallbackModelsFromMetadata(kv, "anthropic"); len(fb) > 0 {
-				return fb, nil
+				return fb, true, nil
 			}
 		}
-		return models, err
+		return models, false, err
 	case types.OutboundGemini:
-		return fetchGeminiModels(ctx, baseUrl, apiKey)
+		models, err := FetchGeminiModels(ctx, baseUrl, apiKey)
+		return models, false, err
 	default:
-		return fetchOpenAIModels(ctx, baseUrl, apiKey)
+		models, err := FetchOpenAIModels(ctx, baseUrl, apiKey)
+		return models, false, err
 	}
 }
 
@@ -119,7 +122,21 @@ func fetchModelsDevProviders() (map[string]string, error) {
 	return result, nil
 }
 
-func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
+// checkAPIResponse returns an error if the HTTP status is not 200,
+// including a truncated snippet of the response body for diagnostics.
+func checkAPIResponse(body []byte, statusCode int, apiName string) error {
+	if statusCode == 200 {
+		return nil
+	}
+	snippet := string(body)
+	if len(snippet) > 200 {
+		snippet = snippet[:200]
+	}
+	return fmt.Errorf("%s models API returned %d: %s", apiName, statusCode, snippet)
+}
+
+// FetchOpenAIModels fetches model IDs from an OpenAI-compatible /v1/models endpoint.
+func FetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models", nil)
 	if err != nil {
 		return nil, err
@@ -138,12 +155,8 @@ func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 		return nil, err
 	}
 
-	if resp.StatusCode != 200 {
-		snippet := string(body)
-		if len(snippet) > 200 {
-			snippet = snippet[:200]
-		}
-		return nil, fmt.Errorf("OpenAI models API returned %d: %s", resp.StatusCode, snippet)
+	if err := checkAPIResponse(body, resp.StatusCode, "OpenAI"); err != nil {
+		return nil, err
 	}
 
 	var result struct {
@@ -162,7 +175,8 @@ func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 	return models, nil
 }
 
-func fetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
+// FetchAnthropicModels fetches model IDs from the Anthropic /v1/models endpoint with pagination.
+func FetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
 	var allModels []string
 	afterID := ""
 
@@ -191,12 +205,8 @@ func fetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string
 			return nil, err
 		}
 
-		if resp.StatusCode != 200 {
-			snippet := string(body)
-			if len(snippet) > 200 {
-				snippet = snippet[:200]
-			}
-			return nil, fmt.Errorf("Anthropic models API returned %d: %s", resp.StatusCode, snippet)
+		if err := checkAPIResponse(body, resp.StatusCode, "Anthropic"); err != nil {
+			return nil, err
 		}
 
 		var result struct {
@@ -223,7 +233,8 @@ func fetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string
 	return allModels, nil
 }
 
-func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
+// FetchGeminiModels fetches model IDs from the Gemini /v1/models endpoint.
+func FetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models?key="+apiKey, nil)
 	if err != nil {
 		return nil, err
@@ -241,12 +252,8 @@ func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, e
 		return nil, err
 	}
 
-	if resp.StatusCode != 200 {
-		snippet := string(body)
-		if len(snippet) > 200 {
-			snippet = snippet[:200]
-		}
-		return nil, fmt.Errorf("Gemini models API returned %d: %s", resp.StatusCode, snippet)
+	if err := checkAPIResponse(body, resp.StatusCode, "Gemini"); err != nil {
+		return nil, err
 	}
 
 	var result struct {
@@ -279,7 +286,7 @@ func SyncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*SyncRe
 			continue
 		}
 
-		upstreamModels, err := FetchModelsFromChannel(channel, kv)
+		upstreamModels, isFallback, err := FetchModelsFromChannel(channel, kv)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: %v", channel.Name, err))
 			continue
@@ -311,9 +318,13 @@ func SyncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*SyncRe
 			}
 		}
 
-		// Update channel model field
+		// Update channel model field; only mark as fetched if from real API
 		modelJSON, _ := json.Marshal(upstreamModels)
-		if err := dal.UpdateChannel(ctx, db, channel.ID, map[string]any{"model": string(modelJSON)}); err != nil {
+		updates := map[string]any{"model": string(modelJSON)}
+		if !isFallback {
+			updates["fetched_model"] = string(modelJSON)
+		}
+		if err := dal.UpdateChannel(ctx, db, channel.ID, updates); err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: failed to update models: %v", channel.Name, err))
 			continue
 		}

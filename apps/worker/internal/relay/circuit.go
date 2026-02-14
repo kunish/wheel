@@ -3,10 +3,12 @@ package relay
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/uptrace/bun"
 )
@@ -27,48 +29,87 @@ type circuitEntry struct {
 	tripCount           int
 }
 
-var (
-	breakers   = make(map[string]*circuitEntry)
-	breakersMu sync.RWMutex
-
-	circuitObserver CircuitObserver
-)
-
 // CircuitObserver is called when circuit breaker state changes.
 type CircuitObserver interface {
 	SetCircuitBreakerState(ctx context.Context, channel string, delta int64)
 }
 
-// SetCircuitObserver sets the observer for circuit breaker state changes.
-func SetCircuitObserver(obs CircuitObserver) {
-	circuitObserver = obs
+// CircuitBreakerManager manages circuit breaker state for channel/key/model combos.
+type CircuitBreakerManager struct {
+	breakers map[string]*circuitEntry
+	mu       sync.RWMutex
+	observer CircuitObserver
+	cache    *cache.MemoryKV
+}
+
+// NewCircuitBreakerManager creates a new CircuitBreakerManager with the given observer.
+func NewCircuitBreakerManager(obs CircuitObserver, kv *cache.MemoryKV) *CircuitBreakerManager {
+	return &CircuitBreakerManager{
+		breakers: make(map[string]*circuitEntry),
+		observer: obs,
+		cache:    kv,
+	}
 }
 
 func circuitKey(channelID, keyID int, modelName string) string {
 	return fmt.Sprintf("%d:%d:%s", channelID, keyID, modelName)
 }
 
-func getOrCreate(key string) *circuitEntry {
-	breakersMu.Lock()
-	defer breakersMu.Unlock()
-	e, ok := breakers[key]
+func (m *CircuitBreakerManager) getOrCreate(key string) *circuitEntry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.breakers[key]
 	if !ok {
 		e = &circuitEntry{state: CircuitClosed}
-		breakers[key] = e
+		m.breakers[key] = e
 	}
 	return e
 }
 
-func getThreshold(ctx context.Context, db *bun.DB) int {
-	v, err := dal.GetSetting(ctx, db, "circuit_breaker_threshold")
-	if err != nil || v == nil {
-		return 5
+const cbConfigCacheKey = "cb_config"
+const cbConfigTTL = 60 // seconds
+
+type cbConfig struct {
+	Threshold int `json:"threshold"`
+	BaseSec   int `json:"baseSec"`
+	MaxSec    int `json:"maxSec"`
+}
+
+func (m *CircuitBreakerManager) loadConfig(ctx context.Context, db *bun.DB) cbConfig {
+	if m.cache != nil {
+		if cached, ok := cache.Get[cbConfig](m.cache, cbConfigCacheKey); ok && cached != nil {
+			return *cached
+		}
 	}
-	n, err := strconv.Atoi(*v)
-	if err != nil || n <= 0 {
-		return 5
+
+	cfg := cbConfig{Threshold: 5, BaseSec: 60, MaxSec: 600}
+
+	if v, err := dal.GetSetting(ctx, db, "circuit_breaker_threshold"); err == nil && v != nil {
+		if n, err := strconv.Atoi(*v); err == nil && n > 0 {
+			cfg.Threshold = n
+		}
 	}
-	return n
+	if v, err := dal.GetSetting(ctx, db, "circuit_breaker_cooldown"); err == nil && v != nil {
+		if n, err := strconv.Atoi(*v); err == nil && n > 0 {
+			cfg.BaseSec = n
+		}
+	}
+	if v, err := dal.GetSetting(ctx, db, "circuit_breaker_max_cooldown"); err == nil && v != nil {
+		if n, err := strconv.Atoi(*v); err == nil && n > 0 {
+			cfg.MaxSec = n
+		}
+	}
+
+	if m.cache != nil {
+		m.cache.Put(cbConfigCacheKey, cfg, cbConfigTTL)
+	}
+	return cfg
+}
+
+// GetCooldownConfig returns circuit breaker cooldown settings (cached for 60s).
+func (m *CircuitBreakerManager) GetCooldownConfig(ctx context.Context, db *bun.DB) (baseSec, maxSec int) {
+	cfg := m.loadConfig(ctx, db)
+	return cfg.BaseSec, cfg.MaxSec
 }
 
 func getCooldownMs(tripCount, baseSec, maxSec int) int64 {
@@ -86,40 +127,20 @@ func getCooldownMs(tripCount, baseSec, maxSec int) int64 {
 	return int64(cooldown) * 1000
 }
 
-// GetCooldownConfig reads circuit breaker cooldown settings from DB.
-func GetCooldownConfig(ctx context.Context, db *bun.DB) (baseSec, maxSec int) {
-	baseSec, maxSec = 60, 600
-
-	baseVal, err := dal.GetSetting(ctx, db, "circuit_breaker_cooldown")
-	if err == nil && baseVal != nil {
-		if n, err := strconv.Atoi(*baseVal); err == nil && n > 0 {
-			baseSec = n
-		}
-	}
-
-	maxVal, err := dal.GetSetting(ctx, db, "circuit_breaker_max_cooldown")
-	if err == nil && maxVal != nil {
-		if n, err := strconv.Atoi(*maxVal); err == nil && n > 0 {
-			maxSec = n
-		}
-	}
-	return
-}
-
 // IsTripped checks if a channel/key/model combo is circuit-broken.
 // Returns tripped=true to skip this channel, and remainingMs for cooldown info.
-func IsTripped(channelID, keyID int, modelName string, baseSec, maxSec int) (tripped bool, remainingMs int64) {
+func (m *CircuitBreakerManager) IsTripped(channelID, keyID int, modelName string, baseSec, maxSec int) (tripped bool, remainingMs int64) {
 	key := circuitKey(channelID, keyID, modelName)
 
-	breakersMu.RLock()
-	entry, ok := breakers[key]
-	breakersMu.RUnlock()
+	m.mu.RLock()
+	entry, ok := m.breakers[key]
+	m.mu.RUnlock()
 	if !ok {
 		return false, 0
 	}
 
-	breakersMu.Lock()
-	defer breakersMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	switch entry.state {
 	case CircuitClosed:
@@ -144,13 +165,13 @@ func IsTripped(channelID, keyID int, modelName string, baseSec, maxSec int) (tri
 }
 
 // RecordSuccess resets the circuit breaker on a successful request.
-func RecordSuccess(channelID, keyID int, modelName string) {
+func (m *CircuitBreakerManager) RecordSuccess(channelID, keyID int, modelName string) {
 	key := circuitKey(channelID, keyID, modelName)
 
-	breakersMu.Lock()
-	defer breakersMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	entry, ok := breakers[key]
+	entry, ok := m.breakers[key]
 	if !ok {
 		return
 	}
@@ -158,30 +179,30 @@ func RecordSuccess(channelID, keyID int, modelName string) {
 	entry.state = CircuitClosed
 	entry.consecutiveFailures = 0
 	entry.tripCount = 0
-	if wasOpen && circuitObserver != nil {
-		go circuitObserver.SetCircuitBreakerState(context.Background(), key, -1)
+	if wasOpen && m.observer != nil {
+		go m.observer.SetCircuitBreakerState(context.Background(), key, -1)
 	}
 }
 
 // RecordFailure records a failed request, potentially tripping the circuit breaker.
-func RecordFailure(channelID, keyID int, modelName string, ctx context.Context, db *bun.DB) {
+func (m *CircuitBreakerManager) RecordFailure(channelID, keyID int, modelName string, ctx context.Context, db *bun.DB) {
 	key := circuitKey(channelID, keyID, modelName)
-	entry := getOrCreate(key)
+	entry := m.getOrCreate(key)
 
-	breakersMu.Lock()
-	defer breakersMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	entry.lastFailureTime = time.Now().UnixMilli()
 
 	switch entry.state {
 	case CircuitClosed:
 		entry.consecutiveFailures++
-		threshold := getThreshold(ctx, db)
+		threshold := m.loadConfig(ctx, db).Threshold
 		if entry.consecutiveFailures >= threshold {
 			entry.state = CircuitOpen
 			entry.tripCount++
-			if circuitObserver != nil {
-				go circuitObserver.SetCircuitBreakerState(context.Background(), key, 1)
+			if m.observer != nil {
+				go m.observer.SetCircuitBreakerState(context.Background(), key, 1)
 			}
 		}
 
@@ -194,4 +215,36 @@ func RecordFailure(channelID, keyID int, modelName string, ctx context.Context, 
 	case CircuitOpen:
 		// Should not receive failures while open, but update time for safety
 	}
+}
+
+// StartCleanup runs a background goroutine that removes stale closed breakers every 5 minutes.
+// Breakers in closed state with no failure for 30+ minutes are considered stale.
+func (m *CircuitBreakerManager) StartCleanup(ctx context.Context) {
+	const interval = 5 * time.Minute
+	const staleThreshold = 30 * time.Minute
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.mu.Lock()
+				now := time.Now().UnixMilli()
+				removed := 0
+				for key, entry := range m.breakers {
+					if entry.state == CircuitClosed && (now-entry.lastFailureTime) > staleThreshold.Milliseconds() {
+						delete(m.breakers, key)
+						removed++
+					}
+				}
+				m.mu.Unlock()
+				if removed > 0 {
+					log.Printf("[cleanup] removed %d stale circuit breaker entries", removed)
+				}
+			}
+		}
+	}()
 }
