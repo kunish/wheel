@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.0](https://github.com/kunish/wheel/compare/v1.5.3...v1.6.0) (2026-02-14)
+
+
+### Features
+
+* **web:** add syntax highlighting, mermaid support, and streaming UX improvements ([05deee2](https://github.com/kunish/wheel/commit/05deee2670b37b3a03126b0e11525d45098dc2b6))
+* **worker:** add Prometheus metrics and OpenTelemetry tracing ([0beac76](https://github.com/kunish/wheel/commit/0beac7622f70b71163415f288f89c76330ce9f93))
+* **worker:** optimize async stats caching and non-blocking log submission ([79b3823](https://github.com/kunish/wheel/commit/79b3823dc8c63ea5d60cb66ce42018febe12c9ab))
+
+
+### Bug Fixes
+
+* **worker:** fix token extraction and streaming reliability ([d49b6b7](https://github.com/kunish/wheel/commit/d49b6b78d35b3961172cbb1616b60e26c1693163))
+
 ## [1.5.3](https://github.com/kunish/wheel/compare/v1.5.2...v1.5.3) (2026-02-13)
 
 
