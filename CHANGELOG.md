@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.3](https://github.com/kunish/wheel/compare/v1.7.2...v1.7.3) (2026-02-15)
+
+
+### Bug Fixes
+
+* center month view content in dashboard ([#32](https://github.com/kunish/wheel/issues/32)) ([5779db0](https://github.com/kunish/wheel/commit/5779db0e40be7b01ff1251d9d097970b5c071409))
+
 ## [1.7.2](https://github.com/kunish/wheel/compare/v1.7.1...v1.7.2) (2026-02-15)
 
 
