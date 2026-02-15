@@ -1,8 +1,8 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Proxy performs single HTTP fetch
 
-`proxyNonStreaming` 和 `proxyStreaming` SHALL 对上游只执行单次 HTTP fetch。不做任何 429 重试循环。
+`proxyNonStreaming` 和 `proxyStreaming` SHALL 对上游只执行单次 HTTP fetch。不做任何 429 重试循环。SHALL 使用注入的 `*http.Client`（带超时配置）替代 `http.DefaultClient`。
 
 #### Scenario: Non-streaming upstream returns 429
 
@@ -24,32 +24,7 @@
 - **WHEN** 上游返回非 2xx 状态码
 - **THEN** proxy SHALL 通过 rejectFirstChunk 抛出 ProxyError，不做重试
 
-### Requirement: ProxyError includes retry delay from upstream
+#### Scenario: 非流式请求超时保护
 
-ProxyError SHALL 解析上游响应中的重试延迟信息，通过 `retryAfterMs` 属性暴露。
-
-#### Scenario: Upstream provides Retry-After header
-
-- **WHEN** 上游 429 响应包含 `Retry-After: 2` 头
-- **THEN** ProxyError.retryAfterMs SHALL 为 2000
-
-#### Scenario: Upstream provides Google Cloud quotaResetDelay
-
-- **WHEN** 上游响应体包含 `quotaResetDelay: "1.5s"`
-- **THEN** ProxyError.retryAfterMs SHALL 为 1500
-
-### Requirement: Remove passthrough parameter
-
-`proxyNonStreaming` 和 `proxyStreaming` SHALL 移除 `passthrough` 参数。格式转换统一在 handler 层处理。
-
-#### Scenario: Proxy function signatures
-
-- **WHEN** 调用 proxyNonStreaming 或 proxyStreaming
-- **THEN** 函数签名不包含 passthrough 参数
-
-## REMOVED Requirements
-
-### Requirement: Proxy-level 429 retry loop
-
-**Reason**: Go 版本不在 proxy 层做 429 重试，只在 handler 层做 channel 级别重试
-**Migration**: handler.ts 的 3 轮重试已覆盖此场景
+- **WHEN** 上游 120 秒内未响应非流式请求
+- **THEN** proxy SHALL 返回超时错误，释放连接
