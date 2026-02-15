@@ -20,7 +20,7 @@ func DetectRequestType(path string) string {
 }
 
 // ExtractModel extracts the model name and stream flag from the parsed request body.
-func ExtractModel(body map[string]interface{}) (model string, stream bool) {
+func ExtractModel(body map[string]any) (model string, stream bool) {
 	if m, ok := body["model"].(string); ok {
 		model = m
 	}

@@ -7,13 +7,12 @@ import { useModelMeta } from "@/hooks/use-model-meta"
  * - Blue dot: recognized by models.dev (but not API-fetched)
  * - Gray text "manual": unknown / manually typed
  */
-export function ModelSourceBadge({
-  modelId,
-  isApiFetched,
-}: {
+export interface ModelSourceBadgeProps {
   modelId: string
   isApiFetched: boolean
-}) {
+}
+
+export function ModelSourceBadge({ modelId, isApiFetched }: ModelSourceBadgeProps) {
   const { t } = useTranslation("model")
   const meta = useModelMeta(modelId)
 

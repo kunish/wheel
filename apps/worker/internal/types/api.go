@@ -7,11 +7,6 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type LoginResponse struct {
-	Token    string `json:"token"`
-	ExpireAt string `json:"expireAt"`
-}
-
 type ChangePasswordRequest struct {
 	OldPassword string `json:"oldPassword"`
 	NewPassword string `json:"newPassword"`
@@ -51,19 +46,18 @@ type ChannelUpdateRequest struct {
 	Keys          []ChannelKeyInput `json:"keys,omitempty"`
 	Model         []string          `json:"model,omitempty"`
 	CustomModel   *string           `json:"customModel,omitempty"`
+	Proxy         *bool             `json:"proxy,omitempty"`
 	AutoSync      *bool             `json:"autoSync,omitempty"`
 	AutoGroup     *int              `json:"autoGroup,omitempty"`
 	CustomHeader  []CustomHeader    `json:"customHeader,omitempty"`
 	ParamOverride *string           `json:"paramOverride,omitempty"`
+	ChannelProxy  *string           `json:"channelProxy,omitempty"`
+	FetchedModel  []string          `json:"fetchedModel,omitempty"`
 }
 
 type ChannelEnableRequest struct {
 	ID      int  `json:"id"`
 	Enabled bool `json:"enabled"`
-}
-
-type ChannelListResponse struct {
-	Channels []Channel `json:"channels"`
 }
 
 // ──── Group ────
@@ -93,14 +87,6 @@ type GroupUpdateRequest struct {
 	Items             []GroupItemInput  `json:"items,omitempty"`
 }
 
-type GroupListResponse struct {
-	Groups []Group `json:"groups"`
-}
-
-type ModelListResponse struct {
-	Models []string `json:"models"`
-}
-
 // ──── API Key ────
 
 type APIKeyCreateRequest struct {
@@ -119,35 +105,7 @@ type APIKeyUpdateRequest struct {
 	SupportedModels *string `json:"supportedModels,omitempty"`
 }
 
-type APIKeyListResponse struct {
-	APIKeys []APIKey `json:"apiKeys"`
-}
-
-type APIKeyStatsResponse struct {
-	TotalRequests    int     `json:"totalRequests"`
-	TotalCost        float64 `json:"totalCost"`
-	TotalInputTokens int     `json:"totalInputTokens"`
-	TotalOutputTokens int    `json:"totalOutputTokens"`
-}
-
 // ──── Log ────
-
-type LogListRequest struct {
-	Page      int    `json:"page,omitempty"`
-	PageSize  int    `json:"pageSize,omitempty"`
-	Model     string `json:"model,omitempty"`
-	ChannelID int    `json:"channelId,omitempty"`
-	Status    string `json:"status,omitempty"`
-	StartTime int64  `json:"startTime,omitempty"`
-	EndTime   int64  `json:"endTime,omitempty"`
-}
-
-type LogListResponse struct {
-	Logs     []RelayLog `json:"logs"`
-	Total    int        `json:"total"`
-	Page     int        `json:"page"`
-	PageSize int        `json:"pageSize"`
-}
 
 // ──── Stats ────
 
@@ -166,10 +124,6 @@ type ChannelStatsItem struct {
 	TotalRequests int    `json:"totalRequests"`
 	TotalCost    float64 `json:"totalCost"`
 	AvgLatency   float64 `json:"avgLatency"`
-}
-
-type ChannelStatsResponse struct {
-	Channels []ChannelStatsItem `json:"channels"`
 }
 
 type ModelStatsItem struct {
@@ -207,19 +161,11 @@ type HourlyStatsItem struct {
 
 // ──── Settings ────
 
-type SettingsResponse struct {
-	Settings map[string]string `json:"settings"`
-}
-
 type SettingsUpdateRequest struct {
 	Settings map[string]string `json:"settings"`
 }
 
 // ──── LLM Price ────
-
-type LLMListResponse struct {
-	Models []LLMInfo `json:"models"`
-}
 
 type LLMCreateRequest struct {
 	Name        string  `json:"name"`
@@ -238,11 +184,6 @@ type LLMDeleteRequest struct {
 	ID int `json:"id"`
 }
 
-type LLMPriceSyncResponse struct {
-	Synced  int `json:"synced"`
-	Updated int `json:"updated"`
-}
-
 // ──── Sync ────
 
 type SyncResult struct {
@@ -250,10 +191,6 @@ type SyncResult struct {
 	NewModels      []string `json:"newModels"`
 	RemovedModels  []string `json:"removedModels"`
 	Errors         []string `json:"errors"`
-}
-
-type FetchModelResponse struct {
-	Models []string `json:"models"`
 }
 
 // ──── Data Export / Import ────
@@ -280,10 +217,13 @@ type ImportCount struct {
 	Skipped int `json:"skipped"`
 }
 
-// ──── Generic API Response ────
+// ──── WebSocket / Streaming ────
 
-type ApiResponse struct {
-	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
-	Error   string      `json:"error,omitempty"`
+// BroadcastFunc is the signature for WebSocket broadcast.
+type BroadcastFunc func(event string, data ...any)
+
+// StreamTracker tracks active streams so new WS clients get a snapshot.
+type StreamTracker interface {
+	TrackStream(streamId string, data map[string]any)
+	UntrackStream(streamId string)
 }

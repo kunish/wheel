@@ -59,64 +59,55 @@ var suffixPattern = regexp.MustCompile(`-(thinking|latest|online)$`)
 
 // ModelPrice holds per-million-token pricing for a model.
 type ModelPrice struct {
-	InputPrice  float64
-	OutputPrice float64
+	InputPrice      float64
+	OutputPrice     float64
+	CacheReadPrice  float64
+	CacheWritePrice float64
 }
 
-// LookupModelPrice returns the input/output price (per million tokens) for a model.
-// Returns nil if no pricing is found.
-func LookupModelPrice(modelName string, ctx context.Context, db *bun.DB) *ModelPrice {
-	// DB lookup first
-	price, err := dal.GetLLMPriceByName(ctx, db, modelName)
-	if err == nil && price != nil {
-		return &ModelPrice{InputPrice: price.InputPrice, OutputPrice: price.OutputPrice}
-	}
+// resolveModelName returns candidate model names to try, in priority order.
+// It strips common suffixes (-thinking, -latest, -online) and provider prefixes (after last colon).
+func resolveModelName(modelName string) []string {
+	names := []string{modelName}
 
-	// Fallback to built-in prices
-	if fp, ok := fallbackPrices[modelName]; ok {
-		return &ModelPrice{InputPrice: fp.Input, OutputPrice: fp.Output}
-	}
-
-	// Strip common suffixes
 	base := suffixPattern.ReplaceAllString(modelName, "")
 	if base != modelName {
-		return LookupModelPrice(base, ctx, db)
+		return append(names, resolveModelName(base)...)
 	}
 
-	// Strip provider prefix after last colon
 	if idx := strings.LastIndex(modelName, ":"); idx >= 0 {
-		return LookupModelPrice(modelName[idx+1:], ctx, db)
+		return append(names, resolveModelName(modelName[idx+1:])...)
 	}
 
+	return names
+}
+
+// LookupModelPrice returns the pricing (per million tokens) for a model.
+// Returns nil if no pricing is found.
+func LookupModelPrice(modelName string, ctx context.Context, db *bun.DB) *ModelPrice {
+	for _, name := range resolveModelName(modelName) {
+		if price, err := dal.GetLLMPriceByName(ctx, db, name); err == nil && price != nil {
+			return &ModelPrice{
+				InputPrice:      price.InputPrice,
+				OutputPrice:     price.OutputPrice,
+				CacheReadPrice:  price.CacheReadPrice,
+				CacheWritePrice: price.CacheWritePrice,
+			}
+		}
+		if fp, ok := fallbackPrices[name]; ok {
+			return &ModelPrice{InputPrice: fp.Input, OutputPrice: fp.Output}
+		}
+	}
 	return nil
 }
 
 // CalculateCost computes the cost of a request in dollars.
 func CalculateCost(modelName string, inputTokens, outputTokens int, ctx context.Context, db *bun.DB, cacheTokens *CacheTokens) float64 {
-	// DB lookup first
-	price, err := dal.GetLLMPriceByName(ctx, db, modelName)
-	if err == nil && price != nil {
-		return computeCost(inputTokens, outputTokens, price.InputPrice, price.OutputPrice,
-			price.CacheReadPrice, price.CacheWritePrice, cacheTokens)
+	mp := LookupModelPrice(modelName, ctx, db)
+	if mp == nil {
+		return 0
 	}
-
-	// Fallback to built-in prices
-	if fp, ok := fallbackPrices[modelName]; ok {
-		return computeCost(inputTokens, outputTokens, fp.Input, fp.Output, 0, 0, cacheTokens)
-	}
-
-	// Prefix match: strip common suffixes
-	base := suffixPattern.ReplaceAllString(modelName, "")
-	if base != modelName {
-		return CalculateCost(base, inputTokens, outputTokens, ctx, db, cacheTokens)
-	}
-
-	// Also try stripping everything after the last colon (for provider prefixes)
-	if idx := strings.LastIndex(modelName, ":"); idx >= 0 {
-		return CalculateCost(modelName[idx+1:], inputTokens, outputTokens, ctx, db, cacheTokens)
-	}
-
-	return 0
+	return computeCost(inputTokens, outputTokens, mp.InputPrice, mp.OutputPrice, mp.CacheReadPrice, mp.CacheWritePrice, cacheTokens)
 }
 
 func computeCost(inputTokens, outputTokens int, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice float64, cacheTokens *CacheTokens) float64 {

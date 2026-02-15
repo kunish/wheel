@@ -3,8 +3,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -14,8 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
+	"github.com/kunish/wheel/apps/worker/internal/relay"
+	"github.com/kunish/wheel/apps/worker/internal/service"
 	"github.com/kunish/wheel/apps/worker/internal/types"
-	"github.com/uptrace/bun"
 )
 
 // ──── Channel Routes ────
@@ -91,84 +90,72 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/channel/update [post]
 func (h *Handler) UpdateChannel(c *gin.Context) {
-	var body map[string]interface{}
+	var body types.ChannelUpdateRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		errorJSON(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-
-	idFloat, ok := body["id"].(float64)
-	if !ok {
+	if body.ID == 0 {
 		errorJSON(c, http.StatusBadRequest, "id is required")
 		return
 	}
-	id := int(idFloat)
 
-	// Build update map with DB column names
-	data := make(map[string]interface{})
-	if v, ok := body["name"]; ok {
-		data["name"] = v
+	// Build update map with DB column names from pointer fields
+	data := make(map[string]any)
+	if body.Name != nil {
+		data["name"] = *body.Name
 	}
-	if v, ok := body["type"]; ok {
-		data["type"] = v
+	if body.Type != nil {
+		data["type"] = *body.Type
 	}
-	if v, ok := body["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			data["enabled"] = b
-		}
+	if body.Enabled != nil {
+		data["enabled"] = *body.Enabled
 	}
-	if v, ok := body["baseUrls"]; ok {
-		jsonBytes, _ := json.Marshal(v)
+	if body.BaseUrls != nil {
+		jsonBytes, _ := json.Marshal(body.BaseUrls)
 		data["base_urls"] = string(jsonBytes)
 	}
-	if v, ok := body["model"]; ok {
-		jsonBytes, _ := json.Marshal(v)
+	if body.Model != nil {
+		jsonBytes, _ := json.Marshal(body.Model)
 		data["model"] = string(jsonBytes)
 	}
-	if v, ok := body["customModel"]; ok {
-		data["custom_model"] = v
+	if body.CustomModel != nil {
+		data["custom_model"] = *body.CustomModel
 	}
-	if v, ok := body["proxy"]; ok {
-		if b, ok := v.(bool); ok {
-			data["proxy"] = b
-		}
+	if body.Proxy != nil {
+		data["proxy"] = *body.Proxy
 	}
-	if v, ok := body["autoSync"]; ok {
-		if b, ok := v.(bool); ok {
-			data["auto_sync"] = b
-		}
+	if body.AutoSync != nil {
+		data["auto_sync"] = *body.AutoSync
 	}
-	if v, ok := body["autoGroup"]; ok {
-		data["auto_group"] = v
+	if body.AutoGroup != nil {
+		data["auto_group"] = *body.AutoGroup
 	}
-	if v, ok := body["customHeader"]; ok {
-		jsonBytes, _ := json.Marshal(v)
+	if body.CustomHeader != nil {
+		jsonBytes, _ := json.Marshal(body.CustomHeader)
 		data["custom_header"] = string(jsonBytes)
 	}
-	if v, ok := body["paramOverride"]; ok {
-		data["param_override"] = v
+	if body.ParamOverride != nil {
+		data["param_override"] = *body.ParamOverride
 	}
-	if v, ok := body["channelProxy"]; ok {
-		data["channel_proxy"] = v
+	if body.ChannelProxy != nil {
+		data["channel_proxy"] = *body.ChannelProxy
 	}
-	if v, ok := body["fetchedModel"]; ok {
-		jsonBytes, _ := json.Marshal(v)
+	if body.FetchedModel != nil {
+		jsonBytes, _ := json.Marshal(body.FetchedModel)
 		data["fetched_model"] = string(jsonBytes)
 	}
 
 	ctx := c.Request.Context()
 
-	if err := dal.UpdateChannel(ctx, h.DB, id, data); err != nil {
+	if err := dal.UpdateChannel(ctx, h.DB, body.ID, data); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	// Sync keys if provided
-	if keysRaw, ok := body["keys"]; ok {
-		keysJSON, _ := json.Marshal(keysRaw)
-		var keys []types.ChannelKeyInput
-		json.Unmarshal(keysJSON, &keys)
-		if err := dal.SyncChannelKeys(ctx, h.DB, id, keys); err != nil {
+	if body.Keys != nil {
+		if err := dal.SyncChannelKeys(ctx, h.DB, body.ID, body.Keys); err != nil {
 			errorJSON(c, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -358,7 +345,7 @@ func (h *Handler) FetchModelPreview(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/channel/sync [post]
 func (h *Handler) SyncAllModels(c *gin.Context) {
-	result, err := syncAllModels(c.Request.Context(), h.DB, h.Cache)
+	result, err := relay.SyncAllModels(c.Request.Context(), h.DB, h.Cache)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -389,24 +376,15 @@ func (h *Handler) LastSyncTime(c *gin.Context) {
 
 // ──── Model fetch helpers ────
 
-const browserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-
-func setBrowserHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", browserUA)
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-}
-
-
-
 func fallbackModelsFromMetadata(kv *cache.MemoryKV, providerKey string) []string {
-	cached, ok := cache.Get[map[string]modelMeta](kv, metadataKVKey)
+	cached, ok := cache.Get[map[string]service.ModelMeta](kv, service.MetadataKVKey)
 	if !ok || cached == nil {
 		// Try fetching fresh metadata
-		metadata, err := fetchAndFlattenMetadata()
+		metadata, err := service.FetchAndFlattenMetadata()
 		if err != nil {
 			return nil
 		}
-		kv.Put(metadataKVKey, metadata, metadataTTL)
+		kv.Put(service.MetadataKVKey, metadata, service.MetadataTTL)
 		cached = &metadata
 	}
 
@@ -448,7 +426,7 @@ func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]strin
 
 	switch channel.Type {
 	case types.OutboundAnthropic:
-		models, err := fetchAnthropicModels(ctx, baseUrl, key.ChannelKey)
+		models, err := relay.FetchAnthropicModels(ctx, baseUrl, key.ChannelKey)
 		if err != nil && kv != nil {
 			if fb := fallbackModelsFromMetadata(kv, "anthropic"); len(fb) > 0 {
 				return fb, true, nil
@@ -456,211 +434,10 @@ func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]strin
 		}
 		return models, false, err
 	case types.OutboundGemini:
-		models, err := fetchGeminiModels(ctx, baseUrl, key.ChannelKey)
+		models, err := relay.FetchGeminiModels(ctx, baseUrl, key.ChannelKey)
 		return models, false, err
 	default:
-		models, err := fetchOpenAIModels(ctx, baseUrl, key.ChannelKey)
+		models, err := relay.FetchOpenAIModels(ctx, baseUrl, key.ChannelKey)
 		return models, false, err
 	}
-}
-
-func fetchOpenAIModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
-	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models", nil)
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	setBrowserHeaders(req)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		snippet := string(body)
-		if len(snippet) > 200 {
-			snippet = snippet[:200]
-		}
-		return nil, fmt.Errorf("OpenAI models API returned %d: %s", resp.StatusCode, snippet)
-	}
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	models := make([]string, 0, len(result.Data))
-	for _, m := range result.Data {
-		models = append(models, m.ID)
-	}
-	return models, nil
-}
-
-func fetchAnthropicModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
-	var allModels []string
-	afterID := ""
-
-	for {
-		url := baseUrl + "/v1/models?limit=100"
-		if afterID != "" {
-			url += "&after_id=" + afterID
-		}
-
-		req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-		req.Header.Set("x-api-key", apiKey)
-		req.Header.Set("anthropic-version", "2023-06-01")
-		setBrowserHeaders(req)
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		body, _ := io.ReadAll(resp.Body)
-
-		if resp.StatusCode != http.StatusOK {
-			snippet := string(body)
-			if len(snippet) > 200 {
-				snippet = snippet[:200]
-			}
-			return nil, fmt.Errorf("Anthropic models API returned %d: %s", resp.StatusCode, snippet)
-		}
-
-		var result struct {
-			Data []struct {
-				ID string `json:"id"`
-			} `json:"data"`
-			HasMore bool   `json:"has_more"`
-			LastID  string `json:"last_id"`
-		}
-		if err := json.Unmarshal(body, &result); err != nil {
-			return nil, err
-		}
-
-		for _, m := range result.Data {
-			allModels = append(allModels, m.ID)
-		}
-
-		if !result.HasMore || result.LastID == "" {
-			break
-		}
-		afterID = result.LastID
-	}
-
-	return allModels, nil
-}
-
-func fetchGeminiModels(ctx context.Context, baseUrl, apiKey string) ([]string, error) {
-	req, _ := http.NewRequestWithContext(ctx, "GET", baseUrl+"/v1/models?key="+apiKey, nil)
-	setBrowserHeaders(req)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		snippet := string(body)
-		if len(snippet) > 200 {
-			snippet = snippet[:200]
-		}
-		return nil, fmt.Errorf("Gemini models API returned %d: %s", resp.StatusCode, snippet)
-	}
-
-	var result struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	models := make([]string, 0, len(result.Models))
-	for _, m := range result.Models {
-		models = append(models, strings.TrimPrefix(m.Name, "models/"))
-	}
-	return models, nil
-}
-
-// ──── Sync all models ────
-
-func syncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*types.SyncResult, error) {
-	result := &types.SyncResult{
-		NewModels:     []string{},
-		RemovedModels: []string{},
-		Errors:        []string{},
-	}
-
-	channels, err := dal.ListChannels(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range channels {
-		ch := &channels[i]
-		if !ch.AutoSync {
-			continue
-		}
-
-		upstreamModels, isFallback, err := fetchModelsFromChannel(ch, kv)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: %s", ch.Name, err.Error()))
-			continue
-		}
-		if len(upstreamModels) == 0 {
-			continue
-		}
-
-		oldModels := []string(ch.Model)
-		newSet := make(map[string]bool)
-		for _, m := range upstreamModels {
-			newSet[m] = true
-		}
-		oldSet := make(map[string]bool)
-		for _, m := range oldModels {
-			oldSet[m] = true
-		}
-
-		for _, m := range upstreamModels {
-			if !oldSet[m] {
-				result.NewModels = append(result.NewModels, m)
-			}
-		}
-		for _, m := range oldModels {
-			if !newSet[m] {
-				result.RemovedModels = append(result.RemovedModels, m)
-			}
-		}
-
-		// Update channel model list; only mark as fetched if from real API
-		modelJSON, _ := json.Marshal(upstreamModels)
-		updates := map[string]interface{}{
-			"model": string(modelJSON),
-		}
-		if !isFallback {
-			updates["fetched_model"] = string(modelJSON)
-		}
-		dal.UpdateChannel(ctx, db, ch.ID, updates)
-
-		result.SyncedChannels++
-	}
-
-	// Save last sync time
-	now := fmt.Sprintf("%d", time.Now().Unix())
-	dal.UpdateSettings(ctx, db, map[string]string{"last_sync_time": now})
-
-	kv.Delete("channels")
-	kv.Delete("groups")
-
-	return result, nil
 }

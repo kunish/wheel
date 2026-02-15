@@ -28,14 +28,6 @@ type logEntry struct {
 	StreamID string // non-empty for streaming logs
 }
 
-// BroadcastFunc is the signature for WebSocket broadcast.
-type BroadcastFunc func(event string, data ...any)
-
-// StreamTracker tracks active streams so new WS clients get a snapshot.
-type StreamTracker interface {
-	UntrackStream(streamId string)
-}
-
 // LogWriter buffers relay logs and flushes them in batches.
 type LogWriter struct {
 	ch            chan logEntry
@@ -43,15 +35,15 @@ type LogWriter struct {
 	timeThresh    time.Duration
 	logDB         *bun.DB
 	mainDB        *bun.DB
-	broadcast     BroadcastFunc
-	streamTracker StreamTracker
+	broadcast     types.BroadcastFunc
+	streamTracker types.StreamTracker
 	observer      *observe.Observer
 	statsCache    *cache.MemoryKV
 	dropCount     atomic.Int64
 }
 
 // NewLogWriter creates a LogWriter with sensible defaults.
-func NewLogWriter(logDB, mainDB *bun.DB, broadcast BroadcastFunc, streamTracker StreamTracker, obs *observe.Observer, statsCache *cache.MemoryKV) *LogWriter {
+func NewLogWriter(logDB, mainDB *bun.DB, broadcast types.BroadcastFunc, streamTracker types.StreamTracker, obs *observe.Observer, statsCache *cache.MemoryKV) *LogWriter {
 	return &LogWriter{
 		ch:            make(chan logEntry, 1000),
 		countThresh:   50,

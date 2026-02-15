@@ -2,6 +2,7 @@ import type { DragEndEvent, DragOverEvent, DragStartEvent } from "@dnd-kit/core"
 import type { ChannelFormData } from "./model/channel-dialog"
 import type { GroupFormData, GroupItemForm } from "./model/group-dialog"
 import type { PriceFormData } from "./model/price-dialog"
+import type { ModelMeta } from "@/lib/api-client"
 import {
   DndContext,
   DragOverlay,
@@ -76,7 +77,7 @@ import {
   updateChannel,
   updateGroup,
   updateModelPrice,
-} from "@/lib/api"
+} from "@/lib/api-client"
 import { cn } from "@/lib/utils"
 import { EMPTY_CHANNEL_FORM } from "./model/channel-dialog"
 import { EMPTY_GROUP_FORM } from "./model/group-dialog"
@@ -1422,7 +1423,7 @@ function GroupItemList({
   items: GroupItemForm[]
   mode: number
   channelMap: Map<number, ChannelRecord>
-  metadataMap: Record<string, import("@/lib/api").ModelMeta> | undefined
+  metadataMap: Record<string, ModelMeta> | undefined
   priceMap: Map<string, ModelPrice>
   onRemoveItem?: (itemIndex: number) => void
 }) {
@@ -1440,7 +1441,7 @@ function GroupItemList({
   // Build resolved metadata map using fuzzy matching
   const resolvedMap = useMemo(() => {
     if (!metadataMap) return undefined
-    const map: Record<string, import("@/lib/api").ModelMeta> = {}
+    const map: Record<string, ModelMeta> = {}
     for (const id of modelIds) {
       const meta = fuzzyLookup(metadataMap, id)
       if (meta) map[id] = meta

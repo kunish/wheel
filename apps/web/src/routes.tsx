@@ -8,7 +8,7 @@ import {
   getHourlyStats,
   getModelStats,
   getTotalStats,
-} from "./lib/api"
+} from "./lib/api-client"
 
 const LoginPage = lazy(() => import("./pages/login"))
 const DashboardPage = lazy(() => {

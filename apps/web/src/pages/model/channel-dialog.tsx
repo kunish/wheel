@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { fetchChannelModelsPreview } from "@/lib/api"
+import { fetchChannelModelsPreview } from "@/lib/api-client"
 
 export interface ChannelFormData {
   id?: number
@@ -186,6 +186,15 @@ function FetchModelsButton({
 
 // ─── Channel Dialog ────────────────────────────
 
+interface ChannelDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  form: ChannelFormData
+  setForm: (f: ChannelFormData) => void
+  onSave: () => void
+  isPending: boolean
+}
+
 export default function ChannelDialog({
   open,
   onOpenChange,
@@ -193,14 +202,7 @@ export default function ChannelDialog({
   setForm,
   onSave,
   isPending,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  form: ChannelFormData
-  setForm: (f: ChannelFormData) => void
-  onSave: () => void
-  isPending: boolean
-}) {
+}: ChannelDialogProps) {
   const { t } = useTranslation("model")
   const [showKey, setShowKey] = useState(false)
 

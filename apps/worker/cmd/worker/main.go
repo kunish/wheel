@@ -10,11 +10,13 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
@@ -25,6 +27,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/observe"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/seed"
+	"github.com/kunish/wheel/apps/worker/internal/service"
 	"github.com/kunish/wheel/apps/worker/internal/ws"
 )
 
@@ -78,7 +81,7 @@ func main() {
 	defer kv.Close()
 
 	// ── WebSocket Hub ──
-	hub := ws.New()
+	hub := ws.New(cfg.JWTSecret, cfg.AllowedOrigins)
 
 	// ── Observability (must be before LogWriter so it can record drop metrics) ──
 	obs, err := observe.New(cfg.MetricsEnabled, cfg.OtelEnabled, cfg.OtelEndpoint, cfg.OtelServiceName)
@@ -87,7 +90,20 @@ func main() {
 	}
 	if obs != nil {
 		defer obs.Shutdown(context.Background())
-		relay.SetCircuitObserver(obs)
+	}
+
+	// ── Relay Managers ──
+	cbm := relay.NewCircuitBreakerManager(obs, kv)
+	sm := relay.NewSessionManager()
+	bal := relay.NewBalancerState()
+
+	// ── HTTP Clients (with timeout) ──
+	nonStreamClient := &http.Client{Timeout: 120 * time.Second}
+	streamClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+		},
+		// No overall timeout — streams can run indefinitely
 	}
 
 	// ── LogWriter (batched async log persistence) ──
@@ -105,6 +121,8 @@ func main() {
 
 	// ── Background Log Cleanup ──
 	db.StartLogCleanup(ctx, database, logDatabase)
+	cbm.StartCleanup(ctx)
+	sm.StartCleanup(ctx)
 
 	// ── Handlers ──
 	h := &handler.Handler{
@@ -115,13 +133,21 @@ func main() {
 	}
 
 	rh := &handler.RelayHandler{
-		DB:            database,
-		LogDB:         logDatabase,
-		Cache:         kv,
-		Broadcast:     hub.Broadcast,
-		StreamTracker: hub,
-		LogWriter:     logWriter,
-		Observer:      obs,
+		Handler: handler.Handler{
+			DB:     database,
+			LogDB:  logDatabase,
+			Cache:  kv,
+			Config: cfg,
+		},
+		Broadcast:       hub.Broadcast,
+		StreamTracker:   hub,
+		LogWriter:       logWriter,
+		Observer:        obs,
+		CircuitBreakers: cbm,
+		Sessions:        sm,
+		Balancer:        bal,
+		HTTPClient:      nonStreamClient,
+		StreamClient:    streamClient,
 	}
 
 	// ── Router ──
@@ -142,7 +168,7 @@ func main() {
 	// Sync model prices and channel models every 6 hours
 	c.AddFunc("0 */6 * * *", func() {
 		log.Println("[cron] Syncing model prices from models.dev...")
-		if _, err := handler.SyncPricesFromModelsDev(context.Background(), database); err != nil {
+		if _, err := service.SyncPricesFromModelsDev(context.Background(), database); err != nil {
 			log.Printf("[cron] price sync error: %v", err)
 		}
 	})

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { exportData, importData } from "@/lib/api"
+import { exportData, importData } from "@/lib/api-client"
 
 interface ImportResult {
   channels?: { added: number; skipped: number }

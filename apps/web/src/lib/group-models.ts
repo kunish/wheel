@@ -1,4 +1,4 @@
-import type { ModelMeta } from "@/lib/api"
+import type { ModelMeta } from "@/lib/api-client"
 
 export interface ProviderGroup {
   provider: string

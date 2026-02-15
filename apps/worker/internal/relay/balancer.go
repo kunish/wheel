@@ -8,11 +8,18 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
-// rrCounters tracks round-robin position per group (goroutine-safe).
-var rrCounters sync.Map
+// BalancerState manages load-balancing state (round-robin counters, etc.).
+type BalancerState struct {
+	rrCounters sync.Map
+}
+
+// NewBalancerState creates a new BalancerState.
+func NewBalancerState() *BalancerState {
+	return &BalancerState{}
+}
 
 // SelectChannelOrder returns group items ordered according to the load-balancing mode.
-func SelectChannelOrder(mode types.GroupMode, items []types.GroupItem, groupID int) []types.GroupItem {
+func (b *BalancerState) SelectChannelOrder(mode types.GroupMode, items []types.GroupItem, groupID int) []types.GroupItem {
 	// Filter out disabled items first
 	enabled := make([]types.GroupItem, 0, len(items))
 	for _, it := range items {
@@ -26,7 +33,7 @@ func SelectChannelOrder(mode types.GroupMode, items []types.GroupItem, groupID i
 
 	switch mode {
 	case types.GroupModeRoundRobin:
-		return roundRobin(enabled, groupID)
+		return b.roundRobin(enabled, groupID)
 	case types.GroupModeRandom:
 		return randomOrder(enabled)
 	case types.GroupModeFailover:
@@ -38,10 +45,10 @@ func SelectChannelOrder(mode types.GroupMode, items []types.GroupItem, groupID i
 	}
 }
 
-func roundRobin(items []types.GroupItem, groupID int) []types.GroupItem {
-	val, _ := rrCounters.LoadOrStore(groupID, 0)
+func (b *BalancerState) roundRobin(items []types.GroupItem, groupID int) []types.GroupItem {
+	val, _ := b.rrCounters.LoadOrStore(groupID, 0)
 	idx := val.(int) % len(items)
-	rrCounters.Store(groupID, idx+1)
+	b.rrCounters.Store(groupID, idx+1)
 
 	result := make([]types.GroupItem, 0, len(items))
 	result = append(result, items[idx:]...)

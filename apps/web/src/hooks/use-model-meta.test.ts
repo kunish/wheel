@@ -1,4 +1,4 @@
-import type { ModelMeta } from "@/lib/api"
+import type { ModelMeta } from "@/lib/api-client"
 import { describe, expect, it } from "vitest"
 import { fuzzyLookup } from "./use-model-meta"
 

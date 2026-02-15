@@ -98,7 +98,12 @@ function GearTeeth() {
  * Outline-only gear SVG for decorative backgrounds.
  * No animation — just stroke, inherits `currentColor`.
  */
-export function GearOutline({ size = 40, className }: { size?: number; className?: string }) {
+interface GearOutlineProps {
+  size?: number
+  className?: string
+}
+
+export function GearOutline({ size = 40, className }: GearOutlineProps) {
   return (
     <svg
       viewBox="0 0 40 40"

@@ -171,7 +171,7 @@ type LLMInfo struct {
 // BaseUrlList is a []BaseUrl that scans/values as JSON TEXT.
 type BaseUrlList []BaseUrl
 
-func (b *BaseUrlList) Scan(src interface{}) error {
+func (b *BaseUrlList) Scan(src any) error {
 	if src == nil {
 		*b = []BaseUrl{}
 		return nil
@@ -202,7 +202,7 @@ func (b BaseUrlList) Value() (driver.Value, error) {
 // StringList is a []string that scans/values as JSON TEXT.
 type StringList []string
 
-func (s *StringList) Scan(src interface{}) error {
+func (s *StringList) Scan(src any) error {
 	if src == nil {
 		*s = []string{}
 		return nil
@@ -233,7 +233,7 @@ func (s StringList) Value() (driver.Value, error) {
 // CustomHeaderList is a []CustomHeader that scans/values as JSON TEXT.
 type CustomHeaderList []CustomHeader
 
-func (c *CustomHeaderList) Scan(src interface{}) error {
+func (c *CustomHeaderList) Scan(src any) error {
 	if src == nil {
 		*c = []CustomHeader{}
 		return nil
@@ -264,7 +264,7 @@ func (c CustomHeaderList) Value() (driver.Value, error) {
 // AttemptList is a []ChannelAttempt that scans/values as JSON TEXT.
 type AttemptList []ChannelAttempt
 
-func (a *AttemptList) Scan(src interface{}) error {
+func (a *AttemptList) Scan(src any) error {
 	if src == nil {
 		*a = []ChannelAttempt{}
 		return nil

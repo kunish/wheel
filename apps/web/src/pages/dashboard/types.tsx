@@ -1,4 +1,4 @@
-import type { StatsDaily, StatsHourly, StatsMetrics } from "@/lib/api"
+import type { StatsDaily, StatsHourly, StatsMetrics } from "@/lib/api-client"
 import { useEffect, useState } from "react"
 import { subscribe } from "@/hooks/use-stats-ws"
 
@@ -195,6 +195,44 @@ export function getStoredView(): HeatmapView {
     if (v && HEATMAP_VIEWS.includes(v as HeatmapView)) return v as HeatmapView
   } catch {}
   return "day"
+}
+
+// ───────────── Period totals ─────────────
+
+export interface PeriodTotals {
+  req: number
+  inTok: number
+  outTok: number
+  cost: number
+}
+
+/** Compute aggregate totals from an array of stats-like objects (StatsDaily, StatsHourly, or DayData.daily). */
+export function computePeriodTotals(
+  items: Array<
+    | {
+        request_success?: number
+        request_failed?: number
+        input_token?: number
+        output_token?: number
+        input_cost?: number
+        output_cost?: number
+      }
+    | null
+    | undefined
+  >,
+): PeriodTotals {
+  let req = 0
+  let inTok = 0
+  let outTok = 0
+  let cost = 0
+  for (const s of items) {
+    if (!s) continue
+    req += (s.request_success ?? 0) + (s.request_failed ?? 0)
+    inTok += s.input_token ?? 0
+    outTok += s.output_token ?? 0
+    cost += (s.input_cost ?? 0) + (s.output_cost ?? 0)
+  }
+  return { req, inTok, outTok, cost }
 }
 
 // ───────────── Hooks ─────────────
