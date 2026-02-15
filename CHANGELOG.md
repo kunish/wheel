@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/kunish/wheel/compare/v1.6.1...v1.7.0) (2026-02-15)
+
+
+### Features
+
+* add Prometheus and Grafana monitoring setup ([#23](https://github.com/kunish/wheel/issues/23)) ([b8a030e](https://github.com/kunish/wheel/commit/b8a030e496e6572cee4aad85978a594e479c4a5d))
+
+
+### Bug Fixes
+
+* **group:** enabled=false not persisted when updating group items ([#24](https://github.com/kunish/wheel/issues/24)) ([6010595](https://github.com/kunish/wheel/commit/60105959f4abd3957d9278a42c926af9b7a42464))
+
 ## [1.6.1](https://github.com/kunish/wheel/compare/v1.6.0...v1.6.1) (2026-02-14)
 
 
