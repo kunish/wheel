@@ -377,7 +377,7 @@ export function ActivitySection({
       {nav.view === "month" && (
         <div className="flex min-h-0 flex-1 flex-col px-2">
           <InlineStats items={buildStatsItems(monthTotals)} />
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
             <ReactorGrid
               monthDays={nav.monthDays}
               weekdayLabels={nav.weekdayLabels}
