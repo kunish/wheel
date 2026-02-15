@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
+	"slices"
 	"sync"
 	"time"
 
@@ -23,25 +23,14 @@ const (
 // checkOrigin returns an origin checker based on the hub's allowed origins.
 // If no origins are configured (dev mode), localhost origins are allowed.
 func (h *Hub) checkOrigin(r *http.Request) bool {
+	if len(h.allowedOrigins) == 0 {
+		return true // no restriction when ALLOWED_ORIGINS is not set
+	}
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
 	}
-	if len(h.allowedOrigins) == 0 {
-		// Dev mode: allow localhost
-		return isLocalhostOrigin(origin)
-	}
-	for _, allowed := range h.allowedOrigins {
-		if origin == allowed {
-			return true
-		}
-	}
-	return false
-}
-
-// isLocalhostOrigin checks if an origin is a localhost address.
-func isLocalhostOrigin(origin string) bool {
-	return strings.Contains(origin, "://localhost") || strings.Contains(origin, "://127.0.0.1") || strings.Contains(origin, "://[::1]")
+	return slices.Contains(h.allowedOrigins, origin)
 }
 
 // wsClient wraps a WebSocket connection with a buffered send channel.
