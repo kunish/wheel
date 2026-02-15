@@ -261,6 +261,8 @@ func ProxyStreaming(
 		req.Header.Set(k, v)
 	}
 
+	startTime := time.Now()
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, &ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: 502}
@@ -276,8 +278,6 @@ func ProxyStreaming(
 			RetryAfterMs: parseRetryDelay(resp, errorText),
 		}
 	}
-
-	startTime := time.Now()
 	state := &streamingState{onContent: onContent}
 
 	// First token timeout timer
