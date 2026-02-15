@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/kunish/wheel/compare/v1.7.1...v1.7.2) (2026-02-15)
+
+
+### Bug Fixes
+
+* measure TTFT from request start instead of response headers received ([#29](https://github.com/kunish/wheel/issues/29)) ([2d02b92](https://github.com/kunish/wheel/commit/2d02b92ad84822a01d2e0305c54df167c6897f2c))
+
 ## [1.7.1](https://github.com/kunish/wheel/compare/v1.7.0...v1.7.1) (2026-02-15)
 
 
