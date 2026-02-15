@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/kunish/wheel/compare/v1.7.0...v1.7.1) (2026-02-15)
+
+
+### Bug Fixes
+
+* allow all origins for WebSocket when ALLOWED_ORIGINS is not set ([#27](https://github.com/kunish/wheel/issues/27)) ([d264e16](https://github.com/kunish/wheel/commit/d264e1681386cb546b92f6c2cc713a9139597c13))
+
 ## [1.7.0](https://github.com/kunish/wheel/compare/v1.6.1...v1.7.0) (2026-02-15)
 
 
