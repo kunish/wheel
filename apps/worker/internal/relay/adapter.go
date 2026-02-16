@@ -4,338 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/kunish/wheel/apps/worker/internal/types"
 )
-
-// UpstreamRequest holds the prepared request to send to an upstream provider.
-type UpstreamRequest struct {
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers"`
-	Body    string            `json:"body"`
-}
-
-const defaultThinkingBudget = 10000
-
-// SelectBaseUrl picks the base URL with the lowest delay.
-func SelectBaseUrl(baseUrls []types.BaseUrl) string {
-	if len(baseUrls) == 0 {
-		return "https://api.openai.com"
-	}
-	best := baseUrls[0]
-	for i := 1; i < len(baseUrls); i++ {
-		if baseUrls[i].Delay < best.Delay {
-			best = baseUrls[i]
-		}
-	}
-	return strings.TrimRight(best.URL, "/")
-}
-
-func buildAnthropicHeaders(key string, customHeaders []types.CustomHeader) map[string]string {
-	headers := map[string]string{
-		"Content-Type":      "application/json",
-		"x-api-key":         key,
-		"anthropic-version": "2023-06-01",
-	}
-	for _, h := range customHeaders {
-		headers[h.Key] = h.Value
-	}
-	return headers
-}
-
-func applyParamOverrides(body map[string]any, paramOverride *string) {
-	if paramOverride == nil {
-		return
-	}
-	var overrides map[string]any
-	if err := json.Unmarshal([]byte(*paramOverride), &overrides); err != nil {
-		return
-	}
-	for k, v := range overrides {
-		body[k] = v
-	}
-}
-
-func ensureThinkingParams(body map[string]any, model string) {
-	if !strings.Contains(model, "thinking") {
-		return
-	}
-	if _, ok := body["thinking"]; ok {
-		return
-	}
-
-	body["thinking"] = map[string]any{
-		"type":          "enabled",
-		"budget_tokens": defaultThinkingBudget,
-	}
-
-	maxTokens := 4096
-	if mt, ok := body["max_tokens"].(float64); ok {
-		maxTokens = int(mt)
-	}
-	if maxTokens <= defaultThinkingBudget {
-		body["max_tokens"] = float64(defaultThinkingBudget + maxTokens)
-	}
-}
-
-func ensureMaxTokens(body map[string]any) {
-	mt, ok := body["max_tokens"]
-	if !ok {
-		body["max_tokens"] = float64(8192)
-		return
-	}
-	if mtf, ok := mt.(float64); ok && mtf < 1 {
-		body["max_tokens"] = float64(8192)
-	}
-}
-
-// ChannelConfig holds the channel fields needed for building upstream requests.
-type ChannelConfig struct {
-	Type          types.OutboundType
-	BaseUrls      []types.BaseUrl
-	CustomHeader  []types.CustomHeader
-	ParamOverride *string
-}
-
-// BuildUpstreamRequest builds the upstream request based on channel type.
-func BuildUpstreamRequest(
-	channel ChannelConfig,
-	key string,
-	inboundBody map[string]any,
-	inboundPath string,
-	model string,
-	anthropicPassthrough bool,
-) UpstreamRequest {
-	baseUrl := SelectBaseUrl(channel.BaseUrls)
-
-	switch channel.Type {
-	case types.OutboundAnthropic:
-		if anthropicPassthrough {
-			return buildAnthropicPassthroughRequest(baseUrl, key, inboundBody, model, channel)
-		}
-		return buildAnthropicRequest(baseUrl, key, inboundBody, model, channel)
-	default:
-		return buildOpenAIRequest(baseUrl, key, inboundBody, inboundPath, model, channel)
-	}
-}
-
-func buildOpenAIRequest(baseUrl, key string, body map[string]any, inboundPath, model string, channel ChannelConfig) UpstreamRequest {
-	path := "/v1/chat/completions"
-	if strings.Contains(inboundPath, "/embeddings") {
-		path = "/v1/embeddings"
-	} else if strings.Contains(inboundPath, "/responses") {
-		path = "/v1/responses"
-	}
-
-	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + key,
-	}
-	for _, h := range channel.CustomHeader {
-		headers[h.Key] = h.Value
-	}
-
-	outBody := copyBody(body)
-	outBody["model"] = model
-	applyParamOverrides(outBody, channel.ParamOverride)
-
-	bodyJSON, _ := json.Marshal(outBody)
-	return UpstreamRequest{
-		URL:     baseUrl + path,
-		Headers: headers,
-		Body:    string(bodyJSON),
-	}
-}
-
-func buildAnthropicPassthroughRequest(baseUrl, key string, body map[string]any, model string, channel ChannelConfig) UpstreamRequest {
-	headers := buildAnthropicHeaders(key, channel.CustomHeader)
-
-	outBody := copyBody(body)
-	outBody["model"] = model
-	ensureThinkingParams(outBody, model)
-	applyParamOverrides(outBody, channel.ParamOverride)
-	ensureMaxTokens(outBody)
-
-	bodyJSON, _ := json.Marshal(outBody)
-	return UpstreamRequest{
-		URL:     baseUrl + "/v1/messages",
-		Headers: headers,
-		Body:    string(bodyJSON),
-	}
-}
-
-func buildAnthropicRequest(baseUrl, key string, body map[string]any, model string, channel ChannelConfig) UpstreamRequest {
-	headers := buildAnthropicHeaders(key, channel.CustomHeader)
-
-	messages, _ := body["messages"].([]any)
-	var systemMsg string
-	var anthropicMessages []any
-
-	for _, m := range messages {
-		msg, ok := m.(map[string]any)
-		if !ok {
-			continue
-		}
-		role, _ := msg["role"].(string)
-		switch role {
-		case "system":
-			if s, ok := msg["content"].(string); ok {
-				systemMsg = s
-			} else {
-				b, _ := json.Marshal(msg["content"])
-				systemMsg = string(b)
-			}
-		case "assistant":
-			anthropicMessages = append(anthropicMessages, convertAssistantMessage(msg))
-		case "tool":
-			anthropicMessages = append(anthropicMessages, convertToolResultMessage(msg))
-		default:
-			anthropicMessages = append(anthropicMessages, map[string]any{
-				"role":    "user",
-				"content": msg["content"],
-			})
-		}
-	}
-
-	maxTokens := 4096.0
-	if mt, ok := body["max_tokens"].(float64); ok && mt > 0 {
-		maxTokens = mt
-	} else if mt, ok := body["maxTokens"].(float64); ok && mt > 0 {
-		maxTokens = mt
-	}
-
-	anthropicBody := map[string]any{
-		"model":      model,
-		"messages":   anthropicMessages,
-		"max_tokens": maxTokens,
-	}
-
-	if systemMsg != "" {
-		anthropicBody["system"] = systemMsg
-	}
-	if s, ok := body["stream"].(bool); ok && s {
-		anthropicBody["stream"] = true
-	}
-	if t, ok := body["temperature"]; ok {
-		anthropicBody["temperature"] = t
-	}
-	if tp, ok := body["top_p"]; ok {
-		anthropicBody["top_p"] = tp
-	}
-	if stop, ok := body["stop"]; ok {
-		anthropicBody["stop_sequences"] = stop
-	}
-
-	ensureThinkingParams(anthropicBody, model)
-
-	// Convert OpenAI tools to Anthropic tools format
-	if tools, ok := body["tools"].([]any); ok {
-		anthropicBody["tools"] = convertOpenAITools(tools)
-	}
-
-	applyParamOverrides(anthropicBody, channel.ParamOverride)
-	ensureMaxTokens(anthropicBody)
-
-	bodyJSON, _ := json.Marshal(anthropicBody)
-	return UpstreamRequest{
-		URL:     baseUrl + "/v1/messages",
-		Headers: headers,
-		Body:    string(bodyJSON),
-	}
-}
-
-// convertAssistantMessage converts an OpenAI assistant message (possibly with tool_calls) to Anthropic format.
-func convertAssistantMessage(msg map[string]any) map[string]any {
-	toolCalls, ok := msg["tool_calls"].([]any)
-	if ok && len(toolCalls) > 0 {
-		var contentBlocks []any
-		if content, ok := msg["content"].(string); ok && content != "" {
-			contentBlocks = append(contentBlocks, map[string]any{
-				"type": "text",
-				"text": content,
-			})
-		}
-		for _, tc := range toolCalls {
-			tcMap, ok := tc.(map[string]any)
-			if !ok {
-				continue
-			}
-			fn, _ := tcMap["function"].(map[string]any)
-			if fn == nil {
-				continue
-			}
-			var input any = map[string]any{}
-			if args, ok := fn["arguments"].(string); ok {
-				var parsed any
-				if err := json.Unmarshal([]byte(args), &parsed); err == nil {
-					input = parsed
-				}
-			}
-			contentBlocks = append(contentBlocks, map[string]any{
-				"type":  "tool_use",
-				"id":    tcMap["id"],
-				"name":  fn["name"],
-				"input": input,
-			})
-		}
-		return map[string]any{"role": "assistant", "content": contentBlocks}
-	}
-
-	return map[string]any{"role": "assistant", "content": msg["content"]}
-}
-
-// convertToolResultMessage converts an OpenAI tool result message to Anthropic tool_result format.
-func convertToolResultMessage(msg map[string]any) map[string]any {
-	content := msg["content"]
-	var contentStr string
-	if s, ok := content.(string); ok {
-		contentStr = s
-	} else {
-		b, _ := json.Marshal(content)
-		contentStr = string(b)
-	}
-
-	return map[string]any{
-		"role": "user",
-		"content": []any{
-			map[string]any{
-				"type":        "tool_result",
-				"tool_use_id": msg["tool_call_id"],
-				"content":     contentStr,
-			},
-		},
-	}
-}
-
-// convertOpenAITools converts OpenAI tools array to Anthropic tools format.
-func convertOpenAITools(tools []any) []any {
-	var result []any
-	for _, t := range tools {
-		tool, ok := t.(map[string]any)
-		if !ok {
-			continue
-		}
-		if tool["type"] != "function" {
-			continue
-		}
-		fn, ok := tool["function"].(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := fn["name"].(string)
-		desc, _ := fn["description"].(string)
-		params := fn["parameters"]
-		if params == nil {
-			params = map[string]any{"type": "object", "properties": map[string]any{}}
-		}
-		result = append(result, map[string]any{
-			"name":         name,
-			"description":  desc,
-			"input_schema": params,
-		})
-	}
-	return result
-}
 
 // ConvertAnthropicResponse converts an Anthropic response to OpenAI format.
 func ConvertAnthropicResponse(anthropicResp map[string]any) map[string]any {
@@ -426,10 +95,12 @@ func ConvertToAnthropicResponse(openaiResp map[string]any) map[string]any {
 	choices, _ := openaiResp["choices"].([]any)
 	var content string
 	var finishReason string
+	var toolCalls []any
 	if len(choices) > 0 {
 		choice, _ := choices[0].(map[string]any)
 		if msg, ok := choice["message"].(map[string]any); ok {
 			content, _ = msg["content"].(string)
+			toolCalls, _ = msg["tool_calls"].([]any)
 		}
 		finishReason, _ = choice["finish_reason"].(string)
 	}
@@ -443,14 +114,54 @@ func ConvertToAnthropicResponse(openaiResp map[string]any) map[string]any {
 		id = "msg_unknown"
 	}
 
+	// Build content blocks
+	var contentBlocks []any
+	if content != "" {
+		contentBlocks = append(contentBlocks, map[string]any{"type": "text", "text": content})
+	}
+
+	// Convert tool_calls to tool_use blocks
+	for i, tc := range toolCalls {
+		tcMap, ok := tc.(map[string]any)
+		if !ok {
+			continue
+		}
+		fn, _ := tcMap["function"].(map[string]any)
+		if fn == nil {
+			continue
+		}
+		name, _ := fn["name"].(string)
+		argsStr, _ := fn["arguments"].(string)
+		var input any = map[string]any{}
+		if argsStr != "" {
+			var parsed any
+			if err := json.Unmarshal([]byte(argsStr), &parsed); err == nil {
+				input = parsed
+			}
+		}
+		toolID, _ := tcMap["id"].(string)
+		if toolID == "" {
+			toolID = fmt.Sprintf("call_%d", i)
+		}
+		contentBlocks = append(contentBlocks, map[string]any{
+			"type":  "tool_use",
+			"id":    toolID,
+			"name":  name,
+			"input": input,
+		})
+	}
+
+	// If no content blocks, add empty text
+	if len(contentBlocks) == 0 {
+		contentBlocks = append(contentBlocks, map[string]any{"type": "text", "text": ""})
+	}
+
 	return map[string]any{
-		"id":   id,
-		"type": "message",
-		"role": "assistant",
-		"model": openaiResp["model"],
-		"content": []any{
-			map[string]any{"type": "text", "text": content},
-		},
+		"id":            id,
+		"type":          "message",
+		"role":          "assistant",
+		"model":         openaiResp["model"],
+		"content":       contentBlocks,
 		"stop_reason":   mapOpenAIFinishReason(finishReason),
 		"stop_sequence": nil,
 		"usage": map[string]any{

@@ -3,8 +3,6 @@ package relay
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
 // ── Helper ─────────────────────────────────────────────────────
@@ -16,569 +14,6 @@ func parseBody(t *testing.T, raw string) map[string]any {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 	return m
-}
-
-// ── SelectBaseUrl ──────────────────────────────────────────────
-
-func TestSelectBaseUrl_Empty(t *testing.T) {
-	got := SelectBaseUrl(nil)
-	if got != "https://api.openai.com" {
-		t.Errorf("got %q, want default", got)
-	}
-}
-
-func TestSelectBaseUrl_PicksLowestDelay(t *testing.T) {
-	urls := []types.BaseUrl{
-		{URL: "https://slow.example.com", Delay: 500},
-		{URL: "https://fast.example.com", Delay: 50},
-		{URL: "https://mid.example.com", Delay: 200},
-	}
-	got := SelectBaseUrl(urls)
-	if got != "https://fast.example.com" {
-		t.Errorf("got %q, want fast", got)
-	}
-}
-
-func TestSelectBaseUrl_TrimsTrailingSlash(t *testing.T) {
-	urls := []types.BaseUrl{{URL: "https://api.example.com/", Delay: 0}}
-	got := SelectBaseUrl(urls)
-	if got != "https://api.example.com" {
-		t.Errorf("got %q, want trimmed", got)
-	}
-}
-
-// ── BuildUpstreamRequest routing ───────────────────────────────
-
-func TestBuildUpstreamRequest_RoutesToOpenAI(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundOpenAI,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
-	}
-	body := map[string]any{"model": "gpt-4o", "messages": []any{}}
-	req := BuildUpstreamRequest(ch, "sk-test", body, "/v1/chat/completions", "gpt-4o", false)
-
-	if req.URL != "https://api.openai.com/v1/chat/completions" {
-		t.Errorf("URL = %q", req.URL)
-	}
-	if req.Headers["Authorization"] != "Bearer sk-test" {
-		t.Error("missing Bearer auth")
-	}
-}
-
-func TestBuildUpstreamRequest_RoutesToAnthropic(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundAnthropic,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.anthropic.com", Delay: 0}},
-	}
-	body := map[string]any{
-		"model":    "claude-3-opus",
-		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
-	}
-	req := BuildUpstreamRequest(ch, "sk-ant-test", body, "/v1/chat/completions", "claude-3-opus", false)
-
-	if req.URL != "https://api.anthropic.com/v1/messages" {
-		t.Errorf("URL = %q", req.URL)
-	}
-	if req.Headers["x-api-key"] != "sk-ant-test" {
-		t.Error("missing x-api-key")
-	}
-	if req.Headers["anthropic-version"] != "2023-06-01" {
-		t.Error("missing anthropic-version")
-	}
-}
-
-func TestBuildUpstreamRequest_AnthropicPassthrough(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundAnthropic,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.anthropic.com", Delay: 0}},
-	}
-	body := map[string]any{
-		"model":    "claude-3-opus",
-		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
-	}
-	req := BuildUpstreamRequest(ch, "sk-ant-test", body, "/v1/messages", "claude-3-opus", true)
-
-	if req.URL != "https://api.anthropic.com/v1/messages" {
-		t.Errorf("URL = %q", req.URL)
-	}
-	// Passthrough should preserve original body structure
-	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
-	if parsed["model"] != "claude-3-opus" {
-		t.Error("model not set in body")
-	}
-}
-
-// ── buildOpenAIRequest path routing ────────────────────────────
-
-func TestBuildOpenAIRequest_ChatPath(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundOpenAIChat,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
-	}
-	body := map[string]any{"model": "gpt-4o"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "gpt-4o", false)
-
-	if req.URL != "https://api.openai.com/v1/chat/completions" {
-		t.Errorf("URL = %q", req.URL)
-	}
-}
-
-func TestBuildOpenAIRequest_EmbeddingsPath(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundOpenAIEmbedding,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
-	}
-	body := map[string]any{"model": "text-embedding-3-small", "input": "hello"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/embeddings", "text-embedding-3-small", false)
-
-	if req.URL != "https://api.openai.com/v1/embeddings" {
-		t.Errorf("URL = %q", req.URL)
-	}
-}
-
-func TestBuildOpenAIRequest_ResponsesPath(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundOpenAIResponses,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
-	}
-	body := map[string]any{"model": "gpt-4o", "input": "hello"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/responses", "gpt-4o", false)
-
-	if req.URL != "https://api.openai.com/v1/responses" {
-		t.Errorf("URL = %q", req.URL)
-	}
-}
-
-func TestBuildOpenAIRequest_GeminiUsesOpenAIPath(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundGemini,
-		BaseUrls: []types.BaseUrl{{URL: "https://generativelanguage.googleapis.com", Delay: 0}},
-	}
-	body := map[string]any{"model": "gemini-pro"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "gemini-pro", false)
-
-	if req.URL != "https://generativelanguage.googleapis.com/v1/chat/completions" {
-		t.Errorf("URL = %q", req.URL)
-	}
-}
-
-func TestBuildOpenAIRequest_CustomHeaders(t *testing.T) {
-	ch := ChannelConfig{
-		Type:         types.OutboundOpenAI,
-		BaseUrls:     []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
-		CustomHeader: []types.CustomHeader{{Key: "X-Custom", Value: "test"}},
-	}
-	body := map[string]any{"model": "gpt-4o"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "gpt-4o", false)
-
-	if req.Headers["X-Custom"] != "test" {
-		t.Error("custom header not applied")
-	}
-}
-
-func TestBuildOpenAIRequest_ParamOverride(t *testing.T) {
-	override := `{"temperature": 0.7}`
-	ch := ChannelConfig{
-		Type:          types.OutboundOpenAI,
-		BaseUrls:      []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
-		ParamOverride: &override,
-	}
-	body := map[string]any{"model": "gpt-4o"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "gpt-4o", false)
-
-	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
-	if parsed["temperature"] != 0.7 {
-		t.Errorf("temperature = %v, want 0.7", parsed["temperature"])
-	}
-}
-
-func TestBuildOpenAIRequest_OverridesModel(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundOpenAI,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
-	}
-	body := map[string]any{"model": "original-model"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "target-model", false)
-
-	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
-	if parsed["model"] != "target-model" {
-		t.Errorf("model = %q, want target-model", parsed["model"])
-	}
-	// Original body should not be mutated
-	if body["model"] != "original-model" {
-		t.Error("original body was mutated")
-	}
-}
-
-// ── OpenAI → Anthropic request conversion ──────────────────────
-
-func TestBuildAnthropicRequest_SystemMessage(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundAnthropic,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.anthropic.com", Delay: 0}},
-	}
-	body := map[string]any{
-		"model": "claude-3-opus",
-		"messages": []any{
-			map[string]any{"role": "system", "content": "You are helpful."},
-			map[string]any{"role": "user", "content": "Hi"},
-		},
-	}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
-
-	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
-
-	if parsed["system"] != "You are helpful." {
-		t.Errorf("system = %v", parsed["system"])
-	}
-
-	messages := parsed["messages"].([]any)
-	if len(messages) != 1 {
-		t.Fatalf("messages len = %d, want 1 (system extracted)", len(messages))
-	}
-	msg := messages[0].(map[string]any)
-	if msg["role"] != "user" {
-		t.Errorf("role = %q, want user", msg["role"])
-	}
-}
-
-func TestBuildAnthropicRequest_ToolCalls(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundAnthropic,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.anthropic.com", Delay: 0}},
-	}
-	body := parseBody(t, `{
-		"model": "claude-3-opus",
-		"messages": [
-			{"role": "user", "content": "What's the weather?"},
-			{
-				"role": "assistant",
-				"content": "Let me check.",
-				"tool_calls": [{
-					"id": "call_1",
-					"type": "function",
-					"function": {
-						"name": "get_weather",
-						"arguments": "{\"city\":\"Tokyo\"}"
-					}
-				}]
-			},
-			{
-				"role": "tool",
-				"tool_call_id": "call_1",
-				"content": "Sunny, 25°C"
-			}
-		],
-		"tools": [{
-			"type": "function",
-			"function": {
-				"name": "get_weather",
-				"description": "Get weather",
-				"parameters": {"type": "object", "properties": {"city": {"type": "string"}}}
-			}
-		}]
-	}`)
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
-
-	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
-
-	messages := parsed["messages"].([]any)
-	if len(messages) != 3 {
-		t.Fatalf("messages len = %d, want 3", len(messages))
-	}
-
-	// Assistant message with tool_use blocks
-	assistantMsg := messages[1].(map[string]any)
-	content := assistantMsg["content"].([]any)
-	if len(content) != 2 {
-		t.Fatalf("assistant content blocks = %d, want 2 (text + tool_use)", len(content))
-	}
-	textBlock := content[0].(map[string]any)
-	if textBlock["type"] != "text" {
-		t.Errorf("first block type = %q", textBlock["type"])
-	}
-	toolBlock := content[1].(map[string]any)
-	if toolBlock["type"] != "tool_use" {
-		t.Errorf("second block type = %q", toolBlock["type"])
-	}
-	if toolBlock["name"] != "get_weather" {
-		t.Errorf("tool name = %q", toolBlock["name"])
-	}
-
-	// Tool result converted to user with tool_result
-	toolMsg := messages[2].(map[string]any)
-	if toolMsg["role"] != "user" {
-		t.Errorf("tool msg role = %q, want user", toolMsg["role"])
-	}
-	toolContent := toolMsg["content"].([]any)
-	toolResult := toolContent[0].(map[string]any)
-	if toolResult["type"] != "tool_result" {
-		t.Errorf("tool result type = %q", toolResult["type"])
-	}
-
-	// Tools converted to Anthropic format
-	tools := parsed["tools"].([]any)
-	tool := tools[0].(map[string]any)
-	if tool["name"] != "get_weather" {
-		t.Errorf("tool name = %q", tool["name"])
-	}
-	if tool["input_schema"] == nil {
-		t.Error("input_schema missing")
-	}
-	if tool["function"] != nil {
-		t.Error("OpenAI function wrapper should not be present")
-	}
-}
-
-func TestBuildAnthropicRequest_MaxTokensFallback(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundAnthropic,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.anthropic.com", Delay: 0}},
-	}
-	body := map[string]any{
-		"model":    "claude-3-opus",
-		"messages": []any{map[string]any{"role": "user", "content": "Hi"}},
-	}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
-
-	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
-
-	// Should default to 4096 then ensureMaxTokens may adjust
-	mt, ok := parsed["max_tokens"].(float64)
-	if !ok || mt < 1 {
-		t.Errorf("max_tokens = %v, expected positive number", parsed["max_tokens"])
-	}
-}
-
-func TestBuildAnthropicRequest_ForwardsStreamAndParams(t *testing.T) {
-	ch := ChannelConfig{
-		Type:     types.OutboundAnthropic,
-		BaseUrls: []types.BaseUrl{{URL: "https://api.anthropic.com", Delay: 0}},
-	}
-	body := map[string]any{
-		"model":       "claude-3-opus",
-		"messages":    []any{map[string]any{"role": "user", "content": "Hi"}},
-		"stream":      true,
-		"temperature": 0.5,
-		"top_p":       0.9,
-		"stop":        []any{"END"},
-	}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
-
-	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
-
-	if parsed["stream"] != true {
-		t.Error("stream not forwarded")
-	}
-	if parsed["temperature"] != 0.5 {
-		t.Errorf("temperature = %v", parsed["temperature"])
-	}
-	if parsed["top_p"] != 0.9 {
-		t.Errorf("top_p = %v", parsed["top_p"])
-	}
-	if parsed["stop_sequences"] == nil {
-		t.Error("stop_sequences missing")
-	}
-	// OpenAI field should not be present
-	if parsed["stop"] != nil {
-		t.Error("OpenAI 'stop' field should not be present in Anthropic body")
-	}
-}
-
-// ── convertAssistantMessage ────────────────────────────────────
-
-func TestConvertAssistantMessage_PlainText(t *testing.T) {
-	msg := map[string]any{"role": "assistant", "content": "Hello!"}
-	result := convertAssistantMessage(msg)
-
-	if result["role"] != "assistant" {
-		t.Errorf("role = %q", result["role"])
-	}
-	if result["content"] != "Hello!" {
-		t.Errorf("content = %v", result["content"])
-	}
-}
-
-func TestConvertAssistantMessage_WithToolCalls(t *testing.T) {
-	msg := parseBody(t, `{
-		"role": "assistant",
-		"content": "Let me check.",
-		"tool_calls": [{
-			"id": "call_1",
-			"type": "function",
-			"function": {"name": "search", "arguments": "{\"q\":\"test\"}"}
-		}]
-	}`)
-
-	result := convertAssistantMessage(msg)
-	content := result["content"].([]any)
-
-	if len(content) != 2 {
-		t.Fatalf("content blocks = %d, want 2", len(content))
-	}
-
-	text := content[0].(map[string]any)
-	if text["type"] != "text" || text["text"] != "Let me check." {
-		t.Errorf("text block = %v", text)
-	}
-
-	toolUse := content[1].(map[string]any)
-	if toolUse["type"] != "tool_use" {
-		t.Errorf("type = %q", toolUse["type"])
-	}
-	if toolUse["id"] != "call_1" {
-		t.Errorf("id = %q", toolUse["id"])
-	}
-	if toolUse["name"] != "search" {
-		t.Errorf("name = %q", toolUse["name"])
-	}
-	input := toolUse["input"].(map[string]any)
-	if input["q"] != "test" {
-		t.Errorf("input = %v", input)
-	}
-}
-
-func TestConvertAssistantMessage_ToolCallsWithoutText(t *testing.T) {
-	msg := parseBody(t, `{
-		"role": "assistant",
-		"content": "",
-		"tool_calls": [{
-			"id": "call_1",
-			"type": "function",
-			"function": {"name": "search", "arguments": "{}"}
-		}]
-	}`)
-
-	result := convertAssistantMessage(msg)
-	content := result["content"].([]any)
-
-	// Empty string content should not produce a text block
-	if len(content) != 1 {
-		t.Fatalf("content blocks = %d, want 1 (tool_use only)", len(content))
-	}
-	if content[0].(map[string]any)["type"] != "tool_use" {
-		t.Error("expected tool_use block only")
-	}
-}
-
-// ── convertToolResultMessage ───────────────────────────────────
-
-func TestConvertToolResultMessage_String(t *testing.T) {
-	msg := map[string]any{
-		"role":         "tool",
-		"tool_call_id": "call_1",
-		"content":      "Result text",
-	}
-	result := convertToolResultMessage(msg)
-
-	if result["role"] != "user" {
-		t.Errorf("role = %q, want user", result["role"])
-	}
-	content := result["content"].([]any)
-	block := content[0].(map[string]any)
-	if block["type"] != "tool_result" {
-		t.Errorf("type = %q", block["type"])
-	}
-	if block["tool_use_id"] != "call_1" {
-		t.Errorf("tool_use_id = %q", block["tool_use_id"])
-	}
-	if block["content"] != "Result text" {
-		t.Errorf("content = %q", block["content"])
-	}
-}
-
-func TestConvertToolResultMessage_ObjectContent(t *testing.T) {
-	msg := map[string]any{
-		"role":         "tool",
-		"tool_call_id": "call_1",
-		"content":      map[string]any{"status": "ok"},
-	}
-	result := convertToolResultMessage(msg)
-
-	content := result["content"].([]any)
-	block := content[0].(map[string]any)
-	// Object content should be JSON-serialized
-	contentStr, ok := block["content"].(string)
-	if !ok {
-		t.Fatal("content should be string")
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(contentStr), &parsed); err != nil {
-		t.Fatalf("content is not valid JSON: %v", err)
-	}
-	if parsed["status"] != "ok" {
-		t.Errorf("parsed content = %v", parsed)
-	}
-}
-
-// ── convertOpenAITools ─────────────────────────────────────────
-
-func TestConvertOpenAITools(t *testing.T) {
-	tools := []any{
-		map[string]any{
-			"type": "function",
-			"function": map[string]any{
-				"name":        "search",
-				"description": "Search the web",
-				"parameters": map[string]any{
-					"type":       "object",
-					"properties": map[string]any{"q": map[string]any{"type": "string"}},
-				},
-			},
-		},
-	}
-
-	result := convertOpenAITools(tools)
-	if len(result) != 1 {
-		t.Fatalf("len = %d, want 1", len(result))
-	}
-
-	tool := result[0].(map[string]any)
-	if tool["name"] != "search" {
-		t.Errorf("name = %q", tool["name"])
-	}
-	if tool["description"] != "Search the web" {
-		t.Errorf("description = %q", tool["description"])
-	}
-	if tool["input_schema"] == nil {
-		t.Error("input_schema missing")
-	}
-}
-
-func TestConvertOpenAITools_SkipsNonFunction(t *testing.T) {
-	tools := []any{
-		map[string]any{"type": "retrieval"},
-		map[string]any{
-			"type":     "function",
-			"function": map[string]any{"name": "valid"},
-		},
-	}
-	result := convertOpenAITools(tools)
-	if len(result) != 1 {
-		t.Fatalf("len = %d, want 1 (skipped retrieval)", len(result))
-	}
-}
-
-func TestConvertOpenAITools_DefaultParams(t *testing.T) {
-	tools := []any{
-		map[string]any{
-			"type":     "function",
-			"function": map[string]any{"name": "noop", "description": "Do nothing"},
-		},
-	}
-	result := convertOpenAITools(tools)
-	tool := result[0].(map[string]any)
-	schema := tool["input_schema"].(map[string]any)
-	if schema["type"] != "object" {
-		t.Errorf("default schema type = %q", schema["type"])
-	}
 }
 
 // ── ConvertAnthropicResponse → OpenAI ──────────────────────────
@@ -846,6 +281,110 @@ func TestConvertToAnthropicResponse_MissingID(t *testing.T) {
 	}
 }
 
+func TestConvertToAnthropicResponse_WithToolCalls(t *testing.T) {
+	resp := parseBody(t, `{
+		"id": "chatcmpl-abc",
+		"model": "gpt-4o",
+		"choices": [{
+			"index": 0,
+			"message": {
+				"role": "assistant",
+				"content": "Let me check that.",
+				"tool_calls": [{
+					"index": 0,
+					"id": "call_123",
+					"type": "function",
+					"function": {
+						"name": "Bash",
+						"arguments": "{\"command\": \"ls -la\"}"
+					}
+				}]
+			},
+			"finish_reason": "tool_calls"
+		}],
+		"usage": {"prompt_tokens": 10, "completion_tokens": 20}
+	}`)
+
+	result := ConvertToAnthropicResponse(resp)
+
+	if result["id"] != "chatcmpl-abc" {
+		t.Errorf("id = %q", result["id"])
+	}
+	if result["stop_reason"] != "tool_use" {
+		t.Errorf("stop_reason = %q, want tool_use", result["stop_reason"])
+	}
+
+	content := result["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content blocks = %d, want 2", len(content))
+	}
+
+	// First block should be text
+	textBlock := content[0].(map[string]any)
+	if textBlock["type"] != "text" {
+		t.Errorf("first block type = %q, want text", textBlock["type"])
+	}
+	if textBlock["text"] != "Let me check that." {
+		t.Errorf("text = %q", textBlock["text"])
+	}
+
+	// Second block should be tool_use
+	toolBlock := content[1].(map[string]any)
+	if toolBlock["type"] != "tool_use" {
+		t.Errorf("second block type = %q, want tool_use", toolBlock["type"])
+	}
+	if toolBlock["id"] != "call_123" {
+		t.Errorf("tool id = %q", toolBlock["id"])
+	}
+	if toolBlock["name"] != "Bash" {
+		t.Errorf("tool name = %q", toolBlock["name"])
+	}
+	input := toolBlock["input"].(map[string]any)
+	if input["command"] != "ls -la" {
+		t.Errorf("command = %q, want ls -la", input["command"])
+	}
+}
+
+func TestConvertToAnthropicResponse_ToolCallsOnlyNoText(t *testing.T) {
+	resp := parseBody(t, `{
+		"id": "chatcmpl-xyz",
+		"model": "gpt-4o",
+		"choices": [{
+			"index": 0,
+			"message": {
+				"role": "assistant",
+				"content": null,
+				"tool_calls": [{
+					"index": 0,
+					"id": "call_456",
+					"type": "function",
+					"function": {
+						"name": "Read",
+						"arguments": "{\"file_path\": \"/test.txt\"}"
+					}
+				}]
+			},
+			"finish_reason": "tool_calls"
+		}],
+		"usage": {"prompt_tokens": 5, "completion_tokens": 10}
+	}`)
+
+	result := ConvertToAnthropicResponse(resp)
+
+	content := result["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("content blocks = %d, want 1", len(content))
+	}
+
+	toolBlock := content[0].(map[string]any)
+	if toolBlock["type"] != "tool_use" {
+		t.Errorf("block type = %q, want tool_use", toolBlock["type"])
+	}
+	if toolBlock["name"] != "Read" {
+		t.Errorf("tool name = %q", toolBlock["name"])
+	}
+}
+
 // ── Stop reason mapping ────────────────────────────────────────
 
 func TestMapAnthropicStopReason(t *testing.T) {
@@ -886,119 +425,6 @@ func TestMapOpenAIFinishReason(t *testing.T) {
 				t.Errorf("mapOpenAIFinishReason(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
-	}
-}
-
-// ── applyParamOverrides ────────────────────────────────────────
-
-func TestApplyParamOverrides_Nil(t *testing.T) {
-	body := map[string]any{"model": "gpt-4o"}
-	applyParamOverrides(body, nil)
-	if len(body) != 1 {
-		t.Error("nil override should not modify body")
-	}
-}
-
-func TestApplyParamOverrides_Valid(t *testing.T) {
-	body := map[string]any{"model": "gpt-4o"}
-	override := `{"temperature": 0.5, "top_p": 0.9}`
-	applyParamOverrides(body, &override)
-
-	if body["temperature"] != 0.5 {
-		t.Errorf("temperature = %v", body["temperature"])
-	}
-	if body["top_p"] != 0.9 {
-		t.Errorf("top_p = %v", body["top_p"])
-	}
-}
-
-func TestApplyParamOverrides_InvalidJSON(t *testing.T) {
-	body := map[string]any{"model": "gpt-4o"}
-	invalid := `{invalid`
-	applyParamOverrides(body, &invalid)
-	// Should not panic or modify body
-	if len(body) != 1 {
-		t.Error("invalid JSON should not modify body")
-	}
-}
-
-// ── ensureThinkingParams ───────────────────────────────────────
-
-func TestEnsureThinkingParams_NonThinkingModel(t *testing.T) {
-	body := map[string]any{"model": "claude-3-opus"}
-	ensureThinkingParams(body, "claude-3-opus")
-	if body["thinking"] != nil {
-		t.Error("should not add thinking for non-thinking model")
-	}
-}
-
-func TestEnsureThinkingParams_ThinkingModel(t *testing.T) {
-	body := map[string]any{"model": "claude-3-7-sonnet-thinking"}
-	ensureThinkingParams(body, "claude-3-7-sonnet-thinking")
-
-	thinking, ok := body["thinking"].(map[string]any)
-	if !ok {
-		t.Fatal("thinking not set")
-	}
-	if thinking["type"] != "enabled" {
-		t.Errorf("type = %q", thinking["type"])
-	}
-	budget, _ := thinking["budget_tokens"].(int)
-	if budget != defaultThinkingBudget {
-		t.Errorf("budget = %d", budget)
-	}
-}
-
-func TestEnsureThinkingParams_AlreadySet(t *testing.T) {
-	body := map[string]any{
-		"model":    "claude-3-7-sonnet-thinking",
-		"thinking": map[string]any{"type": "enabled", "budget_tokens": 5000},
-	}
-	ensureThinkingParams(body, "claude-3-7-sonnet-thinking")
-
-	thinking := body["thinking"].(map[string]any)
-	if thinking["budget_tokens"] != 5000 {
-		t.Error("should not overwrite existing thinking config")
-	}
-}
-
-func TestEnsureThinkingParams_AdjustsMaxTokens(t *testing.T) {
-	body := map[string]any{
-		"model":      "claude-thinking",
-		"max_tokens": float64(2000),
-	}
-	ensureThinkingParams(body, "claude-thinking")
-
-	mt := body["max_tokens"].(float64)
-	// 2000 <= defaultThinkingBudget(10000), so max_tokens should be bumped
-	if mt != float64(defaultThinkingBudget+2000) {
-		t.Errorf("max_tokens = %v, want %d", mt, defaultThinkingBudget+2000)
-	}
-}
-
-// ── ensureMaxTokens ────────────────────────────────────────────
-
-func TestEnsureMaxTokens_NotSet(t *testing.T) {
-	body := map[string]any{}
-	ensureMaxTokens(body)
-	if body["max_tokens"] != float64(8192) {
-		t.Errorf("max_tokens = %v, want 8192", body["max_tokens"])
-	}
-}
-
-func TestEnsureMaxTokens_Zero(t *testing.T) {
-	body := map[string]any{"max_tokens": float64(0)}
-	ensureMaxTokens(body)
-	if body["max_tokens"] != float64(8192) {
-		t.Errorf("max_tokens = %v, want 8192 (replaced zero)", body["max_tokens"])
-	}
-}
-
-func TestEnsureMaxTokens_AlreadySet(t *testing.T) {
-	body := map[string]any{"max_tokens": float64(4096)}
-	ensureMaxTokens(body)
-	if body["max_tokens"] != float64(4096) {
-		t.Errorf("max_tokens = %v, want 4096 (unchanged)", body["max_tokens"])
 	}
 }
 

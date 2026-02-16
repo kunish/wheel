@@ -10,16 +10,14 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/robfig/cron/v3"
+	"github.com/kunish/wheel/apps/worker/internal/bifrostx"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db"
@@ -29,6 +27,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/seed"
 	"github.com/kunish/wheel/apps/worker/internal/service"
 	"github.com/kunish/wheel/apps/worker/internal/ws"
+	"github.com/robfig/cron/v3"
 )
 
 func main() {
@@ -97,15 +96,6 @@ func main() {
 	sm := relay.NewSessionManager()
 	bal := relay.NewBalancerState()
 
-	// ── HTTP Clients (with timeout) ──
-	nonStreamClient := &http.Client{Timeout: 120 * time.Second}
-	streamClient := &http.Client{
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
-		},
-		// No overall timeout — streams can run indefinitely
-	}
-
 	// ── LogWriter (batched async log persistence) ──
 	logWriter := db.NewLogWriter(logDatabase, database, hub.Broadcast, hub, obs, kv)
 
@@ -146,9 +136,13 @@ func main() {
 		CircuitBreakers: cbm,
 		Sessions:        sm,
 		Balancer:        bal,
-		HTTPClient:      nonStreamClient,
-		StreamClient:    streamClient,
 	}
+
+	bifrostClient, err := bifrostx.New(ctx, database, cfg.BifrostDebugRaw)
+	if err != nil {
+		log.Fatalf("Failed to initialize bifrost executor: %v", err)
+	}
+	rh.Bifrost = bifrostClient
 
 	// ── Router ──
 	r := gin.Default()

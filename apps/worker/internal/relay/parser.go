@@ -1,9 +1,21 @@
 package relay
 
-import "strings"
+import (
+	"net/url"
+	"regexp"
+	"strings"
+)
+
+var geminiModelPathPattern = regexp.MustCompile(`/v1beta/models/([^:]+):(generateContent|streamGenerateContent)$`)
 
 // DetectRequestType determines the inbound request type from the URL path.
 func DetectRequestType(path string) string {
+	if strings.Contains(path, ":streamGenerateContent") {
+		return "gemini-stream-generate-content"
+	}
+	if strings.Contains(path, ":generateContent") {
+		return "gemini-generate-content"
+	}
 	if strings.Contains(path, "/chat/completions") {
 		return "openai-chat"
 	}
@@ -28,4 +40,22 @@ func ExtractModel(body map[string]any) (model string, stream bool) {
 		stream = s
 	}
 	return
+}
+
+func ExtractModelForRequest(path, requestType string, body map[string]any) (model string, stream bool) {
+	switch requestType {
+	case "gemini-generate-content", "gemini-stream-generate-content":
+		match := geminiModelPathPattern.FindStringSubmatch(path)
+		if len(match) == 3 {
+			if decoded, err := url.PathUnescape(match[1]); err == nil {
+				model = decoded
+			} else {
+				model = match[1]
+			}
+		}
+		stream = requestType == "gemini-stream-generate-content"
+		return
+	default:
+		return ExtractModel(body)
+	}
 }

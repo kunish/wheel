@@ -1,17 +1,14 @@
 package relay
 
 import (
-	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
@@ -93,79 +90,6 @@ func parseRetryDelay(resp *http.Response, body string) int64 {
 	return 0
 }
 
-// ProxyNonStreaming performs a single non-streaming HTTP POST to the upstream.
-func ProxyNonStreaming(
-	client *http.Client,
-	upstreamUrl string,
-	upstreamHeaders map[string]string,
-	upstreamBody string,
-	channelType types.OutboundType,
-	passthrough bool,
-) (*ProxyResult, error) {
-	req, err := http.NewRequest("POST", upstreamUrl, strings.NewReader(upstreamBody))
-	if err != nil {
-		return nil, &ProxyError{Message: fmt.Sprintf("failed to create request: %v", err), StatusCode: 502}
-	}
-	for k, v := range upstreamHeaders {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, &ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: 502}
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024)) // 50MB max response
-	if err != nil {
-		return nil, &ProxyError{Message: fmt.Sprintf("failed to read response: %v", err), StatusCode: 502}
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errorText := string(bodyBytes)
-		return nil, &ProxyError{
-			Message:      fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, errorText),
-			StatusCode:   resp.StatusCode,
-			RetryAfterMs: parseRetryDelay(resp, errorText),
-		}
-	}
-
-	var data map[string]any
-	if err := json.Unmarshal(bodyBytes, &data); err != nil {
-		return nil, &ProxyError{Message: fmt.Sprintf("failed to parse response: %v", err), StatusCode: 502}
-	}
-
-	cacheRead, cacheCreation := extractCacheTokens(data, channelType)
-
-	// Passthrough mode: return raw Anthropic response
-	if passthrough && channelType == types.OutboundAnthropic {
-		usage, _ := data["usage"].(map[string]any)
-		return &ProxyResult{
-			Response:            data,
-			InputTokens:         toInt(usage["input_tokens"]),
-			OutputTokens:        toInt(usage["output_tokens"]),
-			CacheReadTokens:     cacheRead,
-			CacheCreationTokens: cacheCreation,
-			StatusCode:          resp.StatusCode,
-		}, nil
-	}
-
-	// Convert Anthropic → OpenAI if needed
-	finalResponse := data
-	if channelType == types.OutboundAnthropic {
-		finalResponse = ConvertAnthropicResponse(data)
-	}
-
-	usage, _ := finalResponse["usage"].(map[string]any)
-	return &ProxyResult{
-		Response:            finalResponse,
-		InputTokens:         toInt(usage["prompt_tokens"]),
-		OutputTokens:        toInt(usage["completion_tokens"]),
-		CacheReadTokens:     cacheRead,
-		CacheCreationTokens: cacheCreation,
-		StatusCode:          resp.StatusCode,
-	}, nil
-}
 
 // StreamContentCallback is called periodically during streaming with accumulated content.
 type StreamContentCallback func(thinking, response string)
@@ -221,146 +145,6 @@ func (s *streamingState) appendContent(text string) {
 	s.maybeNotify()
 }
 
-// ProxyStreaming performs an SSE streaming proxy, writing directly to the http.ResponseWriter.
-// It handles protocol conversion between Anthropic SSE and OpenAI SSE formats.
-// clientCtx should be the request context (e.g. c.Request.Context()) so that
-// client disconnection automatically cancels the upstream read loop.
-func ProxyStreaming(
-	w http.ResponseWriter,
-	clientCtx context.Context,
-	httpClient *http.Client,
-	upstreamUrl string,
-	upstreamHeaders map[string]string,
-	upstreamBody string,
-	channelType types.OutboundType,
-	firstTokenTimeout int,
-	passthrough bool,
-	anthropicInbound bool,
-	onContent StreamContentCallback,
-) (*StreamCompleteInfo, error) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return nil, &ProxyError{Message: "streaming not supported", StatusCode: 500}
-	}
-
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	// Derive upstream context from the client request context so that
-	// client disconnection (e.g. ESC in Claude Code) cancels the upstream read.
-	ctx, cancel := context.WithCancel(clientCtx)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", upstreamUrl, strings.NewReader(upstreamBody))
-	if err != nil {
-		return nil, &ProxyError{Message: fmt.Sprintf("failed to create request: %v", err), StatusCode: 502}
-	}
-	for k, v := range upstreamHeaders {
-		req.Header.Set(k, v)
-	}
-
-	startTime := time.Now()
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, &ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: 502}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024)) // 1MB max error body
-		errorText := string(bodyBytes)
-		return nil, &ProxyError{
-			Message:      fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, errorText),
-			StatusCode:   resp.StatusCode,
-			RetryAfterMs: parseRetryDelay(resp, errorText),
-		}
-	}
-	state := &streamingState{onContent: onContent}
-
-	// First token timeout timer
-	var timeoutTimer *time.Timer
-	timeoutCh := make(chan struct{})
-	if firstTokenTimeout > 0 {
-		timeoutTimer = time.AfterFunc(time.Duration(firstTokenTimeout)*time.Second, func() {
-			close(timeoutCh)
-		})
-		defer timeoutTimer.Stop()
-	}
-
-	markFirstToken := func() {
-		if state.firstTokenReceived {
-			return
-		}
-		state.firstTokenReceived = true
-		state.firstTokenTime = int(time.Since(startTime).Milliseconds())
-		if timeoutTimer != nil {
-			timeoutTimer.Stop()
-		}
-	}
-
-	// Determine converter
-	var convertChunk func(string) *anthropicSSEResult
-	if !passthrough && channelType == types.OutboundAnthropic {
-		convertChunk = createAnthropicSSEConverter()
-	}
-
-	// OpenAI SSE → Anthropic SSE converter for anthropic inbound + openai outbound
-	var convertToAnthropic func(string) []string
-	if anthropicInbound && channelType != types.OutboundAnthropic {
-		convertToAnthropic = createOpenAIToAnthropicSSEConverter()
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	for scanner.Scan() {
-		// Check if the client has disconnected
-		select {
-		case <-ctx.Done():
-			return nil, &ProxyError{Message: "Client disconnected", StatusCode: 499}
-		default:
-		}
-
-		// Check first token timeout
-		if !state.firstTokenReceived {
-			select {
-			case <-timeoutCh:
-				return nil, &ProxyError{Message: "First token timeout exceeded", StatusCode: 504}
-			default:
-			}
-		}
-
-		line := scanner.Text()
-
-		if passthrough && channelType == types.OutboundAnthropic {
-			processAnthropicPassthrough(line, state, markFirstToken)
-			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-				return nil, &ProxyError{Message: "Client disconnected", StatusCode: 499}
-			}
-			flusher.Flush()
-		} else if channelType == types.OutboundAnthropic && convertChunk != nil {
-			processAnthropicConverted(line, convertChunk, state, markFirstToken, w, flusher)
-		} else if convertToAnthropic != nil {
-			processOpenAIToAnthropic(line, convertToAnthropic, state, markFirstToken, w, flusher)
-		} else {
-			processOpenAI(line, state, markFirstToken, w, flusher)
-		}
-	}
-
-	return &StreamCompleteInfo{
-		InputTokens:         state.inputTokens,
-		OutputTokens:        state.outputTokens,
-		CacheReadTokens:     state.cacheReadTokens,
-		CacheCreationTokens: state.cacheCreationTokens,
-		FirstTokenTime:      state.firstTokenTime,
-		StatusCode:          resp.StatusCode,
-		ResponseContent:     state.responseContent,
-		ThinkingContent:     state.thinkingContent,
-	}, nil
-}
 
 // extractThinking parses an Anthropic SSE JSON payload and accumulates thinking content.
 func extractThinking(jsonStr string, state *streamingState) {
@@ -582,7 +366,7 @@ func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
 	msgModel := ""
 	toolCallIndex := 0
 	blockMap := make(map[int]struct {
-		blockType    string
+		blockType   string
 		toolCallIdx int
 	})
 
@@ -765,26 +549,103 @@ func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
 // from OpenAI SSE chunks to Anthropic SSE event lines.
 func createOpenAIToAnthropicSSEConverter() func(string) []string {
 	started := false
-	contentBlockOpen := false
+	messageStopped := false
 	msgId := "msg_unknown"
 	msgModel := ""
+	blockKeyToIndex := make(map[string]int)
+	nextBlockIndex := 0
+	openBlock := make(map[int]bool)
+	nextToolOrdinal := 0
+
+	type toolBlockState struct {
+		id          string
+		name        string
+		started     bool
+		pendingArgs string
+		blockIdx    int
+	}
+	toolBlocks := make(map[string]*toolBlockState)
+
+	getBlockIndex := func(key string) int {
+		if idx, ok := blockKeyToIndex[key]; ok {
+			return idx
+		}
+		idx := nextBlockIndex
+		nextBlockIndex++
+		blockKeyToIndex[key] = idx
+		return idx
+	}
+
+	closeOpenBlocks := func(lines []string) []string {
+		if len(openBlock) == 0 {
+			return lines
+		}
+		indexes := make([]int, 0, len(openBlock))
+		for idx := range openBlock {
+			indexes = append(indexes, idx)
+		}
+		sort.Ints(indexes)
+		for _, idx := range indexes {
+			evt := map[string]any{
+				"type":  "content_block_stop",
+				"index": idx,
+			}
+			b, _ := json.Marshal(evt)
+			lines = append(lines,
+				"event: content_block_stop",
+				"data: "+string(b),
+				"",
+			)
+			delete(openBlock, idx)
+		}
+		return lines
+	}
+
+	resolveToolKey := func(tc map[string]any) string {
+		if tc == nil {
+			key := fmt.Sprintf("ord:%d", nextToolOrdinal)
+			nextToolOrdinal++
+			return key
+		}
+		if rawIdx, ok := tc["index"]; ok {
+			return fmt.Sprintf("idx:%d", toInt(rawIdx))
+		}
+		if id, ok := tc["id"].(string); ok && id != "" {
+			return "id:" + id
+		}
+		key := fmt.Sprintf("ord:%d", nextToolOrdinal)
+		nextToolOrdinal++
+		return key
+	}
+
+	emitToolDelta := func(lines []string, blockIdx int, args string) []string {
+		if args == "" {
+			return lines
+		}
+		deltaEvent := map[string]any{
+			"type":  "content_block_delta",
+			"index": blockIdx,
+			"delta": map[string]any{
+				"type":         "input_json_delta",
+				"partial_json": args,
+			},
+		}
+		b, _ := json.Marshal(deltaEvent)
+		lines = append(lines,
+			"event: content_block_delta",
+			"data: "+string(b),
+			"",
+		)
+		return lines
+	}
 
 	return func(jsonStr string) []string {
 		if jsonStr == "[DONE]" {
-			var lines []string
-			if contentBlockOpen {
-				evt := map[string]any{
-					"type":  "content_block_stop",
-					"index": 0,
-				}
-				b, _ := json.Marshal(evt)
-				lines = append(lines,
-					"event: content_block_stop",
-					"data: "+string(b),
-					"",
-				)
-				contentBlockOpen = false
+			if messageStopped {
+				return nil
 			}
+			var lines []string
+			lines = closeOpenBlocks(lines)
 			delta := map[string]any{
 				"type":  "message_delta",
 				"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
@@ -803,6 +664,7 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 				"data: "+string(b),
 				"",
 			)
+			messageStopped = true
 			return lines
 		}
 
@@ -846,17 +708,43 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 		finishReason, _ := choice["finish_reason"].(string)
 
 		if delta != nil {
-			content, _ := delta["content"].(string)
+			reasoning, _ := delta["reasoning"].(string)
 
-			if content != "" {
-				if !contentBlockOpen {
+			if reasoning != "" {
+				thinkIdx := getBlockIndex("thinking")
+				if !openBlock[thinkIdx] {
 					lines = append(lines,
-						openaiToAnthropicBlockStart(0, "text")...)
-					contentBlockOpen = true
+						openaiToAnthropicBlockStart(thinkIdx, "thinking")...)
+					openBlock[thinkIdx] = true
 				}
 				evt := map[string]any{
 					"type":  "content_block_delta",
-					"index": 0,
+					"index": thinkIdx,
+					"delta": map[string]any{
+						"type":     "thinking_delta",
+						"thinking": reasoning,
+					},
+				}
+				b, _ := json.Marshal(evt)
+				lines = append(lines,
+					"event: content_block_delta",
+					"data: "+string(b),
+					"",
+				)
+			}
+
+			content, _ := delta["content"].(string)
+
+			if content != "" {
+				textIdx := getBlockIndex("text")
+				if !openBlock[textIdx] {
+					lines = append(lines,
+						openaiToAnthropicBlockStart(textIdx, "text")...)
+					openBlock[textIdx] = true
+				}
+				evt := map[string]any{
+					"type":  "content_block_delta",
+					"index": textIdx,
 					"delta": map[string]any{
 						"type": "text_delta",
 						"text": content,
@@ -869,28 +757,90 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 					"",
 				)
 			}
+
+			if rawToolCalls, ok := delta["tool_calls"].([]any); ok {
+				for _, tcRaw := range rawToolCalls {
+					tc, ok := tcRaw.(map[string]any)
+					if !ok {
+						continue
+					}
+					toolKey := resolveToolKey(tc)
+					state, ok := toolBlocks[toolKey]
+					if !ok {
+						state = &toolBlockState{
+							blockIdx: getBlockIndex("tool:" + toolKey),
+						}
+						toolBlocks[toolKey] = state
+					}
+					if id, ok := tc["id"].(string); ok && id != "" {
+						state.id = id
+					}
+					if fn, ok := tc["function"].(map[string]any); ok {
+						if name, ok := fn["name"].(string); ok && name != "" {
+							state.name = name
+						}
+						if args, ok := fn["arguments"].(string); ok && args != "" {
+							state.pendingArgs += args
+						}
+					}
+					if state.id == "" {
+						state.id = fmt.Sprintf("call_%d", state.blockIdx)
+					}
+
+					if !state.started {
+						// Wait for a valid function name before emitting tool_use block.
+						if state.name == "" {
+							continue
+						}
+						contentBlock := map[string]any{
+							"type":  "tool_use",
+							"id":    state.id,
+							"name":  state.name,
+							"input": map[string]any{},
+						}
+						startEvent := map[string]any{
+							"type":          "content_block_start",
+							"index":         state.blockIdx,
+							"content_block": contentBlock,
+						}
+						b, _ := json.Marshal(startEvent)
+						lines = append(lines,
+							"event: content_block_start",
+							"data: "+string(b),
+							"",
+						)
+						openBlock[state.blockIdx] = true
+						state.started = true
+					}
+					if state.started && state.pendingArgs != "" {
+						lines = emitToolDelta(lines, state.blockIdx, state.pendingArgs)
+						state.pendingArgs = ""
+					}
+				}
+			}
 		}
 
 		if finishReason != "" {
-			if contentBlockOpen {
-				evt := map[string]any{
-					"type":  "content_block_stop",
-					"index": 0,
-				}
-				b, _ := json.Marshal(evt)
-				lines = append(lines,
-					"event: content_block_stop",
-					"data: "+string(b),
-					"",
-				)
-				contentBlockOpen = false
-			}
+			lines = closeOpenBlocks(lines)
 
 			usage, _ := obj["usage"].(map[string]any)
 			inTok := toInt(usage["prompt_tokens"])
 			outTok := toInt(usage["completion_tokens"])
 
 			stopReason := mapOpenAIFinishReason(finishReason)
+			if finishReason == "tool_calls" {
+				toolUseStarted := false
+				for _, tb := range toolBlocks {
+					if tb.started {
+						toolUseStarted = true
+						break
+					}
+				}
+				// Avoid hanging clients on tool_use when no valid tool block was emitted.
+				if !toolUseStarted {
+					stopReason = "end_turn"
+				}
+			}
 			md := map[string]any{
 				"type":  "message_delta",
 				"delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil},
@@ -913,6 +863,7 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 				"data: "+string(b),
 				"",
 			)
+			messageStopped = true
 		}
 
 		if len(lines) > 0 {
@@ -945,13 +896,22 @@ func openaiToAnthropicStart(id, model string, inputTokens int) []string {
 }
 
 func openaiToAnthropicBlockStart(index int, blockType string) []string {
-	evt := map[string]any{
-		"type":  "content_block_start",
-		"index": index,
-		"content_block": map[string]any{
+	var contentBlock map[string]any
+	if blockType == "thinking" {
+		contentBlock = map[string]any{
+			"type":     "thinking",
+			"thinking": "",
+		}
+	} else {
+		contentBlock = map[string]any{
 			"type": blockType,
 			"text": "",
-		},
+		}
+	}
+	evt := map[string]any{
+		"type":          "content_block_start",
+		"index":         index,
+		"content_block": contentBlock,
 	}
 	b, _ := json.Marshal(evt)
 	return []string{

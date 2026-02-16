@@ -6,11 +6,12 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DataPath      string
-	JWTSecret     string
-	AdminUsername string
-	AdminPassword string
+	Port            string
+	DataPath        string
+	JWTSecret       string
+	AdminUsername   string
+	AdminPassword   string
+	BifrostDebugRaw bool
 
 	// WebSocket
 	AllowedOrigins []string // empty = dev mode (allow localhost)
@@ -29,6 +30,7 @@ func Load() *Config {
 		JWTSecret:       getEnv("JWT_SECRET", "change-me-in-production"),
 		AdminUsername:   getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword:   getEnv("ADMIN_PASSWORD", "admin"),
+		BifrostDebugRaw: getEnv("BIFROST_DEBUG_RAW", "") == "true",
 		AllowedOrigins:  parseOrigins(os.Getenv("ALLOWED_ORIGINS")),
 		MetricsEnabled:  getEnv("METRICS_ENABLED", "") == "true",
 		OtelEnabled:     getEnv("OTEL_ENABLED", "") == "true",

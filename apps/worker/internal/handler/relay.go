@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/bifrostx"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
@@ -95,6 +95,7 @@ func (h *RelayHandler) selectChannels(c *gin.Context, model string, apiKeyId int
 type relayRequest struct {
 	RequestType        string
 	IsAnthropicInbound bool
+	IsGeminiInbound    bool
 	Body               map[string]any
 	BodyBytes          []byte
 	Model              string
@@ -106,21 +107,21 @@ type relayRequest struct {
 
 // relayAttemptParams holds per-attempt context shared by both strategies.
 type relayAttemptParams struct {
-	C                      *gin.Context
-	Upstream               relay.UpstreamRequest
-	Channel                *types.Channel
-	SelectedKey            *types.ChannelKey
-	TargetModel            string
-	RequestModel           string
-	Body                   map[string]any
-	UpstreamBodyForLog     *string
-	IsAnthropicPassthrough bool
-	IsAnthropicInbound     bool
-	FirstTokenTimeout      int
-	ApiKeyID               int
-	SessionKeepTime        int
-	Attempts               []attemptRecord
-	StartTime              time.Time
+	C                  *gin.Context
+	Channel            *types.Channel
+	SelectedKey        *types.ChannelKey
+	TargetModel        string
+	RequestModel       string
+	RequestType        string
+	Body               map[string]any
+	UpstreamBodyForLog *string
+	IsAnthropicInbound bool
+	IsGeminiInbound    bool
+	FirstTokenTimeout  int
+	ApiKeyID           int
+	SessionKeepTime    int
+	Attempts           []attemptRecord
+	StartTime          time.Time
 }
 
 // relayResult is the unified result from either streaming or non-streaming proxy.
@@ -197,17 +198,24 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 		}
 	}
 
-	streamInfo, proxyErr := relay.ProxyStreaming(
+	var (
+		streamInfo *relay.StreamCompleteInfo
+		proxyErr   error
+	)
+	streamInfo, p.UpstreamBodyForLog, proxyErr = relay.ProxyBifrostStreaming(
 		p.C.Writer,
 		p.C.Request.Context(),
-		h.StreamClient,
-		p.Upstream.URL,
-		p.Upstream.Headers,
-		p.Upstream.Body,
-		p.Channel.Type,
-		p.FirstTokenTimeout,
-		p.IsAnthropicPassthrough,
-		p.IsAnthropicInbound,
+		h.Bifrost,
+		relay.BifrostProxyRequest{
+			RequestType:       p.RequestType,
+			Path:              p.C.Request.URL.Path,
+			Body:              p.Body,
+			TargetModel:       p.TargetModel,
+			Channel:           p.Channel,
+			SelectedKey:       p.SelectedKey,
+			FirstTokenTimeout: p.FirstTokenTimeout,
+			DebugRaw:          h.Config != nil && h.Config.BifrostDebugRaw,
+		},
 		onContent,
 	)
 
@@ -251,13 +259,23 @@ func (s *streamStrategy) CleanupOnFailure(h *RelayHandler, p *relayAttemptParams
 type nonStreamStrategy struct{}
 
 func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relayResult, error) {
-	result, proxyErr := relay.ProxyNonStreaming(
-		h.HTTPClient,
-		p.Upstream.URL,
-		p.Upstream.Headers,
-		p.Upstream.Body,
-		p.Channel.Type,
-		p.IsAnthropicPassthrough,
+	var (
+		result   *relay.ProxyResult
+		proxyErr error
+	)
+	result, p.UpstreamBodyForLog, proxyErr = relay.ProxyBifrostNonStreaming(
+		p.C.Request.Context(),
+		h.Bifrost,
+		relay.BifrostProxyRequest{
+			RequestType:       p.RequestType,
+			Path:              p.C.Request.URL.Path,
+			Body:              p.Body,
+			TargetModel:       p.TargetModel,
+			Channel:           p.Channel,
+			SelectedKey:       p.SelectedKey,
+			FirstTokenTimeout: p.FirstTokenTimeout,
+			DebugRaw:          h.Config != nil && h.Config.BifrostDebugRaw,
+		},
 	)
 	if proxyErr != nil {
 		return nil, proxyErr
@@ -281,8 +299,8 @@ func (s *nonStreamStrategy) HandleSuccess(h *RelayHandler, p *relayAttemptParams
 	)
 
 	// Write response
-	if p.IsAnthropicPassthrough {
-		p.C.JSON(200, result.Response)
+	if p.IsGeminiInbound {
+		p.C.JSON(200, relay.ConvertToGeminiResponseFromOpenAI(result.Response))
 		return
 	}
 	if p.IsAnthropicInbound {
@@ -303,6 +321,7 @@ func (h *RelayHandler) parseRelayRequest(c *gin.Context) *relayRequest {
 
 	requestType := relay.DetectRequestType(path)
 	isAnthropicInbound := requestType == "anthropic-messages"
+	isGeminiInbound := requestType == "gemini-generate-content" || requestType == "gemini-stream-generate-content"
 	if requestType == "" {
 		c.JSON(400, gin.H{"error": gin.H{"message": "Unsupported endpoint", "type": "invalid_request_error"}})
 		return nil
@@ -320,7 +339,7 @@ func (h *RelayHandler) parseRelayRequest(c *gin.Context) *relayRequest {
 		return nil
 	}
 
-	model, stream := relay.ExtractModel(body)
+	model, stream := relay.ExtractModelForRequest(path, requestType, body)
 	if model == "" {
 		apiError(c, 400, "invalid_request_error", "Model is required", isAnthropicInbound)
 		return nil
@@ -342,6 +361,7 @@ func (h *RelayHandler) parseRelayRequest(c *gin.Context) *relayRequest {
 	return &relayRequest{
 		RequestType:        requestType,
 		IsAnthropicInbound: isAnthropicInbound,
+		IsGeminiInbound:    isGeminiInbound,
 		Body:               body,
 		BodyBytes:          bodyBytes,
 		Model:              model,
@@ -360,8 +380,7 @@ type RelayHandler struct {
 	CircuitBreakers *relay.CircuitBreakerManager
 	Sessions        *relay.SessionManager
 	Balancer        *relay.BalancerState
-	HTTPClient      *http.Client // non-streaming (120s timeout)
-	StreamClient    *http.Client // streaming (30s connect timeout, no overall timeout)
+	Bifrost         *bifrostx.Client
 }
 
 // RegisterRelayRoutes registers the /v1/* relay routes on a Gin engine.
@@ -370,6 +389,10 @@ func (h *RelayHandler) RegisterRelayRoutes(r *gin.Engine) {
 	v1.Use(middleware.ApiKeyAuth(h.DB))
 	v1.GET("/models", h.handleModels)
 	v1.POST("/*path", h.handleRelay)
+
+	v1beta := r.Group("/v1beta")
+	v1beta.Use(middleware.ApiKeyAuth(h.DB))
+	v1beta.POST("/models/*path", h.handleRelay)
 }
 
 // ── GET /v1/models ──────────────────────────────────────────────
@@ -459,7 +482,9 @@ func (h *RelayHandler) executeWithRetry(
 ) *retryOutcome {
 	body := req.Body
 	model := req.Model
+	requestType := req.RequestType
 	isAnthropicInbound := req.IsAnthropicInbound
+	isGeminiInbound := req.IsGeminiInbound
 	apiKeyId := req.ApiKeyID
 
 	orderedItems := sel.OrderedItems
@@ -552,45 +577,21 @@ func (h *RelayHandler) executeWithRetry(
 
 			_, attemptSpan := h.Observer.StartAttemptSpan(c.Request.Context(), currentAttemptNum, channel.Name, channel.ID)
 
-			// Build upstream request
-			isAnthropicPassthrough := isAnthropicInbound && channel.Type == types.OutboundAnthropic
-			upstream := relay.BuildUpstreamRequest(
-				relay.ChannelConfig{
-					Type:          channel.Type,
-					BaseUrls:      []types.BaseUrl(channel.BaseUrls),
-					CustomHeader:  []types.CustomHeader(channel.CustomHeader),
-					ParamOverride: channel.ParamOverride,
-				},
-				selectedKey.ChannelKey,
-				body,
-				c.Request.URL.Path,
-				targetModel,
-				isAnthropicPassthrough,
-			)
-
-			originalBody, _ := json.Marshal(body)
-			var upstreamBodyForLog *string
-			if upstream.Body != string(originalBody) {
-				s := upstream.Body
-				upstreamBodyForLog = &s
-			}
-
 			params := &relayAttemptParams{
-				C:                      c,
-				Upstream:               upstream,
-				Channel:                channel,
-				SelectedKey:            selectedKey,
-				TargetModel:            targetModel,
-				RequestModel:           model,
-				Body:                   body,
-				UpstreamBodyForLog:     upstreamBodyForLog,
-				IsAnthropicPassthrough: isAnthropicPassthrough,
-				IsAnthropicInbound:     isAnthropicInbound,
-				FirstTokenTimeout:      firstTokenTimeout,
-				ApiKeyID:               apiKeyId,
-				SessionKeepTime:        sessionKeepTime,
-				Attempts:               attempts,
-				StartTime:              startTime,
+				C:                  c,
+				Channel:            channel,
+				SelectedKey:        selectedKey,
+				TargetModel:        targetModel,
+				RequestModel:       model,
+				RequestType:        requestType,
+				Body:               body,
+				IsAnthropicInbound: isAnthropicInbound,
+				IsGeminiInbound:    isGeminiInbound,
+				FirstTokenTimeout:  firstTokenTimeout,
+				ApiKeyID:           apiKeyId,
+				SessionKeepTime:    sessionKeepTime,
+				Attempts:           attempts,
+				StartTime:          startTime,
 			}
 
 			result, proxyErr := strategy.Execute(h, params)
