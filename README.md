@@ -12,6 +12,8 @@
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates)
 
+**Go · React · SQLite · Caddy**
+
 </div>
 
 ---
@@ -73,9 +75,7 @@
 
 ### Zeabur
 
-一键部署 Worker + Web，点击上方 Zeabur 按钮即可。
-
-<!-- TODO: 在 Zeabur Dashboard 创建 template 后，替换 header 中的按钮链接为 https://zeabur.com/templates/YOUR_CODE -->
+一键部署，点击上方按钮即可。
 
 ### Docker Compose
 
@@ -99,14 +99,24 @@ services:
     restart: always
     depends_on:
       - worker
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      - worker
+      - web
 ```
 
 ```bash
 echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
 docker compose up -d
+# 访问 http://localhost:3000
 ```
-
-需要反向代理（Caddy / Nginx）将 `/api/*` 和 `/v1/*` 转发到 worker:8787，其余转发到 web:3000。
 
 ### 手动构建
 
@@ -117,6 +127,41 @@ cd apps/worker && go build -o wheel ./cmd/worker && JWT_SECRET=your-secret ./whe
 # Web (Node >= 22, pnpm >= 10)
 pnpm install && pnpm --filter @wheel/web build
 # 静态文件服务器托管 apps/web/dist
+```
+
+---
+
+## Usage
+
+Wheel 兼容 OpenAI API 格式，配置好通道和分组后，将任意 AI 工具的 `base_url` 指向 Wheel 即可。
+
+**Claude Code**
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:3000 ANTHROPIC_API_KEY=your-api-key claude
+```
+
+**opencode**
+
+```bash
+export OPENAI_BASE_URL=http://localhost:3000/v1
+export OPENAI_API_KEY=your-api-key
+opencode
+```
+
+**aider**
+
+```bash
+aider --openai-api-base http://localhost:3000/v1 --openai-api-key your-api-key
+```
+
+**curl**
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ---
