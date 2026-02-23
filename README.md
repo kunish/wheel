@@ -25,7 +25,7 @@
 </picture>
 
 <details>
-<summary>更多截图 / More Screenshots</summary>
+<summary>更多截图</summary>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/model-dark.png">
@@ -80,12 +80,15 @@
 ### Docker Compose
 
 ```yaml
+volumes:
+  tidb-data:
+
 services:
   tidb:
     image: pingcap/tidb:latest
     restart: always
-    ports:
-      - "4000:4000"
+    volumes:
+      - tidb-data:/tmp/tidb
 
   worker:
     image: ghcr.io/kunish/wheel-worker

@@ -1,4 +1,5 @@
 volumes:
+  tidb-data:
   prometheus-data:
   grafana-data:
 
@@ -6,6 +7,8 @@ services:
   tidb:
     image: pingcap/tidb:latest
     restart: always
+    volumes:
+      - tidb-data:/tmp/tidb
 
   worker:
     image: ghcr.io/kunish/wheel-worker
