@@ -4,7 +4,7 @@
 
 # Wheel
 
-**LLM API Gateway — Aggregate, Balance, Observe.**
+**LLM API 网关 — 聚合、均衡、观测。**
 
 统一多家 LLM 提供商接口，智能负载均衡与自动故障转移，完整的用量追踪与成本管理。
 
@@ -21,7 +21,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/dashboard-light.png">
-  <img alt="Dashboard" src="docs/screenshots/dashboard-light.png" width="100%">
+  <img alt="仪表盘" src="docs/screenshots/dashboard-light.png" width="100%">
 </picture>
 
 <details>
@@ -30,32 +30,32 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/model-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/model-light.png">
-  <img alt="Model Management" src="docs/screenshots/model-light.png" width="100%">
+  <img alt="模型管理" src="docs/screenshots/model-light.png" width="100%">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/groups-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/groups-light.png">
-  <img alt="Groups" src="docs/screenshots/groups-light.png" width="100%">
+  <img alt="分组管理" src="docs/screenshots/groups-light.png" width="100%">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logs-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/logs-light.png">
-  <img alt="Request Logs" src="docs/screenshots/logs-light.png" width="100%">
+  <img alt="请求日志" src="docs/screenshots/logs-light.png" width="100%">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/settings-light.png">
-  <img alt="Settings" src="docs/screenshots/settings-light.png" width="100%">
+  <img alt="系统设置" src="docs/screenshots/settings-light.png" width="100%">
 </picture>
 
 </details>
 
 ---
 
-## Features
+## 功能特性
 
 - **多提供商聚合** — OpenAI / Anthropic / Gemini 统一为 OpenAI 兼容接口，协议自动转换
 - **智能路由** — 4 种负载均衡（Round Robin / Random / Failover / Weighted），3 轮重试，熔断器，会话保持
@@ -71,7 +71,7 @@
 
 ---
 
-## Deploy
+## 部署
 
 ### Zeabur
 
@@ -94,7 +94,7 @@ services:
     image: ghcr.io/kunish/wheel-worker
     restart: always
     environment:
-      JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?请设置 JWT_SECRET}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       DB_DSN: root:@tcp(tidb:4000)/wheel?parseTime=true&charset=utf8mb4
     depends_on:
@@ -118,6 +118,26 @@ services:
       - web
 ```
 
+创建 `Caddyfile`：
+
+```caddyfile
+:3000 {
+	handle /v1/* {
+		reverse_proxy worker:8787
+	}
+
+	handle /api/* {
+		reverse_proxy worker:8787
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
+```
+
+启动服务：
+
 ```bash
 echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
 docker compose up -d
@@ -127,7 +147,7 @@ docker compose up -d
 ### 手动构建
 
 ```bash
-# Worker (Go >= 1.24, 需要 TiDB/MySQL 实例)
+# Worker (Go >= 1.26, 需要 TiDB/MySQL 实例)
 cd apps/worker && go build -o wheel ./cmd/worker
 JWT_SECRET=your-secret DB_DSN="root:@tcp(127.0.0.1:4000)/wheel?parseTime=true&charset=utf8mb4" ./wheel
 
@@ -138,7 +158,7 @@ pnpm install && pnpm --filter @wheel/web build
 
 ---
 
-## Usage
+## 使用
 
 Wheel 兼容 OpenAI API 格式，配置好通道和分组后，将任意 AI 工具的 `base_url` 指向 Wheel 即可。
 
@@ -173,7 +193,7 @@ curl http://localhost:3000/v1/chat/completions \
 
 ---
 
-## Environment Variables
+## 环境变量
 
 | 变量                | 组件   | 描述                              | 默认值                                                           |
 | ------------------- | ------ | --------------------------------- | ---------------------------------------------------------------- |
@@ -186,7 +206,7 @@ curl http://localhost:3000/v1/chat/completions \
 
 ---
 
-## Development
+## 开发
 
 ```bash
 pnpm install
@@ -195,6 +215,6 @@ pnpm dev          # 同时启动 Worker + Web
 
 ---
 
-## License
+## 许可证
 
 MIT
