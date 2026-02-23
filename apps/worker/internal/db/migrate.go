@@ -4,10 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 )
 
 // initSchema contains TiDB/MySQL-compatible DDL for all tables.
@@ -98,12 +94,12 @@ var initSchema = []string{
 		ftut INT DEFAULT 0 NOT NULL,
 		use_time INT DEFAULT 0 NOT NULL,
 		cost DOUBLE DEFAULT 0 NOT NULL,
-		request_content TEXT NOT NULL,
-		response_content TEXT NOT NULL,
+		request_content MEDIUMTEXT NOT NULL,
+		response_content MEDIUMTEXT NOT NULL,
 		error TEXT NOT NULL,
-		attempts TEXT NOT NULL,
+		attempts MEDIUMTEXT NOT NULL,
 		total_attempts INT DEFAULT 0 NOT NULL,
-		upstream_content TEXT
+		upstream_content MEDIUMTEXT
 	)`,
 }
 
@@ -112,6 +108,14 @@ var initIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_time ON relay_logs(time)`,
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_channel_id ON relay_logs(channel_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_error ON relay_logs(error(255))`,
+}
+
+// initAlters upgrades existing columns (idempotent).
+var initAlters = []string{
+	`ALTER TABLE relay_logs MODIFY COLUMN request_content MEDIUMTEXT NOT NULL`,
+	`ALTER TABLE relay_logs MODIFY COLUMN response_content MEDIUMTEXT NOT NULL`,
+	`ALTER TABLE relay_logs MODIFY COLUMN attempts MEDIUMTEXT NOT NULL`,
+	`ALTER TABLE relay_logs MODIFY COLUMN upstream_content MEDIUMTEXT`,
 }
 
 // Migrate ensures all tables exist, then applies any pending Drizzle migration files.
@@ -127,104 +131,13 @@ func Migrate(db *sql.DB) error {
 			return fmt.Errorf("init index: %w\nDDL: %s", err, ddl)
 		}
 	}
+	for _, ddl := range initAlters {
+		if _, err := db.Exec(ddl); err != nil {
+			return fmt.Errorf("alter schema: %w\nDDL: %s", err, ddl)
+		}
+	}
 
 	log.Println("[migration] Schema ready")
 	return nil
 }
 
-// MigrateWithDrizzle applies Drizzle-format SQL migration files on top of the base schema.
-// This is kept for forward compatibility if new migrations are added.
-func MigrateWithDrizzle(db *sql.DB, migrationsDir string) error {
-	// Create tracking table
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS _drizzle_migrations (
-			id INT PRIMARY KEY AUTO_INCREMENT,
-			hash VARCHAR(255) NOT NULL UNIQUE,
-			created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP())
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("create migrations table: %w", err)
-	}
-
-	// Collect already-applied migrations
-	rows, err := db.Query("SELECT hash FROM _drizzle_migrations")
-	if err != nil {
-		return fmt.Errorf("query applied migrations: %w", err)
-	}
-	defer rows.Close()
-
-	applied := make(map[string]bool)
-	for rows.Next() {
-		var hash string
-		if err := rows.Scan(&hash); err != nil {
-			return fmt.Errorf("scan migration hash: %w", err)
-		}
-		applied[hash] = true
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate migration rows: %w", err)
-	}
-
-	// Read and sort SQL files
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read migrations dir: %w", err)
-	}
-
-	var sqlFiles []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			sqlFiles = append(sqlFiles, e.Name())
-		}
-	}
-	sort.Strings(sqlFiles)
-
-	for _, file := range sqlFiles {
-		if applied[file] {
-			continue
-		}
-
-		content, err := os.ReadFile(filepath.Join(migrationsDir, file))
-		if err != nil {
-			return fmt.Errorf("read migration %s: %w", file, err)
-		}
-
-		parts := strings.Split(string(content), "-->  statement-breakpoint")
-		var statements []string
-		for _, s := range parts {
-			s = strings.TrimSpace(s)
-			if s != "" {
-				statements = append(statements, s)
-			}
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			return fmt.Errorf("begin tx for %s: %w", file, err)
-		}
-
-		for _, stmt := range statements {
-			if _, err := tx.Exec(stmt); err != nil {
-				tx.Rollback()
-				return fmt.Errorf("exec migration %s: %w\nStatement: %s", file, err, stmt)
-			}
-		}
-
-		if _, err := tx.Exec("INSERT INTO _drizzle_migrations (hash) VALUES (?)", file); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("record migration %s: %w", file, err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %s: %w", file, err)
-		}
-
-		log.Printf("[migration] Applied: %s", file)
-	}
-
-	return nil
-}

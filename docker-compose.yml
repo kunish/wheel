@@ -1,9 +1,12 @@
 volumes:
-  worker-data:
   prometheus-data:
   grafana-data:
 
 services:
+  tidb:
+    image: pingcap/tidb:latest
+    restart: always
+
   worker:
     image: ghcr.io/kunish/wheel-worker
     build:
@@ -17,12 +20,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dummy}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
-      DATA_PATH: /app/data
+      DB_DSN: root:@tcp(tidb:4000)/wheel?parseTime=true&charset=utf8mb4
       METRICS_ENABLED: "true"
-    ports:
-      - 8787:8787
-    volumes:
-      - worker-data:/app/data
+    depends_on:
+      - tidb
 
   web:
     image: ghcr.io/kunish/wheel-web
@@ -33,10 +34,19 @@ services:
         - linux/amd64
         - linux/arm64
     restart: always
-    ports:
-      - 3000:3000
     depends_on:
       - worker
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - 3000:3000
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      - worker
+      - web
 
   prometheus:
     image: prom/prometheus

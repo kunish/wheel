@@ -5,7 +5,7 @@ tmp_dir = "tmp"
 cmd = "go build -o tmp/wheel ./cmd/worker"
 entrypoint = "tmp/wheel"
 delay = 1000
-exclude_dir = ["tmp", "bin", "data", "drizzle"]
+exclude_dir = ["tmp", "bin"]
 exclude_regex = ["_test\\.go$"]
 kill_delay = 500
 
