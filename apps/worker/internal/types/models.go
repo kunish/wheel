@@ -51,7 +51,7 @@ type Channel struct {
 	CustomHeader   CustomHeaderList `bun:"custom_header"       json:"customHeader"`
 	ParamOverride  *string          `bun:"param_override"      json:"paramOverride"`
 	ChannelProxy   *string          `bun:"channel_proxy"       json:"channelProxy"`
-	Order          int              `bun:"\"order\",default:0" json:"order"`
+	Order          int              `bun:"order,default:0" json:"order"`
 }
 
 // GroupItem links a channel to a group with routing metadata.
@@ -74,7 +74,7 @@ type Group struct {
 	Mode              GroupMode   `bun:"mode"                   json:"mode"`
 	FirstTokenTimeOut int         `bun:"first_token_time_out"   json:"firstTokenTimeOut"`
 	SessionKeepTime   int         `bun:"session_keep_time"      json:"sessionKeepTime"`
-	Order             int         `bun:"\"order\""              json:"order,omitempty"`
+	Order             int         `bun:"order"                  json:"order,omitempty"`
 	Items             []GroupItem `bun:"-"                      json:"items"`
 }
 
