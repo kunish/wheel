@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://github.com/kunish/wheel/compare/v1.8.0...v1.9.0) (2026-02-23)
+
+
+### Features
+
+* reuse normal log components for streaming logs and collapse tool definitions ([1451b01](https://github.com/kunish/wheel/commit/1451b0146fe7705d923d4441b507eb38314756eb))
+
+
+### Bug Fixes
+
+* add TiDB service for screenshots CI job ([882d95c](https://github.com/kunish/wheel/commit/882d95cf45d3cdcb80dcea2c18912edcfc8f717f))
+* use backtick quoting for `order` column in MySQL/TiDB queries ([4a533fa](https://github.com/kunish/wheel/commit/4a533fa257b6d4c01402d519b9e516a04c0c6548))
+
 ## [1.8.0](https://github.com/kunish/wheel/compare/v1.7.3...v1.8.0) (2026-02-23)
 
 
