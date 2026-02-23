@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.8.0](https://github.com/kunish/wheel/compare/v1.7.3...v1.8.0) (2026-02-23)
+
+
+### Features
+
+* auto-create database on startup ([13d6818](https://github.com/kunish/wheel/commit/13d68180f6897a4e8314bd768aaac337f3240afe))
+* migrate database from SQLite to TiDB/MySQL ([34a0d3c](https://github.com/kunish/wheel/commit/34a0d3c494abb964d7c7246533428da1627ef1d2))
+* **relay:** improve Anthropic conversion and add native Gemini support ([35f3a47](https://github.com/kunish/wheel/commit/35f3a475029b5daac24b0e043f00aca7129b911f))
+
+
+### Bug Fixes
+
+* add persistent volume for TiDB data ([95750d5](https://github.com/kunish/wheel/commit/95750d5c76e94edbd3afdbe8d619d4391f7ba2d3))
+* quote `key` reserved word in MySQL queries ([0023550](https://github.com/kunish/wheel/commit/0023550a08808c5099e845cdecedaac06bfbe12b))
+* update deployment config for MySQL migration and fix MEDIUMTEXT columns ([4c82779](https://github.com/kunish/wheel/commit/4c8277998ac80572ae6cd43c32b5949817615367))
+
 ## [1.7.3](https://github.com/kunish/wheel/compare/v1.7.2...v1.7.3) (2026-02-15)
 
 
