@@ -20,7 +20,7 @@ func Run(ctx context.Context, db *bun.DB) error {
 	// Idempotency check
 	var count int
 	count, err := db.NewSelect().TableExpr("settings").
-		Where("key = ?", seedMarkerKey).Count(ctx)
+		Where("`key` = ?", seedMarkerKey).Count(ctx)
 	if err != nil {
 		return fmt.Errorf("check seed marker: %w", err)
 	}

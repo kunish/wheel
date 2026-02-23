@@ -24,7 +24,7 @@ func GetAllSettings(ctx context.Context, db *bun.DB) (map[string]string, error) 
 
 func GetSetting(ctx context.Context, db *bun.DB, key string) (*string, error) {
 	s := new(types.Setting)
-	err := db.NewSelect().Model(s).Where("key = ?", key).Limit(1).Scan(ctx)
+	err := db.NewSelect().Model(s).Where("`key` = ?", key).Limit(1).Scan(ctx)
 	if err != nil {
 		if err.Error() == "sql: no rows in result set" {
 			return nil, nil
