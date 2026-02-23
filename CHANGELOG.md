@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/kunish/wheel/compare/v1.9.2...v1.10.0) (2026-02-23)
+
+
+### Features
+
+* add version display and update check to settings page ([#41](https://github.com/kunish/wheel/issues/41)) ([df310cb](https://github.com/kunish/wheel/commit/df310cbff051866c440d9298fb31cedb4571a6fb))
+
 ## [1.9.2](https://github.com/kunish/wheel/compare/v1.9.1...v1.9.2) (2026-02-23)
 
 
