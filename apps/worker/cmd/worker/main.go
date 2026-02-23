@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -43,34 +42,19 @@ func main() {
 	}
 
 	// ── Database ──
-	dbPath := filepath.Join(cfg.DataPath, "wheel.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(cfg.DBDSN)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer database.Close()
 
-	// Run Drizzle-compatible migrations
-	migrationsDir := filepath.Join(cfg.DataPath, "..", "drizzle")
-	if err := db.Migrate(database.DB, migrationsDir); err != nil {
+	if err := db.Migrate(database.DB); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
-	}
-
-	// ── Log Database (separate file for write-heavy logs) ──
-	logDBPath := filepath.Join(cfg.DataPath, "wheel-logs.db")
-	logDatabase, err := db.OpenLogDB(logDBPath)
-	if err != nil {
-		log.Fatalf("Failed to open log database: %v", err)
-	}
-	defer logDatabase.Close()
-
-	if err := db.MigrateLogDB(logDatabase.DB); err != nil {
-		log.Fatalf("Failed to migrate log database: %v", err)
 	}
 
 	// ── Seed subcommand ──
 	if len(os.Args) > 1 && os.Args[1] == "seed" {
-		if err := seed.Run(context.Background(), database, logDatabase); err != nil {
+		if err := seed.Run(context.Background(), database); err != nil {
 			log.Fatalf("Seed failed: %v", err)
 		}
 		return
@@ -107,7 +91,7 @@ func main() {
 	}
 
 	// ── LogWriter (batched async log persistence) ──
-	logWriter := db.NewLogWriter(logDatabase, database, hub.Broadcast, hub, obs, kv)
+	logWriter := db.NewLogWriter(database, hub.Broadcast, hub, obs, kv)
 
 	// Use a cancellable context for background services
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -120,14 +104,13 @@ func main() {
 	}()
 
 	// ── Background Log Cleanup ──
-	db.StartLogCleanup(ctx, database, logDatabase)
+	db.StartLogCleanup(ctx, database)
 	cbm.StartCleanup(ctx)
 	sm.StartCleanup(ctx)
 
 	// ── Handlers ──
 	h := &handler.Handler{
 		DB:     database,
-		LogDB:  logDatabase,
 		Cache:  kv,
 		Config: cfg,
 	}
@@ -135,7 +118,6 @@ func main() {
 	rh := &handler.RelayHandler{
 		Handler: handler.Handler{
 			DB:     database,
-			LogDB:  logDatabase,
 			Cache:  kv,
 			Config: cfg,
 		},

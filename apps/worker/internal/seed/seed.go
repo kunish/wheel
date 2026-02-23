@@ -16,7 +16,7 @@ const seedMarkerKey = "__seed_data_loaded"
 
 // Run populates both databases with demo data. It is idempotent —
 // repeated calls skip seeding if the marker setting already exists.
-func Run(ctx context.Context, db *bun.DB, logDB *bun.DB) error {
+func Run(ctx context.Context, db *bun.DB) error {
 	// Idempotency check
 	var count int
 	count, err := db.NewSelect().TableExpr("settings").
@@ -43,7 +43,7 @@ func Run(ctx context.Context, db *bun.DB, logDB *bun.DB) error {
 	if err := seedPricing(ctx, db); err != nil {
 		return fmt.Errorf("seed pricing: %w", err)
 	}
-	if err := seedLogs(ctx, logDB); err != nil {
+	if err := seedLogs(ctx, db); err != nil {
 		return fmt.Errorf("seed logs: %w", err)
 	}
 
@@ -268,7 +268,7 @@ func seedPricing(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-func seedLogs(ctx context.Context, logDB *bun.DB) error {
+func seedLogs(ctx context.Context, db *bun.DB) error {
 	now := time.Now()
 	rng := rand.New(rand.NewSource(42))
 
@@ -378,7 +378,7 @@ func seedLogs(ctx context.Context, logDB *bun.DB) error {
 			end = len(logs)
 		}
 		batch := logs[i:end]
-		if _, err := logDB.NewInsert().Model(&batch).Exec(ctx); err != nil {
+		if _, err := db.NewInsert().Model(&batch).Exec(ctx); err != nil {
 			return err
 		}
 	}

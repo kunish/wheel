@@ -33,8 +33,7 @@ type LogWriter struct {
 	ch            chan logEntry
 	countThresh   int
 	timeThresh    time.Duration
-	logDB         *bun.DB
-	mainDB        *bun.DB
+	db            *bun.DB
 	broadcast     types.BroadcastFunc
 	streamTracker types.StreamTracker
 	observer      *observe.Observer
@@ -43,13 +42,12 @@ type LogWriter struct {
 }
 
 // NewLogWriter creates a LogWriter with sensible defaults.
-func NewLogWriter(logDB, mainDB *bun.DB, broadcast types.BroadcastFunc, streamTracker types.StreamTracker, obs *observe.Observer, statsCache *cache.MemoryKV) *LogWriter {
+func NewLogWriter(db *bun.DB, broadcast types.BroadcastFunc, streamTracker types.StreamTracker, obs *observe.Observer, statsCache *cache.MemoryKV) *LogWriter {
 	return &LogWriter{
 		ch:            make(chan logEntry, 1000),
 		countThresh:   50,
 		timeThresh:    200 * time.Millisecond,
-		logDB:         logDB,
-		mainDB:        mainDB,
+		db:            db,
 		broadcast:     broadcast,
 		streamTracker: streamTracker,
 		observer:      obs,
@@ -140,7 +138,7 @@ func (w *LogWriter) flush(entries []logEntry) {
 		logs[i] = entries[i].Log
 	}
 
-	err := w.logDB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	err := w.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		return dal.CreateLogsBatch(ctx, tx, logs)
 	})
 	if err != nil {
@@ -164,7 +162,7 @@ func (w *LogWriter) flush(entries []logEntry) {
 	}
 
 	if len(apiKeyCosts) > 0 || len(channelKeyCosts) > 0 {
-		err := w.mainDB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		err := w.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 			for id, cost := range apiKeyCosts {
 				if err := dal.IncrementApiKeyCostTx(ctx, tx, id, cost); err != nil {
 					return err

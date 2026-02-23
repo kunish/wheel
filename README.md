@@ -12,7 +12,7 @@
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates)
 
-**Go · React · SQLite · Caddy**
+**Go · React · TiDB · Caddy**
 
 </div>
 
@@ -80,19 +80,22 @@
 ### Docker Compose
 
 ```yaml
-volumes:
-  worker-data:
-
 services:
+  tidb:
+    image: pingcap/tidb:latest
+    restart: always
+    ports:
+      - "4000:4000"
+
   worker:
     image: ghcr.io/kunish/wheel-worker
     restart: always
     environment:
       JWT_SECRET: ${JWT_SECRET:?Please set JWT_SECRET}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
-      DATA_PATH: /app/data
-    volumes:
-      - worker-data:/app/data
+      DB_DSN: root:@tcp(tidb:4000)/wheel?parseTime=true&charset=utf8mb4
+    depends_on:
+      - tidb
 
   web:
     image: ghcr.io/kunish/wheel-web
@@ -121,8 +124,9 @@ docker compose up -d
 ### 手动构建
 
 ```bash
-# Worker (Go >= 1.24)
-cd apps/worker && go build -o wheel ./cmd/worker && JWT_SECRET=your-secret ./wheel
+# Worker (Go >= 1.24, 需要 TiDB/MySQL 实例)
+cd apps/worker && go build -o wheel ./cmd/worker
+JWT_SECRET=your-secret DB_DSN="root:@tcp(127.0.0.1:4000)/wheel?parseTime=true&charset=utf8mb4" ./wheel
 
 # Web (Node >= 22, pnpm >= 10)
 pnpm install && pnpm --filter @wheel/web build
@@ -168,14 +172,14 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## Environment Variables
 
-| 变量                | 组件   | 描述                              | 默认值   |
-| ------------------- | ------ | --------------------------------- | -------- |
-| `JWT_SECRET`        | Worker | JWT 签名密钥（必填）              | —        |
-| `ADMIN_USERNAME`    | Worker | 管理员用户名                      | `admin`  |
-| `ADMIN_PASSWORD`    | Worker | 管理员密码                        | `admin`  |
-| `DATA_PATH`         | Worker | 数据目录路径                      | `./data` |
-| `PORT`              | Worker | HTTP 端口                         | `8787`   |
-| `VITE_API_BASE_URL` | Web    | Worker API 地址（独立部署时必填） | —        |
+| 变量                | 组件   | 描述                              | 默认值                                                           |
+| ------------------- | ------ | --------------------------------- | ---------------------------------------------------------------- |
+| `JWT_SECRET`        | Worker | JWT 签名密钥（必填）              | —                                                                |
+| `ADMIN_USERNAME`    | Worker | 管理员用户名                      | `admin`                                                          |
+| `ADMIN_PASSWORD`    | Worker | 管理员密码                        | `admin`                                                          |
+| `DB_DSN`            | Worker | TiDB/MySQL 连接字符串             | `root:@tcp(127.0.0.1:4000)/wheel?parseTime=true&charset=utf8mb4` |
+| `PORT`              | Worker | HTTP 端口                         | `8787`                                                           |
+| `VITE_API_BASE_URL` | Web    | Worker API 地址（独立部署时必填） | —                                                                |
 
 ---
 

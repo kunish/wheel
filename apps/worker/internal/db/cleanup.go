@@ -12,10 +12,9 @@ import (
 )
 
 // StartLogCleanup launches a background goroutine that cleans up expired logs.
-// It runs immediately once, then repeats every hour.
-func StartLogCleanup(ctx context.Context, mainDB, logDB *bun.DB) {
+func StartLogCleanup(ctx context.Context, db *bun.DB) {
 	go func() {
-		cleanupLogs(mainDB, logDB)
+		cleanupLogs(db)
 
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
@@ -23,7 +22,7 @@ func StartLogCleanup(ctx context.Context, mainDB, logDB *bun.DB) {
 		for {
 			select {
 			case <-ticker.C:
-				cleanupLogs(mainDB, logDB)
+				cleanupLogs(db)
 			case <-ctx.Done():
 				return
 			}
@@ -31,10 +30,10 @@ func StartLogCleanup(ctx context.Context, mainDB, logDB *bun.DB) {
 	}()
 }
 
-func cleanupLogs(mainDB, logDB *bun.DB) {
+func cleanupLogs(db *bun.DB) {
 	ctx := context.Background()
 
-	days, err := dal.GetSetting(ctx, mainDB, "log_retention_days")
+	days, err := dal.GetSetting(ctx, db, "log_retention_days")
 	if err != nil {
 		log.Printf("[cleanup] failed to read log_retention_days: %v", err)
 		return
@@ -47,7 +46,7 @@ func cleanupLogs(mainDB, logDB *bun.DB) {
 		}
 	}
 
-	deleted, err := dal.CleanupOldLogs(ctx, logDB, retentionDays)
+	deleted, err := dal.CleanupOldLogs(ctx, db, retentionDays)
 	if err != nil {
 		log.Printf("[cleanup] failed to clean up logs: %v", err)
 		return

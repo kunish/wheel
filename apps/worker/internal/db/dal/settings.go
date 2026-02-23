@@ -38,8 +38,8 @@ func UpdateSettings(ctx context.Context, db *bun.DB, data map[string]string) err
 	for k, v := range data {
 		s := &types.Setting{Key: k, Value: v}
 		_, err := db.NewInsert().Model(s).
-			On("CONFLICT(key) DO UPDATE").
-			Set("value = EXCLUDED.value").
+			On("DUPLICATE KEY UPDATE").
+			Set("value = VALUES(value)").
 			Exec(ctx)
 		if err != nil {
 			return err

@@ -36,7 +36,7 @@ func cachedStats[T any](kv *cache.MemoryKV, key string, queryFn func() (T, error
 // @Router /api/v1/stats/global [get]
 func (h *Handler) GetGlobalStats(c *gin.Context) {
 	stats, err := cachedStats(h.Cache, "stats:global", func() (*types.GlobalStatsResponse, error) {
-		return dal.GetGlobalStats(c.Request.Context(), h.LogDB, h.DB)
+		return dal.GetGlobalStats(c.Request.Context(), h.DB)
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -54,7 +54,7 @@ func (h *Handler) GetGlobalStats(c *gin.Context) {
 // @Router /api/v1/stats/channel [get]
 func (h *Handler) GetChannelStats(c *gin.Context) {
 	stats, err := cachedStats(h.Cache, "stats:channel", func() ([]types.ChannelStatsItem, error) {
-		return dal.GetChannelStats(c.Request.Context(), h.LogDB)
+		return dal.GetChannelStats(c.Request.Context(), h.DB)
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -72,7 +72,7 @@ func (h *Handler) GetChannelStats(c *gin.Context) {
 // @Router /api/v1/stats/total [get]
 func (h *Handler) GetTotalStats(c *gin.Context) {
 	stats, err := cachedStats(h.Cache, "stats:total", func() (*types.DailyStatsItem, error) {
-		return dal.GetTotalStats(c.Request.Context(), h.LogDB)
+		return dal.GetTotalStats(c.Request.Context(), h.DB)
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -92,7 +92,7 @@ func (h *Handler) GetTotalStats(c *gin.Context) {
 func (h *Handler) GetTodayStats(c *gin.Context) {
 	tz := c.DefaultQuery("tz", "")
 	stats, err := cachedStats(h.Cache, fmt.Sprintf("stats:today:%s", tz), func() (*types.DailyStatsItem, error) {
-		return dal.GetTodayStats(c.Request.Context(), h.LogDB, tz)
+		return dal.GetTodayStats(c.Request.Context(), h.DB, tz)
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -112,7 +112,7 @@ func (h *Handler) GetTodayStats(c *gin.Context) {
 func (h *Handler) GetDailyStats(c *gin.Context) {
 	tz := c.DefaultQuery("tz", "")
 	stats, err := cachedStats(h.Cache, fmt.Sprintf("stats:daily:%s", tz), func() ([]types.DailyStatsItem, error) {
-		return dal.GetDailyStats(c.Request.Context(), h.LogDB, tz)
+		return dal.GetDailyStats(c.Request.Context(), h.DB, tz)
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -136,7 +136,7 @@ func (h *Handler) GetHourlyStats(c *gin.Context) {
 	end := c.DefaultQuery("end", "")
 	tz := c.DefaultQuery("tz", "")
 	stats, err := cachedStats(h.Cache, fmt.Sprintf("stats:hourly:%s:%s:%s", start, end, tz), func() ([]types.HourlyStatsItem, error) {
-		return dal.GetHourlyStats(c.Request.Context(), h.LogDB, start, end, tz)
+		return dal.GetHourlyStats(c.Request.Context(), h.DB, start, end, tz)
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -154,7 +154,7 @@ func (h *Handler) GetHourlyStats(c *gin.Context) {
 // @Router /api/v1/stats/model [get]
 func (h *Handler) GetModelStats(c *gin.Context) {
 	stats, err := cachedStats(h.Cache, "stats:model", func() ([]types.ModelStatsItem, error) {
-		return dal.GetModelStats(c.Request.Context(), h.LogDB)
+		return dal.GetModelStats(c.Request.Context(), h.DB)
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())

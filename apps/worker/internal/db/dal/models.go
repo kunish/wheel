@@ -62,13 +62,13 @@ func UpdateLLMPrice(ctx context.Context, db *bun.DB, id int, data map[string]any
 	q := db.NewUpdate().Table("llm_prices")
 	for col, val := range data {
 		if col == "updated_at" {
-			q = q.Set("updated_at = datetime('now')")
+			q = q.Set("updated_at = NOW()")
 		} else if allowedLLMPriceCols[col] {
 			q = q.Set(col+" = ?", val)
 		}
 	}
 	// Always update updated_at
-	q = q.Set("updated_at = datetime('now')")
+	q = q.Set("updated_at = NOW()")
 	_, err := q.Where("id = ?", id).Exec(ctx)
 	return err
 }
@@ -91,7 +91,7 @@ func UpsertLLMPrice(ctx context.Context, db *bun.DB, name string, inputPrice, ou
 				Set("output_price = ?", outputPrice).
 				Set("cache_read_price = ?", cacheReadPrice).
 				Set("cache_write_price = ?", cacheWritePrice).
-				Set("updated_at = datetime('now')").
+				Set("updated_at = NOW()").
 				Where("id = ?", existing.ID).
 				Exec(ctx)
 			if err != nil {
@@ -119,8 +119,8 @@ func SetLastPriceSyncTime(ctx context.Context, db *bun.DB) error {
 	now := currentTimestamp()
 	s := &types.Setting{Key: "last_price_sync_time", Value: now}
 	_, err := db.NewInsert().Model(s).
-		On("CONFLICT(key) DO UPDATE").
-		Set("value = EXCLUDED.value").
+		On("DUPLICATE KEY UPDATE").
+		Set("value = VALUES(value)").
 		Exec(ctx)
 	return err
 }
