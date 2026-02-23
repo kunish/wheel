@@ -122,6 +122,17 @@ jobs:
     permissions:
       contents: write
 
+    services:
+      tidb:
+        image: pingcap/tidb:latest
+        ports:
+          - 4000:4000
+        options: >-
+          --health-cmd="curl -sf http://127.0.0.1:10080/status"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
       - uses: actions/checkout@v6
 
