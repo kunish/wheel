@@ -1,15 +1,17 @@
 ## Multi-stage Go build — produces ~15MB Alpine image
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS TARGETARCH
+ARG VERSION=dev
 
-RUN apk add --no-cache git
+RUN apk add --no-cache git make
 
 WORKDIR /build
 COPY apps/worker/go.mod apps/worker/go.sum ./
 RUN go mod download
 
 COPY apps/worker/ .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o /wheel ./cmd/worker
+ENV GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION OUTPUT=/wheel
+RUN make build
 
 # ── Runtime ──
 FROM alpine:3.23

@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// Version is set at build time via -ldflags.
+var Version = "dev"
+
 type Config struct {
 	Port  string
 	DBDSN string

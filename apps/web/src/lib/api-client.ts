@@ -342,6 +342,29 @@ export function updateSettings(settings: Record<string, string>) {
   })
 }
 
+export function getVersion() {
+  return apiFetch<{ success: boolean; data: { version: string } }>("/api/v1/setting/version")
+}
+
+export function checkUpdate() {
+  return apiFetch<{
+    success: boolean
+    data: {
+      current: string
+      latest: string
+      hasUpdate: boolean
+      releaseUrl: string
+      releaseNotes: string
+    }
+  }>("/api/v1/setting/check-update")
+}
+
+export function applyUpdate() {
+  return apiFetch<{ success: boolean }>("/api/v1/setting/apply-update", {
+    method: "POST",
+  })
+}
+
 // ── Model Metadata ──
 
 export function getModelMetadata() {

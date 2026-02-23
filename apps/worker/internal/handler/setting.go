@@ -3,11 +3,17 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/service"
 	"github.com/kunish/wheel/apps/worker/internal/types"
@@ -188,4 +194,168 @@ func (h *Handler) ImportData(c *gin.Context) {
 	h.Cache.Delete("settings")
 
 	successJSON(c, result)
+}
+
+// GetVersion godoc
+// @Summary Get current server version
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {version: string}}"
+// @Security BearerAuth
+// @Router /api/v1/setting/version [get]
+func (h *Handler) GetVersion(c *gin.Context) {
+	successJSON(c, gin.H{"version": strings.TrimPrefix(config.Version, "v")})
+}
+
+// CheckUpdate godoc
+// @Summary Check for new releases on GitHub
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {current, latest, hasUpdate, releaseUrl, releaseNotes}}"
+// @Security BearerAuth
+// @Router /api/v1/setting/check-update [get]
+func (h *Handler) CheckUpdate(c *gin.Context) {
+	current := strings.TrimPrefix(config.Version, "v")
+
+	resp, err := http.Get("https://api.github.com/repos/kunish/wheel/releases/latest")
+	if err != nil {
+		errorJSON(c, http.StatusBadGateway, "Failed to reach GitHub API")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		errorJSON(c, http.StatusBadGateway, fmt.Sprintf("GitHub API returned %d: %s", resp.StatusCode, string(body)))
+		return
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+		Body    string `json:"body"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		errorJSON(c, http.StatusBadGateway, "Failed to parse GitHub response")
+		return
+	}
+
+	latest := strings.TrimPrefix(release.TagName, "v")
+
+	successJSON(c, gin.H{
+		"current":      current,
+		"latest":       latest,
+		"hasUpdate":    latest != current,
+		"releaseUrl":   release.HTMLURL,
+		"releaseNotes": release.Body,
+	})
+}
+
+// ApplyUpdate godoc
+// @Summary Download latest release binary and restart
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} object "{success: true}"
+// @Failure 502 {object} object "{success: false, error: string}"
+// @Security BearerAuth
+// @Router /api/v1/setting/apply-update [post]
+func (h *Handler) ApplyUpdate(c *gin.Context) {
+	// 1. Fetch latest release info (with assets)
+	resp, err := http.Get("https://api.github.com/repos/kunish/wheel/releases/latest")
+	if err != nil {
+		errorJSON(c, http.StatusBadGateway, "Failed to reach GitHub API")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errorJSON(c, http.StatusBadGateway, fmt.Sprintf("GitHub API returned %d", resp.StatusCode))
+		return
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		errorJSON(c, http.StatusBadGateway, "Failed to parse GitHub response")
+		return
+	}
+
+	// 2. Find matching asset
+	wantName := fmt.Sprintf("wheel-%s-%s", runtime.GOOS, runtime.GOARCH)
+	var downloadURL string
+	for _, a := range release.Assets {
+		if a.Name == wantName {
+			downloadURL = a.BrowserDownloadURL
+			break
+		}
+	}
+	if downloadURL == "" {
+		errorJSON(c, http.StatusBadGateway, fmt.Sprintf("No asset found for %s", wantName))
+		return
+	}
+
+	// 3. Download binary
+	dlResp, err := http.Get(downloadURL)
+	if err != nil {
+		errorJSON(c, http.StatusBadGateway, "Failed to download binary")
+		return
+	}
+	defer dlResp.Body.Close()
+
+	if dlResp.StatusCode != http.StatusOK {
+		errorJSON(c, http.StatusBadGateway, fmt.Sprintf("Download returned %d", dlResp.StatusCode))
+		return
+	}
+
+	// 4. Write to temp file next to current binary
+	exe, err := os.Executable()
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "Cannot determine executable path")
+		return
+	}
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "Cannot resolve executable path")
+		return
+	}
+
+	tmpPath := exe + ".update"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "Cannot create temp file")
+		return
+	}
+
+	if _, err := io.Copy(out, dlResp.Body); err != nil {
+		out.Close()
+		os.Remove(tmpPath)
+		errorJSON(c, http.StatusInternalServerError, "Failed to write binary")
+		return
+	}
+	out.Close()
+
+	// 5. chmod +x and atomic rename
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		os.Remove(tmpPath)
+		errorJSON(c, http.StatusInternalServerError, "Failed to set permissions")
+		return
+	}
+	if err := os.Rename(tmpPath, exe); err != nil {
+		os.Remove(tmpPath)
+		errorJSON(c, http.StatusInternalServerError, "Failed to replace binary")
+		return
+	}
+
+	// 6. Respond success, then schedule self-termination
+	successNoData(c)
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+	}()
 }
