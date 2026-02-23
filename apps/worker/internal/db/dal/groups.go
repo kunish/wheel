@@ -11,7 +11,7 @@ import (
 func ListGroups(ctx context.Context, db *bun.DB) ([]types.Group, error) {
 	var groups []types.Group
 	err := db.NewSelect().Model(&groups).
-		OrderExpr("\"order\" ASC, id ASC").
+		OrderExpr("`order` ASC, id ASC").
 		Scan(ctx)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func UpdateGroup(ctx context.Context, db *bun.DB, id int, data map[string]any, i
 		q := db.NewUpdate().Table("groups")
 		for col, val := range data {
 			if col == "order" || col == `"order"` {
-				q = q.Set("\"order\" = ?", val)
+				q = q.Set("`order` = ?", val)
 			} else if allowedGroupCols[col] {
 				q = q.Set(col+" = ?", val)
 			}
@@ -151,7 +151,7 @@ func DeleteGroup(ctx context.Context, db *bun.DB, id int) error {
 func ReorderGroups(ctx context.Context, db *bun.DB, orderedIDs []int) error {
 	for i, id := range orderedIDs {
 		_, err := db.NewUpdate().Table("groups").
-			Set("\"order\" = ?", i).
+			Set("`order` = ?", i).
 			Where("id = ?", id).
 			Exec(ctx)
 		if err != nil {
