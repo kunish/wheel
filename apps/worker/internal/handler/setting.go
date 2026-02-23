@@ -3,11 +3,13 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/service"
 	"github.com/kunish/wheel/apps/worker/internal/types"
@@ -188,4 +190,59 @@ func (h *Handler) ImportData(c *gin.Context) {
 	h.Cache.Delete("settings")
 
 	successJSON(c, result)
+}
+
+// GetVersion godoc
+// @Summary Get current server version
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {version: string}}"
+// @Security BearerAuth
+// @Router /api/v1/setting/version [get]
+func (h *Handler) GetVersion(c *gin.Context) {
+	successJSON(c, gin.H{"version": strings.TrimPrefix(config.Version, "v")})
+}
+
+// CheckUpdate godoc
+// @Summary Check for new releases on GitHub
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {current, latest, hasUpdate, releaseUrl, releaseNotes}}"
+// @Security BearerAuth
+// @Router /api/v1/setting/check-update [get]
+func (h *Handler) CheckUpdate(c *gin.Context) {
+	current := strings.TrimPrefix(config.Version, "v")
+
+	resp, err := http.Get("https://api.github.com/repos/kunish/wheel/releases/latest")
+	if err != nil {
+		errorJSON(c, http.StatusBadGateway, "Failed to reach GitHub API")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		errorJSON(c, http.StatusBadGateway, fmt.Sprintf("GitHub API returned %d: %s", resp.StatusCode, string(body)))
+		return
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+		Body    string `json:"body"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		errorJSON(c, http.StatusBadGateway, "Failed to parse GitHub response")
+		return
+	}
+
+	latest := strings.TrimPrefix(release.TagName, "v")
+
+	successJSON(c, gin.H{
+		"current":      current,
+		"latest":       latest,
+		"hasUpdate":    latest != current,
+		"releaseUrl":   release.HTMLURL,
+		"releaseNotes": release.Body,
+	})
 }

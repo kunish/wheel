@@ -107,5 +107,16 @@
     "importResult": "Import Result:",
     "added": "{{count}} added",
     "skipped": "{{count}} skipped"
+  },
+  "version": {
+    "title": "Version",
+    "currentVersion": "Current Version",
+    "checkUpdate": "Check for Updates",
+    "checking": "Checking...",
+    "upToDate": "You're on the latest version",
+    "newVersion": "New version available: v{{version}}",
+    "goToDownload": "Go to Download",
+    "releaseNotes": "Release Notes",
+    "checkFailed": "Failed to check for updates"
   }
 }

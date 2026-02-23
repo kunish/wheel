@@ -1,8 +1,10 @@
 .PHONY: build dev test clean docker docs
 
+VERSION ?= dev
+
 # Build the worker binary
 build:
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/wheel ./cmd/worker
+	CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/kunish/wheel/apps/worker/internal/config.Version=$(VERSION)" -o bin/wheel ./cmd/worker
 
 # Run in development mode with hot-reload
 dev:

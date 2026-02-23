@@ -107,5 +107,16 @@
     "importResult": "导入结果：",
     "added": "{{count}} 已添加",
     "skipped": "{{count}} 已跳过"
+  },
+  "version": {
+    "title": "版本信息",
+    "currentVersion": "当前版本",
+    "checkUpdate": "检查更新",
+    "checking": "检查中...",
+    "upToDate": "已是最新版本",
+    "newVersion": "发现新版本：v{{version}}",
+    "goToDownload": "前往下载",
+    "releaseNotes": "更新日志",
+    "checkFailed": "检查更新失败"
   }
 }

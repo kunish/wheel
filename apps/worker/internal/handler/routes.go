@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/middleware"
 )
 
@@ -12,7 +13,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 
 	// Health check
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{"name": "wheel", "version": "0.1.0"})
+		c.JSON(200, gin.H{"name": "wheel", "version": config.Version})
 	})
 
 	// ──── API Docs ────
@@ -88,6 +89,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/setting/update", h.UpdateSettings)
 	admin.GET("/setting/export", h.ExportData)
 	admin.POST("/setting/import", h.ImportData)
+	admin.GET("/setting/version", h.GetVersion)
+	admin.GET("/setting/check-update", h.CheckUpdate)
 
 	// Model routes
 	admin.GET("/model/list", h.ListModels)

@@ -51,6 +51,8 @@ const BackupSection = lazy(() => import("./settings/backup-section"))
 
 const ConnectionSection = lazy(() => import("./settings/connection-section"))
 
+const VersionSection = lazy(() => import("./settings/version-section"))
+
 // ───────────── API Keys types ─────────────
 
 interface ApiKeyRecord {
@@ -567,6 +569,13 @@ export default function SettingsPage() {
           }
         >
           <BackupSection />
+        </Suspense>
+        <Suspense
+          fallback={
+            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
+          }
+        >
+          <VersionSection />
         </Suspense>
       </div>
     </div>
