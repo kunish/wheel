@@ -101,15 +101,12 @@ jobs:
       - name: Build binary
         working-directory: apps/worker
         env:
-          CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          VERSION: ${{ needs.release-please.outputs.tag_name }}
         run: >
-          go build
-          -ldflags="-s -w -X github.com/kunish/wheel/apps/worker/internal/config.Version=$VERSION"
-          -o "wheel-${GOOS}-${GOARCH}"
-          ./cmd/worker
+          make build
+          VERSION=${{ needs.release-please.outputs.tag_name }}
+          OUTPUT=wheel-${{ matrix.goos }}-${{ matrix.goarch }}
 
       - name: Upload release asset
         env:
