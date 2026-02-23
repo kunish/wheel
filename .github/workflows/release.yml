@@ -103,10 +103,9 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: >
-          make build
-          VERSION=${{ needs.release-please.outputs.tag_name }}
-          OUTPUT=wheel-${{ matrix.goos }}-${{ matrix.goarch }}
+          VERSION: ${{ needs.release-please.outputs.tag_name }}
+          OUTPUT: wheel-${{ matrix.goos }}-${{ matrix.goarch }}
+        run: make build
 
       - name: Upload release asset
         env:
