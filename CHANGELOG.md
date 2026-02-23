@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/kunish/wheel/compare/v1.9.0...v1.9.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* use backtick quoting for `order` column in channels DAL and models ([8543847](https://github.com/kunish/wheel/commit/8543847335cd051052cfc08ce8901f4c9ed701d7))
+
 ## [1.9.0](https://github.com/kunish/wheel/compare/v1.8.0...v1.9.0) (2026-02-23)
 
 
