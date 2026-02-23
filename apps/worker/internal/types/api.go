@@ -25,6 +25,7 @@ type ChannelCreateRequest struct {
 	BaseUrls      []BaseUrl        `json:"baseUrls"`
 	Keys          []ChannelKeyInput `json:"keys"`
 	Model         []string         `json:"model"`
+	FetchedModel  []string         `json:"fetchedModel,omitempty"`
 	CustomModel   string           `json:"customModel,omitempty"`
 	AutoSync      *bool            `json:"autoSync,omitempty"`
 	AutoGroup     *int             `json:"autoGroup,omitempty"`

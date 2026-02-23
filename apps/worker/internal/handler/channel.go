@@ -53,13 +53,14 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 	}
 
 	ch := types.Channel{
-		Name:         req.Name,
-		Type:         types.OutboundType(req.Type),
-		Enabled:      req.Enabled,
-		BaseUrls:     types.BaseUrlList(req.BaseUrls),
-		Model:        types.StringList(req.Model),
-		CustomModel:  req.CustomModel,
-		CustomHeader: types.CustomHeaderList(req.CustomHeader),
+		Name:          req.Name,
+		Type:          types.OutboundType(req.Type),
+		Enabled:       req.Enabled,
+		BaseUrls:      types.BaseUrlList(req.BaseUrls),
+		Model:         types.StringList(req.Model),
+		FetchedModel:  types.StringList(req.FetchedModel),
+		CustomModel:   req.CustomModel,
+		CustomHeader:  types.CustomHeaderList(req.CustomHeader),
 		ParamOverride: req.ParamOverride,
 	}
 	if req.AutoSync != nil {
