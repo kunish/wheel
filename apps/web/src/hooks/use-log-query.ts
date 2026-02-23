@@ -171,6 +171,7 @@ export function useLogQuery() {
         _inputPrice: data.inputPrice ?? 0,
         _outputPrice: data.outputPrice ?? 0,
         _estimatedInputTokens: data.estimatedInputTokens ?? 0,
+        _requestContent: data.requestContent ?? "",
       })
       return next
     })

@@ -280,7 +280,7 @@ export function LogDetailSheet({
               cost: 0,
               ftut: entry.ftut,
               useTime: entry.useTime,
-              requestContent: "",
+              requestContent: entry._requestContent ?? "",
               upstreamContent: null,
               responseContent: "",
               error: entry.error,
@@ -1401,6 +1401,7 @@ function RequestParamsSummary({ params }: { params: ParsedRequestParams }) {
 
 function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
   const { t } = useTranslation("logs")
+  const [collapsed, setCollapsed] = useState(true)
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set())
 
   const toggleTool = (index: number) => {
@@ -1423,7 +1424,7 @@ function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
 
   return (
     <div className="bg-muted/30 rounded-md border p-2.5">
-      <div className="mb-1.5 flex items-center gap-2">
+      <button className="flex w-full items-center gap-2" onClick={() => setCollapsed(!collapsed)}>
         <Wrench className="text-muted-foreground h-3 w-3 shrink-0" />
         <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
           {t("messagesTab.tools")} ({tools.tools.length})
@@ -1433,46 +1434,51 @@ function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
             {t("messagesTab.toolChoice")}: {toolChoiceLabel}
           </Badge>
         )}
-      </div>
-      <div className="flex flex-col gap-1">
-        {tools.tools.map((tool, i) => {
-          const isExpanded = expandedTools.has(i)
-          let paramsStr = ""
-          if (tool.function.parameters) {
-            try {
-              paramsStr = JSON.stringify(tool.function.parameters, null, 2)
-            } catch {
-              paramsStr = String(tool.function.parameters)
+        <ChevronDown
+          className={`text-muted-foreground ml-auto h-3 w-3 shrink-0 transition-transform ${!collapsed ? "rotate-180" : ""}`}
+        />
+      </button>
+      {!collapsed && (
+        <div className="mt-1.5 flex flex-col gap-1">
+          {tools.tools.map((tool, i) => {
+            const isExpanded = expandedTools.has(i)
+            let paramsStr = ""
+            if (tool.function.parameters) {
+              try {
+                paramsStr = JSON.stringify(tool.function.parameters, null, 2)
+              } catch {
+                paramsStr = String(tool.function.parameters)
+              }
             }
-          }
-          return (
-            <div key={i} className="bg-background/60 rounded-md border">
-              <button
-                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
-                onClick={() => toggleTool(i)}
-              >
-                <Code2 className="text-muted-foreground h-3 w-3 shrink-0" />
-                <span className="font-mono text-xs font-bold">{tool.function.name}</span>
-                {tool.function.description && (
-                  <span className="text-muted-foreground truncate text-[11px]">
-                    — {tool.function.description}
-                  </span>
+            return (
+              <div key={i} className="bg-background/60 rounded-md border">
+                <button
+                  className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+                  onClick={() => toggleTool(i)}
+                >
+                  <Code2 className="text-muted-foreground h-3 w-3 shrink-0" />
+                  <span className="font-mono text-xs font-bold">{tool.function.name}</span>
+                  {tool.function.description && (
+                    <span className="text-muted-foreground truncate text-[11px]">
+                      — {tool.function.description}
+                    </span>
+                  )}
+                  <ChevronDown
+                    className={`text-muted-foreground ml-auto h-3 w-3 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {isExpanded && paramsStr && (
+                  <div className="border-border/50 border-t px-2.5 py-2">
+                    <pre className="bg-muted/50 max-h-48 overflow-auto rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+                      {paramsStr}
+                    </pre>
+                  </div>
                 )}
-                <ChevronDown
-                  className={`text-muted-foreground ml-auto h-3 w-3 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                />
-              </button>
-              {isExpanded && paramsStr && (
-                <div className="border-border/50 border-t px-2.5 py-2">
-                  <pre className="bg-muted/50 max-h-48 overflow-auto rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
-                    {paramsStr}
-                  </pre>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

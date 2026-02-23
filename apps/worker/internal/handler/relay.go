@@ -176,6 +176,7 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 		"estimatedInputTokens": estimatedInputTokens,
 		"inputPrice":           inputPrice,
 		"outputPrice":          outputPrice,
+		"requestContent":       string(bodyJSON),
 	}
 	if h.Broadcast != nil {
 		h.Broadcast("log-stream-start", streamStartPayload)

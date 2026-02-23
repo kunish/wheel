@@ -30,6 +30,7 @@ export interface LogEntry {
   _inputPrice?: number
   _outputPrice?: number
   _estimatedInputTokens?: number
+  _requestContent?: string
 }
 
 function formatDuration(ms: number): string {
