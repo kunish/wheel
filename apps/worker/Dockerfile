@@ -10,7 +10,8 @@ COPY apps/worker/go.mod apps/worker/go.sum ./
 RUN go mod download
 
 COPY apps/worker/ .
-RUN GOOS=$TARGETOS GOARCH=$TARGETARCH make build VERSION=$VERSION OUTPUT=/wheel
+ENV GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION OUTPUT=/wheel
+RUN make build
 
 # ── Runtime ──
 FROM alpine:3.23
