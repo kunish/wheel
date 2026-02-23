@@ -117,6 +117,14 @@
     "newVersion": "New version available: v{{version}}",
     "goToDownload": "Go to Download",
     "releaseNotes": "Release Notes",
-    "checkFailed": "Failed to check for updates"
+    "checkFailed": "Failed to check for updates",
+    "applyUpdate": "Apply Update",
+    "applying": "Applying...",
+    "applySuccess": "Update applied, server is restarting...",
+    "applyFailed": "Failed to apply update",
+    "applyConfirmTitle": "Apply Update",
+    "applyConfirmDescription": "The server will download the new version and restart. The service will be briefly unavailable.",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
   }
 }

@@ -359,6 +359,12 @@ export function checkUpdate() {
   }>("/api/v1/setting/check-update")
 }
 
+export function applyUpdate() {
+  return apiFetch<{ success: boolean }>("/api/v1/setting/apply-update", {
+    method: "POST",
+  })
+}
+
 // ── Model Metadata ──
 
 export function getModelMetadata() {

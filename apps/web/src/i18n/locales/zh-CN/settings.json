@@ -117,6 +117,14 @@
     "newVersion": "发现新版本：v{{version}}",
     "goToDownload": "前往下载",
     "releaseNotes": "更新日志",
-    "checkFailed": "检查更新失败"
+    "checkFailed": "检查更新失败",
+    "applyUpdate": "应用更新",
+    "applying": "应用中...",
+    "applySuccess": "更新已应用，服务正在重启...",
+    "applyFailed": "应用更新失败",
+    "applyConfirmTitle": "应用更新",
+    "applyConfirmDescription": "服务器将下载新版本并重启，服务将短暂不可用。",
+    "confirm": "确认",
+    "cancel": "取消"
   }
 }

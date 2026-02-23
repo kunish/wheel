@@ -77,6 +77,49 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  binaries:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: apps/worker/go.sum
+
+      - name: Build binary
+        working-directory: apps/worker
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.release-please.outputs.tag_name }}
+        run: >
+          go build
+          -ldflags="-s -w -X github.com/kunish/wheel/apps/worker/internal/config.Version=$VERSION"
+          -o "wheel-${GOOS}-${GOARCH}"
+          ./cmd/worker
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: >
+          gh release upload "$TAG_NAME"
+          "apps/worker/wheel-${{ matrix.goos }}-${{ matrix.goarch }}"
+          --clobber
+
   pages-build:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created }}

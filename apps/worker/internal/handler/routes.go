@@ -91,6 +91,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/setting/import", h.ImportData)
 	admin.GET("/setting/version", h.GetVersion)
 	admin.GET("/setting/check-update", h.CheckUpdate)
+	admin.POST("/setting/apply-update", h.ApplyUpdate)
 
 	// Model routes
 	admin.GET("/model/list", h.ListModels)

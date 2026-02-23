@@ -1,13 +1,24 @@
-import { ExternalLink, RefreshCw } from "lucide-react"
+import { Download, ExternalLink, RefreshCw } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { checkUpdate } from "@/lib/api-client"
+import { applyUpdate, checkUpdate } from "@/lib/api-client"
 
 interface UpdateInfo {
   current: string
@@ -20,6 +31,7 @@ interface UpdateInfo {
 export default function VersionSection() {
   const { t } = useTranslation("settings")
   const [checking, setChecking] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
 
   const handleCheckUpdate = async () => {
@@ -39,6 +51,22 @@ export default function VersionSection() {
       toast.error(t("version.checkFailed"))
     } finally {
       setChecking(false)
+    }
+  }
+
+  const handleApplyUpdate = async () => {
+    setApplying(true)
+    try {
+      const res = await applyUpdate()
+      if (res.success) {
+        toast.success(t("version.applySuccess"))
+      } else {
+        toast.error(t("version.applyFailed"))
+      }
+    } catch {
+      toast.error(t("version.applyFailed"))
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -66,12 +94,36 @@ export default function VersionSection() {
               <span className="text-sm font-medium">
                 {t("version.newVersion", { version: update.latest })}
               </span>
-              <Button variant="outline" size="sm" asChild>
-                <a href={update.releaseUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  {t("version.goToDownload")}
-                </a>
-              </Button>
+              <div className="flex items-center gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" disabled={applying}>
+                      <Download className="mr-2 h-4 w-4" />
+                      {applying ? t("version.applying") : t("version.applyUpdate")}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t("version.applyConfirmTitle")}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t("version.applyConfirmDescription")}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t("version.cancel")}</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleApplyUpdate}>
+                        {t("version.confirm")}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button variant="outline" size="sm" asChild>
+                  <a href={update.releaseUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    {t("version.goToDownload")}
+                  </a>
+                </Button>
+              </div>
             </div>
 
             {update.releaseNotes && (
