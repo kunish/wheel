@@ -51,18 +51,21 @@ type StreamCompleteInfo struct {
 
 // extractCacheTokens extracts cache token counts from a response usage object.
 func extractCacheTokens(data map[string]any, channelType types.OutboundType) (cacheRead, cacheCreation int) {
-	if channelType == types.OutboundAnthropic {
+	switch channelType {
+	case types.OutboundAnthropic:
 		usage, _ := data["usage"].(map[string]any)
 		cacheRead = toInt(usage["cache_read_input_tokens"])
 		cacheCreation = toInt(usage["cache_creation_input_tokens"])
-		return
-	}
-	// OpenAI: prompt_tokens_details.cached_tokens
-	usage, _ := data["usage"].(map[string]any)
-	if usage != nil {
-		details, _ := usage["prompt_tokens_details"].(map[string]any)
-		if details != nil {
-			cacheRead = toInt(details["cached_tokens"])
+	case types.OutboundGemini:
+		usage, _ := data["usageMetadata"].(map[string]any)
+		cacheRead = toInt(usage["cachedContentTokenCount"])
+	default:
+		usage, _ := data["usage"].(map[string]any)
+		if usage != nil {
+			details, _ := usage["prompt_tokens_details"].(map[string]any)
+			if details != nil {
+				cacheRead = toInt(details["cached_tokens"])
+			}
 		}
 	}
 	return
@@ -150,10 +153,13 @@ func ProxyNonStreaming(
 		}, nil
 	}
 
-	// Convert Anthropic → OpenAI if needed
+	// Convert upstream response → OpenAI if needed
 	finalResponse := data
-	if channelType == types.OutboundAnthropic {
+	switch channelType {
+	case types.OutboundAnthropic:
 		finalResponse = ConvertAnthropicResponse(data)
+	case types.OutboundGemini:
+		finalResponse = ConvertGeminiResponse(data)
 	}
 
 	usage, _ := finalResponse["usage"].(map[string]any)
@@ -307,9 +313,15 @@ func ProxyStreaming(
 		convertChunk = createAnthropicSSEConverter()
 	}
 
+	// Gemini SSE → OpenAI SSE converter
+	var convertGemini func(string) *anthropicSSEResult
+	if channelType == types.OutboundGemini {
+		convertGemini = createGeminiSSEConverter()
+	}
+
 	// OpenAI SSE → Anthropic SSE converter for anthropic inbound + openai outbound
 	var convertToAnthropic func(string) []string
-	if anthropicInbound && channelType != types.OutboundAnthropic {
+	if anthropicInbound && channelType != types.OutboundAnthropic && channelType != types.OutboundGemini {
 		convertToAnthropic = createOpenAIToAnthropicSSEConverter()
 	}
 
@@ -343,6 +355,8 @@ func ProxyStreaming(
 			flusher.Flush()
 		} else if channelType == types.OutboundAnthropic && convertChunk != nil {
 			processAnthropicConverted(line, convertChunk, state, markFirstToken, w, flusher)
+		} else if channelType == types.OutboundGemini && convertGemini != nil {
+			processGeminiConverted(line, convertGemini, state, markFirstToken, w, flusher)
 		} else if convertToAnthropic != nil {
 			processOpenAIToAnthropic(line, convertToAnthropic, state, markFirstToken, w, flusher)
 		} else {
@@ -1005,4 +1019,127 @@ func processOpenAIToAnthropic(
 		fmt.Fprintf(w, "%s\n", l)
 	}
 	flusher.Flush()
+}
+
+// ── Gemini SSE Converter ──────────────────────────────────────
+
+func createGeminiSSEConverter() func(string) *anthropicSSEResult {
+	started := false
+
+	return func(jsonStr string) *anthropicSSEResult {
+		var resp map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+			return nil
+		}
+
+		candidates, _ := resp["candidates"].([]any)
+		if len(candidates) == 0 {
+			return nil
+		}
+
+		cand, _ := candidates[0].(map[string]any)
+		finishReason, _ := cand["finishReason"].(string)
+
+		var text string
+		var toolCalls []any
+		if content, ok := cand["content"].(map[string]any); ok {
+			parts, _ := content["parts"].([]any)
+			for _, p := range parts {
+				part, ok := p.(map[string]any)
+				if !ok {
+					continue
+				}
+				if t, ok := part["text"].(string); ok {
+					text += t
+				}
+				if fc, ok := part["functionCall"].(map[string]any); ok {
+					name, _ := fc["name"].(string)
+					argsJSON, _ := json.Marshal(fc["args"])
+					toolCalls = append(toolCalls, map[string]any{
+						"index": 0, "id": fmt.Sprintf("call_%s", name),
+						"type":     "function",
+						"function": map[string]any{"name": name, "arguments": string(argsJSON)},
+					})
+				}
+			}
+		}
+
+		result := &anthropicSSEResult{}
+		if usage, ok := resp["usageMetadata"].(map[string]any); ok {
+			result.inputTokens = toInt(usage["promptTokenCount"])
+			result.outputTokens = toInt(usage["candidatesTokenCount"])
+			result.cacheReadTokens = toInt(usage["cachedContentTokenCount"])
+		}
+
+		delta := map[string]any{}
+		if !started {
+			started = true
+			delta["role"] = "assistant"
+		}
+		if text != "" {
+			delta["content"] = text
+		}
+		if len(toolCalls) > 0 {
+			delta["tool_calls"] = toolCalls
+		}
+
+		var fr any
+		if finishReason != "" {
+			fr = mapGeminiFinishReason(finishReason)
+		}
+
+		result.data = map[string]any{
+			"id": "chatcmpl-gemini", "object": "chat.completion.chunk",
+			"created": float64(currentUnixSec()), "model": resp["modelVersion"],
+			"choices": []any{map[string]any{
+				"index": 0, "delta": delta, "finish_reason": fr,
+			}},
+		}
+		return result
+	}
+}
+
+func processGeminiConverted(
+	line string,
+	convert func(string) *anthropicSSEResult,
+	state *streamingState,
+	markFirstToken func(),
+	w http.ResponseWriter,
+	flusher http.Flusher,
+) {
+	if !strings.HasPrefix(line, "data: ") {
+		return
+	}
+
+	chunk := convert(line[6:])
+	if chunk == nil {
+		return
+	}
+
+	markFirstToken()
+
+	if chunk.inputTokens > 0 {
+		state.inputTokens = chunk.inputTokens
+	}
+	if chunk.outputTokens > 0 {
+		state.outputTokens = chunk.outputTokens
+	}
+	if chunk.cacheReadTokens > 0 {
+		state.cacheReadTokens = chunk.cacheReadTokens
+	}
+
+	if chunk.data != nil {
+		if choices, ok := chunk.data["choices"].([]any); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]any); ok {
+				if delta, ok := choice["delta"].(map[string]any); ok {
+					if content, ok := delta["content"].(string); ok {
+						state.appendContent(content)
+					}
+				}
+			}
+		}
+		dataJSON, _ := json.Marshal(chunk.data)
+		fmt.Fprintf(w, "data: %s\n\n", dataJSON)
+		flusher.Flush()
+	}
 }

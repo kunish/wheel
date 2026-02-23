@@ -2,6 +2,7 @@ package relay
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/kunish/wheel/apps/worker/internal/types"
@@ -150,16 +151,31 @@ func TestBuildOpenAIRequest_ResponsesPath(t *testing.T) {
 	}
 }
 
-func TestBuildOpenAIRequest_GeminiUsesOpenAIPath(t *testing.T) {
+func TestBuildGeminiRequest_NativeFormat(t *testing.T) {
 	ch := ChannelConfig{
 		Type:     types.OutboundGemini,
 		BaseUrls: []types.BaseUrl{{URL: "https://generativelanguage.googleapis.com", Delay: 0}},
 	}
-	body := map[string]any{"model": "gemini-pro"}
-	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "gemini-pro", false)
+	body := map[string]any{
+		"model":    "gemini-pro",
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	}
+	req := BuildUpstreamRequest(ch, "test-key", body, "/v1/chat/completions", "gemini-pro", false)
 
-	if req.URL != "https://generativelanguage.googleapis.com/v1/chat/completions" {
-		t.Errorf("URL = %q", req.URL)
+	if !strings.Contains(req.URL, "/v1beta/models/gemini-pro:generateContent") {
+		t.Errorf("URL = %q, want native Gemini endpoint", req.URL)
+	}
+	if !strings.Contains(req.URL, "key=test-key") {
+		t.Errorf("URL = %q, want API key in URL", req.URL)
+	}
+
+	var parsed map[string]any
+	json.Unmarshal([]byte(req.Body), &parsed)
+	if parsed["contents"] == nil {
+		t.Error("expected 'contents' field in Gemini body")
+	}
+	if parsed["model"] != nil {
+		t.Error("model should not be in Gemini body")
 	}
 }
 

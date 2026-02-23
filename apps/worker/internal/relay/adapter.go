@@ -114,6 +114,8 @@ func BuildUpstreamRequest(
 			return buildAnthropicPassthroughRequest(baseUrl, key, inboundBody, model, channel)
 		}
 		return buildAnthropicRequest(baseUrl, key, inboundBody, model, channel)
+	case types.OutboundGemini:
+		return buildGeminiRequest(baseUrl, key, inboundBody, model, channel)
 	default:
 		return buildOpenAIRequest(baseUrl, key, inboundBody, inboundPath, model, channel)
 	}
@@ -192,7 +194,7 @@ func buildAnthropicRequest(baseUrl, key string, body map[string]any, model strin
 		default:
 			anthropicMessages = append(anthropicMessages, map[string]any{
 				"role":    "user",
-				"content": msg["content"],
+				"content": convertOpenAIContentToAnthropic(msg["content"]),
 			})
 		}
 	}
@@ -393,12 +395,24 @@ func ConvertAnthropicResponse(anthropicResp map[string]any) map[string]any {
 	usage, _ := anthropicResp["usage"].(map[string]any)
 	inputTokens := toInt(usage["input_tokens"])
 	outputTokens := toInt(usage["output_tokens"])
+	cacheRead := toInt(usage["cache_read_input_tokens"])
 
 	stopReason, _ := anthropicResp["stop_reason"].(string)
 
 	id, _ := anthropicResp["id"].(string)
 	if id == "" {
 		id = "chatcmpl-unknown"
+	}
+
+	usageMap := map[string]any{
+		"prompt_tokens":     inputTokens,
+		"completion_tokens": outputTokens,
+		"total_tokens":      inputTokens + outputTokens,
+	}
+	if cacheRead > 0 {
+		usageMap["prompt_tokens_details"] = map[string]any{
+			"cached_tokens": cacheRead,
+		}
 	}
 
 	return map[string]any{
@@ -413,11 +427,7 @@ func ConvertAnthropicResponse(anthropicResp map[string]any) map[string]any {
 				"finish_reason": mapAnthropicStopReason(stopReason),
 			},
 		},
-		"usage": map[string]any{
-			"prompt_tokens":     inputTokens,
-			"completion_tokens": outputTokens,
-			"total_tokens":      inputTokens + outputTokens,
-		},
+		"usage": usageMap,
 	}
 }
 
@@ -499,6 +509,70 @@ func copyBody(body map[string]any) map[string]any {
 	var out map[string]any
 	json.Unmarshal(data, &out)
 	return out
+}
+
+// convertOpenAIContentToAnthropic converts OpenAI content (string or array) to Anthropic format.
+func convertOpenAIContentToAnthropic(content any) any {
+	if _, ok := content.(string); ok {
+		return content
+	}
+	parts, ok := content.([]any)
+	if !ok {
+		return content
+	}
+	var result []any
+	for _, p := range parts {
+		part, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		partType, _ := part["type"].(string)
+		switch partType {
+		case "text":
+			block := map[string]any{"type": "text", "text": part["text"]}
+			if cc, ok := part["cache_control"]; ok {
+				block["cache_control"] = cc
+			}
+			result = append(result, block)
+		case "image_url":
+			if imgURL, ok := part["image_url"].(map[string]any); ok {
+				url, _ := imgURL["url"].(string)
+				if strings.HasPrefix(url, "data:") {
+					mediaType, data := parseDataURL(url)
+					result = append(result, map[string]any{
+						"type": "image",
+						"source": map[string]any{
+							"type":       "base64",
+							"media_type": mediaType,
+							"data":       data,
+						},
+					})
+				} else {
+					result = append(result, map[string]any{
+						"type": "image",
+						"source": map[string]any{
+							"type": "url",
+							"url":  url,
+						},
+					})
+				}
+			}
+		default:
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+func parseDataURL(dataURL string) (mediaType, data string) {
+	after := strings.TrimPrefix(dataURL, "data:")
+	parts := strings.SplitN(after, ",", 2)
+	if len(parts) != 2 {
+		return "application/octet-stream", ""
+	}
+	mediaType = strings.TrimSuffix(parts[0], ";base64")
+	data = parts[1]
+	return
 }
 
 func toInt(v any) int {
