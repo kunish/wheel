@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.2](https://github.com/kunish/wheel/compare/v1.9.1...v1.9.2) (2026-02-23)
+
+
+### Bug Fixes
+
+* persist fetchedModel when creating channels ([f9074da](https://github.com/kunish/wheel/commit/f9074da2fa67adea10642212342a0cf0ec703b88))
+
 ## [1.9.1](https://github.com/kunish/wheel/compare/v1.9.0...v1.9.1) (2026-02-23)
 
 
