@@ -554,7 +554,6 @@ export default function ModelPage() {
       const overId = String(over.id)
       if (activeId === overId) return
 
-      // Both must be sortable-group-* ids
       if (!activeId.startsWith("sortable-group-") || !overId.startsWith("sortable-group-")) return
 
       const oldIndex = groups.findIndex((g) => `sortable-group-${g.id}` === activeId)
@@ -562,6 +561,11 @@ export default function ModelPage() {
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
 
       const reordered = arrayMove(groups, oldIndex, newIndex)
+      // Optimistic update — prevent snap-back before API responds
+      const groupQueryKey = ["groups", activeProfileId]
+      queryClient.setQueryData(groupQueryKey, (old: any) =>
+        old ? { ...old, data: { ...old.data, groups: reordered } } : old,
+      )
       groupReorderMut.mutate(reordered.map((g) => g.id))
       return
     }
@@ -578,6 +582,10 @@ export default function ModelPage() {
         if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
 
         const reordered = arrayMove(channels, oldIndex, newIndex)
+        // Optimistic update — prevent snap-back before API responds
+        queryClient.setQueryData(["channels"], (old: any) =>
+          old ? { ...old, data: { ...old.data, channels: reordered } } : old,
+        )
         channelReorderMut.mutate(reordered.map((ch) => ch.id))
         return
       }
@@ -874,26 +882,14 @@ export default function ModelPage() {
         </div>
       </div>
 
-      {/* Drag overlay */}
-      <DragOverlay>
+      {/* Drag overlay — reuse original element structure, no drop animation */}
+      <DragOverlay dropAnimation={null}>
         {activeDrag?.type === "model" && (
           <ModelCard modelId={activeDrag.model} className="cursor-grabbing shadow-lg" />
         )}
-        {activeDrag?.type === "channel" && (
-          <Card className="w-64 cursor-grabbing opacity-90 shadow-lg">
-            <CardHeader className="p-3">
-              <CardTitle className="text-sm">{activeDrag.channel.name}</CardTitle>
-            </CardHeader>
-          </Card>
-        )}
+        {activeDrag?.type === "channel" && <ChannelOverlay channel={activeDrag.channel} />}
         {activeDrag?.type === "group" && (
-          <Card className="w-64 cursor-grabbing opacity-90 shadow-lg">
-            <CardHeader className="p-3">
-              <CardTitle className="text-sm">
-                {groups.find((g) => g.id === activeDrag.groupId)?.name}
-              </CardTitle>
-            </CardHeader>
-          </Card>
+          <GroupOverlay group={groups.find((g) => g.id === activeDrag.groupId)} />
         )}
       </DragOverlay>
 
@@ -1117,6 +1113,92 @@ function parseModels(model: string[]): string[] {
   return model.filter(Boolean)
 }
 
+// ─── Drag Overlay Components (reuse original structure) ──
+
+function ChannelOverlay({ channel }: { channel: ChannelRecord }) {
+  const { t } = useTranslation("model")
+  const modelNames = parseModels(channel.model)
+
+  return (
+    <Card
+      className={cn(
+        "overflow-hidden border-l-4 shadow-lg",
+        channel.enabled ? "border-l-nb-lime" : "border-l-muted-foreground/30",
+      )}
+    >
+      <CardHeader className="flex flex-row items-start space-y-0 p-3 pb-1">
+        <div className="flex items-start gap-2">
+          <span className="text-muted-foreground mt-0.5 -ml-1 cursor-grabbing rounded p-1">
+            <GripVertical className="h-4 w-4" />
+          </span>
+          <div className="flex items-start gap-1.5">
+            <ChevronDown className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0 -rotate-90" />
+            <div>
+              <CardTitle className="text-sm">{channel.name}</CardTitle>
+              <div className="mt-1 flex items-center gap-1.5">
+                <Badge variant="secondary" className="text-xs">
+                  {t(`typeLabels.${channel.type}`, { defaultValue: t("unknown") })}
+                </Badge>
+                {modelNames.length > 0 && (
+                  <Badge variant="ghost" className="text-[10px]">
+                    {t("modelCount", { count: modelNames.length })}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+    </Card>
+  )
+}
+
+function GroupOverlay({ group }: { group: GroupRecord | undefined }) {
+  const { t } = useTranslation("model")
+  if (!group) return null
+
+  return (
+    <Card className="border-l-nb-lavender overflow-hidden border-l-4 shadow-lg">
+      <CardHeader className="flex flex-row items-start space-y-0 p-3 pb-1">
+        <div className="flex items-start gap-2">
+          <span className="text-muted-foreground mt-0.5 -ml-1 cursor-grabbing rounded p-1">
+            <GripVertical className="h-4 w-4" />
+          </span>
+          <div className="flex items-start gap-1.5">
+            <ChevronDown className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0 -rotate-90" />
+            <div>
+              <CardTitle className="text-sm">{group.name}</CardTitle>
+              <div className="mt-1 flex items-center gap-1">
+                <Badge
+                  variant={
+                    group.mode === 1
+                      ? "lime"
+                      : group.mode === 2
+                        ? "sky"
+                        : group.mode === 3
+                          ? "orange"
+                          : group.mode === 4
+                            ? "pink"
+                            : "secondary"
+                  }
+                  className="text-xs"
+                >
+                  {t(`modeLabels.${group.mode}`, { defaultValue: t("unknown") })}
+                </Badge>
+                {group.items.length > 0 && (
+                  <Badge variant="ghost" className="text-[10px]">
+                    {t("itemCount", { count: group.items.length })}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+    </Card>
+  )
+}
+
 // ─── Draggable Channel Card ────────────────────
 
 function DraggableChannel({
@@ -1165,7 +1247,7 @@ function DraggableChannel({
   }
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   }
 
@@ -1179,7 +1261,7 @@ function DraggableChannel({
       className={cn(
         "overflow-hidden border-l-4 transition-all",
         channel.enabled ? "border-l-nb-lime" : "border-l-muted-foreground/30",
-        isDragging && "opacity-40",
+        isDragging && "border-dashed opacity-30",
         highlighted && "ring-primary animate-pulse ring-2",
       )}
     >
@@ -1188,7 +1270,7 @@ function DraggableChannel({
           <button
             {...attributes}
             {...listeners}
-            className="text-muted-foreground hover:text-foreground mt-1 cursor-grab"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent mt-0.5 -ml-1 cursor-grab touch-none rounded p-1"
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -1290,7 +1372,10 @@ function DraggableModelTag({
       {...attributes}
       {...listeners}
       modelId={model}
-      className={cn("hover:bg-accent cursor-grab", isDragging && "opacity-40")}
+      className={cn(
+        "hover:bg-accent cursor-grab touch-none",
+        isDragging && "border-dashed opacity-30",
+      )}
       price={price ? { inputPrice: price.inputPrice, outputPrice: price.outputPrice } : undefined}
     >
       <ModelSourceBadge modelId={model} isApiFetched={isApiFetched} />
@@ -1377,7 +1462,7 @@ function SortableGroup({
   }, [dragActive])
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   }
 
@@ -1392,7 +1477,7 @@ function SortableGroup({
         "border-l-nb-lavender overflow-hidden border-l-4 transition-all",
         (isOver || isHovered) && "ring-primary border-primary ring-2",
         dragActive && !isOver && !isHovered && "border-dashed",
-        isDragging && "opacity-50",
+        isDragging && "border-dashed opacity-30",
       )}
     >
       <CardHeader className="flex flex-row items-start justify-between space-y-0 p-3 pb-1">
@@ -1400,7 +1485,7 @@ function SortableGroup({
           <button
             {...attributes}
             {...listeners}
-            className="text-muted-foreground hover:text-foreground mt-1 cursor-grab"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent mt-0.5 -ml-1 cursor-grab touch-none rounded p-1"
           >
             <GripVertical className="h-4 w-4" />
           </button>

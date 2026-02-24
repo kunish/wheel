@@ -77,7 +77,7 @@ function SortableDialogItem({
   })
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   }
 
@@ -87,14 +87,14 @@ function SortableDialogItem({
       style={style}
       className={cn(
         "flex min-w-0 items-center gap-2 rounded-md border p-2",
-        isDragging && "opacity-50",
+        isDragging && "border-dashed opacity-30",
         !item.enabled && "opacity-50",
       )}
     >
       <button
         {...attributes}
         {...listeners}
-        className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab"
+        className="text-muted-foreground hover:text-foreground hover:bg-accent shrink-0 cursor-grab touch-none rounded p-1"
       >
         <GripVertical className="h-4 w-4" />
       </button>
