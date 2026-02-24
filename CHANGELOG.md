@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.2](https://github.com/kunish/wheel/compare/v1.11.1...v1.11.2) (2026-02-24)
+
+
+### Bug Fixes
+
+* redistribute card padding to sub-components and remove overflow clip ([69b0572](https://github.com/kunish/wheel/commit/69b05722e41dc97cb3999516f147cb8863cffdbd))
+
 ## [1.11.1](https://github.com/kunish/wheel/compare/v1.11.0...v1.11.1) (2026-02-24)
 
 
