@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.3](https://github.com/kunish/wheel/compare/v1.11.2...v1.11.3) (2026-02-24)
+
+
+### Bug Fixes
+
+* run ALTER before CREATE INDEX in migration to avoid missing column error ([63e9df6](https://github.com/kunish/wheel/commit/63e9df6c84144dd1599eb18887a442346ddbf241))
+
 ## [1.11.2](https://github.com/kunish/wheel/compare/v1.11.1...v1.11.2) (2026-02-24)
 
 
