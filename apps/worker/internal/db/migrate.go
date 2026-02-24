@@ -141,14 +141,14 @@ func Migrate(db *sql.DB) error {
 			return fmt.Errorf("init schema: %w\nDDL: %s", err, ddl)
 		}
 	}
-	for _, ddl := range initIndexes {
-		if _, err := db.Exec(ddl); err != nil {
-			return fmt.Errorf("init index: %w\nDDL: %s", err, ddl)
-		}
-	}
 	for _, ddl := range initAlters {
 		if _, err := db.Exec(ddl); err != nil {
 			return fmt.Errorf("alter schema: %w\nDDL: %s", err, ddl)
+		}
+	}
+	for _, ddl := range initIndexes {
+		if _, err := db.Exec(ddl); err != nil {
+			return fmt.Errorf("init index: %w\nDDL: %s", err, ddl)
 		}
 	}
 
