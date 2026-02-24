@@ -149,16 +149,9 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
     () => (previewData?.data?.groups ?? []) as ProfilePreviewGroup[],
     [previewData],
   )
-  const materializedGroupIds = useMemo(
-    () => previewGroups.filter((g) => g.materialized && g.groupId).map((g) => g.groupId!),
-    [previewGroups],
-  )
-
   useEffect(() => {
-    const defaults = previewGroups
-      .filter((g) => !g.materialized)
-      .map((g) => g.model)
-      .slice(0, 1000)
+    // 默认选中所有未落地项
+    const defaults = previewGroups.filter((g) => !g.materialized).map((g) => g.model)
     setSelected(new Set(defaults))
   }, [previewGroups])
 
@@ -201,36 +194,41 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
     })
   }
 
-  // 未落地项列表（全选 checkbox 只控制这些）
-  const unmaterialized = useMemo(
-    () => previewGroups.filter((g) => !g.materialized),
-    [previewGroups],
-  )
-
-  // 全选 checkbox 状态：全选 / 部分选中(indeterminate) / 未选
+  // 全选 checkbox 状态：基于所有项（不区分落地状态）
   const selectAllState: boolean | "indeterminate" = useMemo(() => {
-    if (unmaterialized.length === 0) return false
-    const selectedCount = unmaterialized.filter((g) => selected.has(g.model)).length
+    if (previewGroups.length === 0) return false
+    const selectedCount = previewGroups.filter((g) => selected.has(g.model)).length
     if (selectedCount === 0) return false
-    if (selectedCount === unmaterialized.length) return true
+    if (selectedCount === previewGroups.length) return true
     return "indeterminate"
-  }, [unmaterialized, selected])
+  }, [previewGroups, selected])
+
+  // 选中项中：未落地 / 已落地的数量，用于按钮启用状态
+  const selectedUnmaterialized = useMemo(
+    () => previewGroups.filter((g) => selected.has(g.model) && !g.materialized),
+    [previewGroups, selected],
+  )
+  const selectedMaterialized = useMemo(
+    () => previewGroups.filter((g) => selected.has(g.model) && g.materialized && g.groupId),
+    [previewGroups, selected],
+  )
 
   function toggleSelectAll() {
     if (selectAllState === true) {
-      // 当前全选 -> 取消全选
       setSelected(new Set())
     } else {
-      // 未全选 -> 全选所有未落地项
-      setSelected(new Set(unmaterialized.map((g) => g.model)))
+      setSelected(new Set(previewGroups.map((g) => g.model)))
     }
   }
 
   function materializeSelected() {
-    const models = previewGroups
-      .filter((g) => selected.has(g.model) && !g.materialized)
-      .map((g) => g.model)
+    const models = selectedUnmaterialized.map((g) => g.model)
     if (models.length > 0) materializeMut.mutate(models)
+  }
+
+  function unmaterializeSelected() {
+    const groupIds = selectedMaterialized.map((g) => g.groupId!)
+    if (groupIds.length > 0) unmaterializeAllMut.mutate(groupIds)
   }
 
   return (
@@ -251,7 +249,7 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
           <Checkbox
             checked={selectAllState}
             onCheckedChange={() => toggleSelectAll()}
-            disabled={unmaterialized.length === 0}
+            disabled={previewGroups.length === 0}
           />
           <span className="text-muted-foreground text-xs select-none">
             {selectAllState === true ? t("profile.form.deselectAll") : t("profile.form.selectAll")}
@@ -261,15 +259,15 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
           <Button
             size="sm"
             onClick={materializeSelected}
-            disabled={materializeMut.isPending || selected.size === 0}
+            disabled={materializeMut.isPending || selectedUnmaterialized.length === 0}
           >
             {t("profile.materialize")}
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => unmaterializeAllMut.mutate(materializedGroupIds)}
-            disabled={unmaterializeAllMut.isPending || materializedGroupIds.length === 0}
+            onClick={unmaterializeSelected}
+            disabled={unmaterializeAllMut.isPending || selectedMaterialized.length === 0}
           >
             {t("profile.unmaterialize")}
           </Button>
@@ -291,7 +289,6 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
               <div key={g.key} className="flex items-center gap-2 rounded-md border p-2">
                 <Checkbox
                   checked={selected.has(g.model)}
-                  disabled={g.materialized}
                   onCheckedChange={(checked) => toggleSelection(g.model, checked === true)}
                 />
                 <div className="min-w-0 flex-1">
