@@ -17,11 +17,7 @@ import {
   useProfilesQuery,
   useUpdateProfile,
 } from "@/hooks/use-profiles"
-import {
-  deleteGroup,
-  listProfileGroupsPreview,
-  materializeProfileGroups,
-} from "@/lib/api-client"
+import { deleteGroup, listProfileGroupsPreview, materializeProfileGroups } from "@/lib/api-client"
 
 // ─── Profile Form ────────────────────────────
 
@@ -92,14 +88,14 @@ function ProfileCard({
 
   return (
     <div
-      className={`flex items-center justify-between rounded-md border p-3 ${profile.isBuiltin ? "cursor-pointer hover:bg-accent/50 transition-colors" : ""}`}
+      className={`flex items-center justify-between rounded-md border p-3 ${profile.isBuiltin ? "hover:bg-accent/50 cursor-pointer transition-colors" : ""}`}
       onClick={profile.isBuiltin ? onMaterialize : undefined}
     >
       <div className="flex items-center gap-2 overflow-hidden">
         <div className="min-w-0">
           <span className="truncate text-sm font-medium">{profile.name}</span>
           <p className="text-muted-foreground text-[11px]">
-            {t("modelCount", { count: profile.models?.length ?? 0 })}
+            {t("modelCount", { count: profile.groupCount ?? 0 })}
           </p>
         </div>
         {profile.isBuiltin && (
@@ -139,13 +135,7 @@ function ProfileCard({
 
 // ─── Materialize View ────────────────────────
 
-function MaterializeView({
-  profile,
-  onBack,
-}: {
-  profile: ModelProfile
-  onBack: () => void
-}) {
+function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: () => void }) {
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -176,7 +166,7 @@ function MaterializeView({
     queryClient.invalidateQueries({
       predicate: (q) => {
         const key = q.queryKey[0]
-        return key === "groups" || key === "profile-group-preview"
+        return key === "groups" || key === "profile-group-preview" || key === "profiles"
       },
     })
   }
@@ -264,9 +254,7 @@ function MaterializeView({
             disabled={unmaterialized.length === 0}
           />
           <span className="text-muted-foreground text-xs select-none">
-            {selectAllState === true
-              ? t("profile.form.deselectAll")
-              : t("profile.form.selectAll")}
+            {selectAllState === true ? t("profile.form.deselectAll") : t("profile.form.selectAll")}
           </span>
         </label>
         <div className="ml-auto flex items-center gap-1.5">

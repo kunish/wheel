@@ -172,11 +172,11 @@ func main() {
 
 	// ── Cron Jobs ──
 	c := cron.New()
-	// Sync model prices and channel models every 6 hours
+	// Sync model prices and builtin profiles every 6 hours
 	c.AddFunc("0 */6 * * *", func() {
-		log.Println("[cron] Syncing model prices from models.dev...")
-		if _, err := service.SyncPricesFromModelsDev(context.Background(), database); err != nil {
-			log.Printf("[cron] price sync error: %v", err)
+		log.Println("[cron] Syncing from models.dev...")
+		if _, err := service.SyncAllFromModelsDev(context.Background(), database); err != nil {
+			log.Printf("[cron] models.dev sync error: %v", err)
 		}
 	})
 	c.AddFunc("0 */6 * * *", func() {

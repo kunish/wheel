@@ -446,6 +446,7 @@ export interface ModelProfile {
   isBuiltin: boolean
   createdAt?: string
   updatedAt?: string
+  groupCount: number
 }
 
 export function listProfiles() {

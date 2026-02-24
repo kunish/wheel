@@ -178,7 +178,7 @@
     "searchModels": "搜索模型",
     "searchPlaceholder": "搜索模型...",
     "lastSynced": "上次同步: {{time}}",
-    "syncPrices": "同步价格",
+    "syncPrices": "同步 models.dev",
     "addPrice": "添加价格",
     "addModelPrice": "添加模型价格",
     "editModelPrice": "编辑模型价格",

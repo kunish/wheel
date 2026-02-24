@@ -2,6 +2,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
+import { usePointerOrigin } from "@/hooks/use-pointer-origin"
 import { cn } from "@/lib/utils"
 
 function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
@@ -41,10 +42,13 @@ function AlertDialogContent({
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   size?: "default" | "sm"
 }) {
+  const originRef = usePointerOrigin()
+
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
+        ref={originRef}
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(

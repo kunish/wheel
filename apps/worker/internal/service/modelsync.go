@@ -66,74 +66,11 @@ func hasCanonicalPrefix(modelID string) bool {
 // FetchAndFlattenMetadata fetches model metadata from models.dev and returns
 // a flat map of model ID → ModelMeta with canonical provider resolution.
 func FetchAndFlattenMetadata() (map[string]ModelMeta, error) {
-	resp, err := http.Get("https://models.dev/api.json")
+	body, err := fetchModelsDevAPI()
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("models.dev returned %d", resp.StatusCode)
-	}
-
-	body, _ := io.ReadAll(resp.Body)
-
-	type modelEntry struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	type providerEntry struct {
-		Name   string                `json:"name"`
-		Models map[string]modelEntry `json:"models"`
-	}
-
-	var data map[string]providerEntry
-	if err := json.Unmarshal(body, &data); err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]ModelMeta)
-	for providerKey, provider := range data {
-		if provider.Models == nil {
-			continue
-		}
-		providerDisplayName := provider.Name
-		if providerDisplayName == "" {
-			providerDisplayName = providerKey
-		}
-		logoURL := "https://models.dev/logos/" + providerKey + ".svg"
-
-		for _, model := range provider.Models {
-			modelID := model.ID
-			if modelID == "" || strings.Contains(modelID, "@") {
-				continue
-			}
-
-			// Skip models from non-canonical providers that have a canonical prefix.
-			// e.g. skip "claude-3-5-sonnet-20241022" from azure — only keep it from anthropic.
-			if hasCanonicalPrefix(modelID) && !isCanonicalProvider(modelID, providerKey) {
-				continue
-			}
-
-			entryProvider := providerKey
-			entryProviderName := providerDisplayName
-			entryLogoURL := logoURL
-
-			entry := ModelMeta{
-				Name:         model.Name,
-				Provider:     entryProvider,
-				ProviderName: entryProviderName,
-				LogoURL:      entryLogoURL,
-			}
-			if entry.Name == "" {
-				entry.Name = modelID
-			}
-
-			result[modelID] = entry
-		}
-	}
-
-	return result, nil
+	return parseMetadata(body)
 }
 
 // ──── Builtin Profiles ────
@@ -192,26 +129,48 @@ var supportedProviders = []string{
 	"alibaba", "zhipuai", "minimax", "moonshotai",
 }
 
-// PriceSyncResult holds the outcome of a price sync operation.
-type PriceSyncResult struct {
-	Synced  int `json:"synced"`
-	Updated int `json:"updated"`
+// SyncResult holds the outcome of a full models.dev sync operation.
+type SyncResult struct {
+	PriceSynced  int `json:"priceSynced"`
+	PriceUpdated int `json:"priceUpdated"`
 }
 
-// SyncPricesFromModelsDev fetches pricing from models.dev and upserts into the DB.
-func SyncPricesFromModelsDev(ctx context.Context, db *bun.DB) (*PriceSyncResult, error) {
+// SyncAllFromModelsDev fetches models.dev once and syncs prices + builtin profiles.
+func SyncAllFromModelsDev(ctx context.Context, db *bun.DB) (*SyncResult, error) {
+	body, err := fetchModelsDevAPI()
+	if err != nil {
+		return nil, err
+	}
+
+	// Sync builtin profiles from metadata
+	metadata, err := parseMetadata(body)
+	if err == nil {
+		UpsertBuiltinProfilesFromMetadata(ctx, db, metadata)
+	}
+
+	// Sync prices
+	result, err := syncPricesFromRaw(ctx, db, body)
+	if err != nil {
+		return nil, err
+	}
+
+	dal.SetLastPriceSyncTime(ctx, db)
+	return result, nil
+}
+
+func fetchModelsDevAPI() ([]byte, error) {
 	resp, err := http.Get("https://models.dev/api.json")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch models.dev: %d", resp.StatusCode)
+		return nil, fmt.Errorf("models.dev returned %d", resp.StatusCode)
 	}
+	return io.ReadAll(resp.Body)
+}
 
-	body, _ := io.ReadAll(resp.Body)
-
+func syncPricesFromRaw(ctx context.Context, db *bun.DB, body []byte) (*SyncResult, error) {
 	type costEntry struct {
 		Input      float64 `json:"input"`
 		Output     float64 `json:"output"`
@@ -231,50 +190,84 @@ func SyncPricesFromModelsDev(ctx context.Context, db *bun.DB) (*PriceSyncResult,
 		return nil, err
 	}
 
-	result := &PriceSyncResult{}
-
+	result := &SyncResult{}
 	for _, providerName := range supportedProviders {
 		provider, ok := data[providerName]
 		if !ok || provider.Models == nil {
 			continue
 		}
-
 		for _, modelInfo := range provider.Models {
-			modelID := modelInfo.ID
-			if modelID == "" {
+			if modelInfo.ID == "" {
 				continue
 			}
-
-			inputPrice := 0.0
-			outputPrice := 0.0
-			cacheReadPrice := 0.0
-			cacheWritePrice := 0.0
-
+			inputPrice, outputPrice := 0.0, 0.0
+			cacheReadPrice, cacheWritePrice := 0.0, 0.0
 			if modelInfo.Cost != nil {
 				inputPrice = modelInfo.Cost.Input
 				outputPrice = modelInfo.Cost.Output
 				cacheReadPrice = modelInfo.Cost.CacheRead
 				cacheWritePrice = modelInfo.Cost.CacheWrite
 			}
-
 			if inputPrice == 0 && outputPrice == 0 {
 				continue
 			}
-
-			upsertResult, err := dal.UpsertLLMPrice(ctx, db, modelID, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice, "sync")
+			upsertResult, err := dal.UpsertLLMPrice(ctx, db, modelInfo.ID, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice, "sync")
 			if err != nil {
 				continue
 			}
-
 			if upsertResult == "created" {
-				result.Synced++
+				result.PriceSynced++
 			} else {
-				result.Updated++
+				result.PriceUpdated++
 			}
 		}
 	}
+	return result, nil
+}
 
-	dal.SetLastPriceSyncTime(ctx, db)
+func parseMetadata(body []byte) (map[string]ModelMeta, error) {
+	type modelEntry struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	type providerEntry struct {
+		Name   string                `json:"name"`
+		Models map[string]modelEntry `json:"models"`
+	}
 
+	var data map[string]providerEntry
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]ModelMeta)
+	for providerKey, provider := range data {
+		if provider.Models == nil {
+			continue
+		}
+		providerDisplayName := provider.Name
+		if providerDisplayName == "" {
+			providerDisplayName = providerKey
+		}
+		logoURL := "https://models.dev/logos/" + providerKey + ".svg"
+		for _, model := range provider.Models {
+			if model.ID == "" || strings.Contains(model.ID, "@") {
+				continue
+			}
+			if hasCanonicalPrefix(model.ID) && !isCanonicalProvider(model.ID, providerKey) {
+				continue
+			}
+			entry := ModelMeta{
+				Name:         model.Name,
+				Provider:     providerKey,
+				ProviderName: providerDisplayName,
+				LogoURL:      logoURL,
+			}
+			if entry.Name == "" {
+				entry.Name = model.ID
+			}
+			result[model.ID] = entry
+		}
+	}
 	return result, nil
 }

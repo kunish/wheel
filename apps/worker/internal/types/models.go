@@ -177,6 +177,7 @@ type ModelProfile struct {
 	IsBuiltin     bool       `bun:"is_builtin"          json:"isBuiltin"`
 	CreatedAt     *string    `bun:"created_at"          json:"createdAt,omitempty"`
 	UpdatedAt     *string    `bun:"updated_at"          json:"updatedAt,omitempty"`
+	GroupCount    int        `bun:"-"                   json:"groupCount"`
 }
 
 // ──── JSON Scanner/Valuer types for SQLite TEXT columns ────

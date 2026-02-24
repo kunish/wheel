@@ -272,12 +272,6 @@ export default function ModelPage() {
     }
     return raw
   }, [profileData])
-  const activeProfile = useMemo(
-    () => profileList.find((p) => p.id === activeProfileId),
-    [profileList, activeProfileId],
-  )
-  const isBuiltinProfile = !!activeProfile?.isBuiltin
-
   useEffect(() => {
     if (profileList.length === 0 || !settingsData) return
     if (activeProfileId === undefined || !profileList.some((p) => p.id === activeProfileId)) {
@@ -315,7 +309,7 @@ export default function ModelPage() {
     queryClient.invalidateQueries({
       predicate: (query) => {
         const key = query.queryKey[0]
-        return key === "groups" || key === "profile-group-preview"
+        return key === "groups" || key === "profile-group-preview" || key === "profiles"
       },
     })
   }
@@ -468,6 +462,7 @@ export default function ModelPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["model-prices"] })
       queryClient.invalidateQueries({ queryKey: ["price-update-time"] })
+      queryClient.invalidateQueries({ queryKey: ["profiles"] })
       toast.success(t("toast.syncSuccess"))
     },
     onError: () => toast.error(t("toast.syncFailed")),
@@ -514,14 +509,6 @@ export default function ModelPage() {
     },
     onError: () => toast.error(t("toast.deleteFailed")),
   })
-
-  // ─── Price helpers ────────────────────────────────
-
-  function openCreatePrice() {
-    setPriceForm(EMPTY_PRICE_FORM)
-    setEditingPriceId(null)
-    setPriceDialogOpen(true)
-  }
 
   // ─── Drag handlers ─────────────────────────────
 
@@ -756,9 +743,6 @@ export default function ModelPage() {
               />
               {t("price.syncPrices")}
             </Button>
-            <Button size="sm" variant="outline" onClick={openCreatePrice}>
-              <Plus className="mr-1 h-3 w-3" /> {t("price.addPrice")}
-            </Button>
             <Button variant="outline" size="sm" onClick={() => setModelListOpen(true)}>
               <List className="mr-2 h-4 w-4" /> {t("models")}
             </Button>
@@ -848,7 +832,7 @@ export default function ModelPage() {
                     <SelectContent>
                       {profileList.map((p) => (
                         <SelectItem key={p.id} value={String(p.id)}>
-                          {p.name} ({p.models?.length ?? 0})
+                          {p.name} ({p.groupCount ?? 0})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -869,11 +853,6 @@ export default function ModelPage() {
                     ) : (
                       <ChevronsDownUp className="h-4 w-4" />
                     )}
-                  </Button>
-                )}
-                {isBuiltinProfile && (
-                  <Button size="sm" variant="outline" onClick={() => setProfileDialogOpen(true)}>
-                    <Layers className="mr-1 h-3 w-3" /> {t("profile.materialize")}
                   </Button>
                 )}
                 <Button size="sm" onClick={openCreateGroup}>

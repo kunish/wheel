@@ -238,14 +238,14 @@ func (h *Handler) RefreshModelMetadata(c *gin.Context) {
 // ──── Price Sync ────
 
 // UpdatePrice godoc
-// @Summary Sync model prices from models.dev
+// @Summary Sync model prices and builtin profiles from models.dev
 // @Tags Models
 // @Produce json
-// @Success 200 {object} object "{success: true, data: {synced: int, updated: int}}"
+// @Success 200 {object} object "{success: true, data: {priceSynced: int, priceUpdated: int}}"
 // @Security BearerAuth
 // @Router /api/v1/model/update-price [post]
 func (h *Handler) UpdatePrice(c *gin.Context) {
-	result, err := service.SyncPricesFromModelsDev(c.Request.Context(), h.DB)
+	result, err := service.SyncAllFromModelsDev(c.Request.Context(), h.DB)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return

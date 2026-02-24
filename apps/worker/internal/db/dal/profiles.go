@@ -16,7 +16,7 @@ import (
 func ListProfiles(ctx context.Context, db *bun.DB) ([]types.ModelProfile, error) {
 	var profiles []types.ModelProfile
 	err := db.NewSelect().Model(&profiles).
-		OrderExpr("is_builtin DESC, name ASC").
+		OrderExpr("is_builtin DESC, CASE WHEN name = 'Default' THEN 0 ELSE 1 END, name ASC").
 		Scan(ctx)
 	if err != nil {
 		return nil, err
@@ -24,6 +24,29 @@ func ListProfiles(ctx context.Context, db *bun.DB) ([]types.ModelProfile, error)
 	if profiles == nil {
 		profiles = []types.ModelProfile{}
 	}
+
+	// Populate group counts per profile
+	if len(profiles) > 0 {
+		var counts []struct {
+			ProfileID  int `bun:"profile_id"`
+			GroupCount int `bun:"group_count"`
+		}
+		err = db.NewSelect().TableExpr("`groups`").
+			ColumnExpr("profile_id").
+			ColumnExpr("COUNT(*) AS group_count").
+			Group("profile_id").
+			Scan(ctx, &counts)
+		if err == nil {
+			countMap := make(map[int]int, len(counts))
+			for _, c := range counts {
+				countMap[c.ProfileID] = c.GroupCount
+			}
+			for i := range profiles {
+				profiles[i].GroupCount = countMap[profiles[i].ID]
+			}
+		}
+	}
+
 	return profiles, nil
 }
 
