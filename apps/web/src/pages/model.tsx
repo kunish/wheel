@@ -768,7 +768,7 @@ export default function ModelPage() {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-hidden lg:grid-cols-2">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
           {/* ─── Left: Channels ───────────────── */}
           <div className="flex min-h-0 flex-col gap-3">
             <div className="flex shrink-0 items-center justify-between">
