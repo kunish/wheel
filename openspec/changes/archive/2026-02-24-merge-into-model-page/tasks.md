@@ -52,9 +52,9 @@
 ## 8. Verification
 
 - [x] 8.1 Verify the app builds without errors (`pnpm build`)
-- [ ] 8.2 Verify `/model` route loads correctly with Channels, Groups, and Price management
-- [ ] 8.3 Verify `/channels`, `/prices`, `/groups` all redirect to `/model`
-- [ ] 8.4 Verify bottom navigation shows 4 items with correct labels and active states
-- [ ] 8.5 Verify price sync, add, edit, delete all work from the Model page
-- [ ] 8.6 Verify ModelCard displays prices inline when available
-- [ ] 8.7 Verify both EN and ZH-CN translations render correctly
+- [x] 8.2 Verify `/model` route loads correctly with Channels, Groups, and Price management
+- [x] 8.3 Verify `/channels`, `/prices`, `/groups` all redirect to `/model`
+- [x] 8.4 Verify bottom navigation shows 4 items with correct labels and active states
+- [x] 8.5 Verify price sync, add, edit, delete all work from the Model page
+- [x] 8.6 Verify ModelCard displays prices inline when available
+- [x] 8.7 Verify both EN and ZH-CN translations render correctly
