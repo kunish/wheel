@@ -64,7 +64,7 @@ function NavArrow({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
+      className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <path
@@ -221,10 +221,10 @@ export function ActivitySection({
             <button
               key={v}
               onClick={() => nav.setView(v)}
-              className={`rounded-md border-2 px-2.5 py-1 text-xs font-bold transition-all ${
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 nav.view === v
-                  ? "border-border bg-primary text-primary-foreground shadow-[2px_2px_0_var(--nb-shadow)]"
-                  : "text-muted-foreground hover:text-foreground border-transparent"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
               {nav.viewLabels[v]}
@@ -448,7 +448,7 @@ export function ActivitySection({
               <div
                 ref={refs.setFloating}
                 style={floatingStyles}
-                className="bg-popover text-popover-foreground border-border pointer-events-none z-50 w-fit min-w-max rounded-md border-2 p-3 text-sm shadow-[2px_2px_0_var(--nb-shadow)]"
+                className="bg-popover text-popover-foreground pointer-events-none z-50 w-fit min-w-max rounded-md border p-3 text-sm shadow-md"
               >
                 <p className="mb-1 font-bold">{activeTooltip.label}</p>
                 {m ? (

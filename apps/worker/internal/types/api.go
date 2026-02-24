@@ -19,18 +19,18 @@ type ChangeUsernameRequest struct {
 // ──── Channel ────
 
 type ChannelCreateRequest struct {
-	Name          string           `json:"name"`
-	Type          int              `json:"type"`
-	Enabled       bool             `json:"enabled"`
-	BaseUrls      []BaseUrl        `json:"baseUrls"`
+	Name          string            `json:"name"`
+	Type          int               `json:"type"`
+	Enabled       bool              `json:"enabled"`
+	BaseUrls      []BaseUrl         `json:"baseUrls"`
 	Keys          []ChannelKeyInput `json:"keys"`
-	Model         []string         `json:"model"`
-	FetchedModel  []string         `json:"fetchedModel,omitempty"`
-	CustomModel   string           `json:"customModel,omitempty"`
-	AutoSync      *bool            `json:"autoSync,omitempty"`
-	AutoGroup     *int             `json:"autoGroup,omitempty"`
-	CustomHeader  []CustomHeader   `json:"customHeader,omitempty"`
-	ParamOverride *string          `json:"paramOverride,omitempty"`
+	Model         []string          `json:"model"`
+	FetchedModel  []string          `json:"fetchedModel,omitempty"`
+	CustomModel   string            `json:"customModel,omitempty"`
+	AutoSync      *bool             `json:"autoSync,omitempty"`
+	AutoGroup     *int              `json:"autoGroup,omitempty"`
+	CustomHeader  []CustomHeader    `json:"customHeader,omitempty"`
+	ParamOverride *string           `json:"paramOverride,omitempty"`
 }
 
 type ChannelKeyInput struct {
@@ -76,7 +76,8 @@ type GroupCreateRequest struct {
 	Mode              int              `json:"mode"`
 	FirstTokenTimeOut int              `json:"firstTokenTimeOut,omitempty"`
 	SessionKeepTime   int              `json:"sessionKeepTime,omitempty"`
-	Items             []GroupItemInput  `json:"items"`
+	ProfileID         int              `json:"profileId"`
+	Items             []GroupItemInput `json:"items"`
 }
 
 type GroupUpdateRequest struct {
@@ -85,7 +86,7 @@ type GroupUpdateRequest struct {
 	Mode              *int             `json:"mode,omitempty"`
 	FirstTokenTimeOut *int             `json:"firstTokenTimeOut,omitempty"`
 	SessionKeepTime   *int             `json:"sessionKeepTime,omitempty"`
-	Items             []GroupItemInput  `json:"items,omitempty"`
+	Items             []GroupItemInput `json:"items,omitempty"`
 }
 
 // ──── API Key ────
@@ -98,12 +99,12 @@ type APIKeyCreateRequest struct {
 }
 
 type APIKeyUpdateRequest struct {
-	ID              int     `json:"id"`
-	Name            *string `json:"name,omitempty"`
-	Enabled         *bool   `json:"enabled,omitempty"`
-	ExpireAt        *int64  `json:"expireAt,omitempty"`
+	ID              int      `json:"id"`
+	Name            *string  `json:"name,omitempty"`
+	Enabled         *bool    `json:"enabled,omitempty"`
+	ExpireAt        *int64   `json:"expireAt,omitempty"`
 	MaxCost         *float64 `json:"maxCost,omitempty"`
-	SupportedModels *string `json:"supportedModels,omitempty"`
+	SupportedModels *string  `json:"supportedModels,omitempty"`
 }
 
 // ──── Log ────
@@ -120,11 +121,11 @@ type GlobalStatsResponse struct {
 }
 
 type ChannelStatsItem struct {
-	ChannelID    int     `json:"channelId"`
-	ChannelName  string  `json:"channelName"`
-	TotalRequests int    `json:"totalRequests"`
-	TotalCost    float64 `json:"totalCost"`
-	AvgLatency   float64 `json:"avgLatency"`
+	ChannelID     int     `json:"channelId"`
+	ChannelName   string  `json:"channelName"`
+	TotalRequests int     `json:"totalRequests"`
+	TotalCost     float64 `json:"totalCost"`
+	AvgLatency    float64 `json:"avgLatency"`
 }
 
 type ModelStatsItem struct {
@@ -182,6 +183,25 @@ type LLMUpdateRequest struct {
 }
 
 type LLMDeleteRequest struct {
+	ID int `json:"id"`
+}
+
+// ──── Model Profile ────
+
+type ProfileCreateRequest struct {
+	Name     string   `json:"name"`
+	Provider string   `json:"provider,omitempty"`
+	Models   []string `json:"models,omitempty"`
+}
+
+type ProfileUpdateRequest struct {
+	ID       int      `json:"id"`
+	Name     string   `json:"name"`
+	Provider *string  `json:"provider,omitempty"`
+	Models   []string `json:"models,omitempty"`
+}
+
+type ProfileDeleteRequest struct {
 	ID int `json:"id"`
 }
 

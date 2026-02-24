@@ -360,7 +360,7 @@ func SyncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*SyncRe
 
 // autoGroupChannel creates groups and group items based on channel autoGroup setting.
 func autoGroupChannel(ctx context.Context, db *bun.DB, channel types.Channel, models []string) {
-	allGroups, err := dal.ListGroups(ctx, db)
+	allGroups, err := dal.ListGroups(ctx, db, 0)
 	if err != nil {
 		return
 	}

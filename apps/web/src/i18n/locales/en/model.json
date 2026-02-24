@@ -127,6 +127,52 @@
     "noModelsFound": "No models found"
   },
 
+  "profile": {
+    "title": "Model Profiles",
+    "createProfile": "New Profile",
+    "builtin": "Built-in",
+    "duplicate": "Duplicate",
+    "empty": "No profiles yet.",
+    "builtinSection": "Built-in Profiles",
+    "customSection": "Custom Profiles",
+    "switcherLabel": "Profile",
+    "virtual": "Virtual",
+    "materialized": "Materialized",
+    "materialize": "Materialize",
+    "materializeSelected": "Materialize Selected",
+    "materializeAll": "Materialize All",
+    "unmaterializeAll": "Cancel All Materialized",
+    "unmaterialize": "Cancel Materialize",
+    "editMaterialized": "Edit Group",
+    "materializedGroups": "Materialized Groups (supports drag-and-drop)",
+    "materializedGroupsEmpty": "No materialized groups yet.",
+    "previewEmpty": "No official models found for this profile.",
+    "previewReadonly": "Built-in profile uses official model preview mode.",
+    "manageProfiles": "Manage Profiles",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "e.g. My Custom Profile",
+      "provider": "Provider",
+      "providerPlaceholder": "Select provider",
+      "models": "Models",
+      "modelsPlaceholder": "Select models to include",
+      "searchModels": "Search models...",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "noModels": "No models available",
+      "selectProviderFirst": "Select a provider first"
+    },
+    "toast": {
+      "created": "Profile created",
+      "updated": "Profile updated",
+      "deleted": "Profile deleted",
+      "hasGroups": "Cannot delete: profile has groups",
+      "materialized": "Groups materialized",
+      "unmaterializedAll": "All materialized groups canceled",
+      "groupNotFound": "Materialized group no longer exists, please refresh"
+    }
+  },
+
   "price": {
     "description": "Manage model pricing for cost calculation",
     "searchModels": "Search models",

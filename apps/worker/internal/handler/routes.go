@@ -104,4 +104,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/model/metadata/refresh", h.RefreshModelMetadata)
 	admin.POST("/model/update-price", h.UpdatePrice)
 	admin.GET("/model/last-update-time", h.GetLastUpdateTime)
+
+	// Profile routes
+	admin.GET("/model/profiles", h.ListProfiles)
+	admin.POST("/model/profiles/create", h.CreateProfile)
+	admin.POST("/model/profiles/update", h.UpdateProfile)
+	admin.POST("/model/profiles/delete", h.DeleteProfile)
+	admin.POST("/model/profiles/activate", h.ActivateProfile)
+	admin.GET("/model/profiles/:id/groups-preview", h.ListProfileGroupsPreview)
+	admin.POST("/model/profiles/:id/groups-materialize", h.MaterializeProfileGroups)
 }

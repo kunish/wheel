@@ -146,7 +146,7 @@ export default function BackupSection() {
           <p className="text-muted-foreground text-sm">{t("backup.importDescription")}</p>
 
           <div
-            className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors ${
+            className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 transition-colors ${
               isDragOver
                 ? "border-primary bg-primary/5"
                 : "border-muted-foreground/25 hover:border-muted-foreground/50"

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
@@ -90,25 +92,6 @@ func FetchAndFlattenMetadata() (map[string]ModelMeta, error) {
 		return nil, err
 	}
 
-	// Pre-collect canonical provider display info
-	type canonicalInfo struct {
-		providerName string
-		logoURL      string
-	}
-	canonicalInfoMap := make(map[string]canonicalInfo)
-	for prefix, canonicalKey := range canonicalProviders {
-		if provider, ok := data[canonicalKey]; ok {
-			name := provider.Name
-			if name == "" {
-				name = canonicalKey
-			}
-			canonicalInfoMap[prefix] = canonicalInfo{
-				providerName: name,
-				logoURL:      "https://models.dev/logos/" + canonicalKey + ".svg",
-			}
-		}
-	}
-
 	result := make(map[string]ModelMeta)
 	for providerKey, provider := range data {
 		if provider.Models == nil {
@@ -122,24 +105,19 @@ func FetchAndFlattenMetadata() (map[string]ModelMeta, error) {
 
 		for _, model := range provider.Models {
 			modelID := model.ID
-			if modelID == "" {
+			if modelID == "" || strings.Contains(modelID, "@") {
+				continue
+			}
+
+			// Skip models from non-canonical providers that have a canonical prefix.
+			// e.g. skip "claude-3-5-sonnet-20241022" from azure — only keep it from anthropic.
+			if hasCanonicalPrefix(modelID) && !isCanonicalProvider(modelID, providerKey) {
 				continue
 			}
 
 			entryProvider := providerKey
 			entryProviderName := providerDisplayName
 			entryLogoURL := logoURL
-
-			if hasCanonicalPrefix(modelID) && !isCanonicalProvider(modelID, providerKey) {
-				for prefix, info := range canonicalInfoMap {
-					if strings.HasPrefix(modelID, prefix) {
-						entryProvider = canonicalProviders[prefix]
-						entryProviderName = info.providerName
-						entryLogoURL = info.logoURL
-						break
-					}
-				}
-			}
 
 			entry := ModelMeta{
 				Name:         model.Name,
@@ -151,17 +129,60 @@ func FetchAndFlattenMetadata() (map[string]ModelMeta, error) {
 				entry.Name = modelID
 			}
 
-			if existing, ok := result[modelID]; ok {
-				if isCanonicalProvider(modelID, providerKey) && !isCanonicalProvider(modelID, existing.Provider) {
-					result[modelID] = entry
-				}
-			} else {
-				result[modelID] = entry
-			}
+			result[modelID] = entry
 		}
 	}
 
 	return result, nil
+}
+
+// ──── Builtin Profiles ────
+
+// profile name → metadata provider key
+var builtinProfileProviders = map[string]string{
+	"Anthropic": "anthropic",
+	"OpenAI":    "openai",
+	"Google":    "google",
+}
+
+// UpsertBuiltinProfiles ensures builtin workspace profiles exist.
+func UpsertBuiltinProfiles(ctx context.Context, db *bun.DB) {
+	metadata, err := FetchAndFlattenMetadata()
+	if err != nil {
+		log.Printf("[profiles] failed to fetch models.dev metadata: %v", err)
+		for name, provider := range builtinProfileProviders {
+			_ = dal.UpsertBuiltinProfile(ctx, db, name, provider, nil)
+		}
+		return
+	}
+	UpsertBuiltinProfilesFromMetadata(ctx, db, metadata)
+}
+
+// UpsertBuiltinProfilesFromMetadata ensures builtin profiles are up-to-date
+// using already-fetched metadata.
+func UpsertBuiltinProfilesFromMetadata(ctx context.Context, db *bun.DB, metadata map[string]ModelMeta) {
+	modelsByProvider := make(map[string][]string, len(builtinProfileProviders))
+	for modelID, meta := range metadata {
+		if modelID == "" {
+			continue
+		}
+		modelsByProvider[meta.Provider] = append(modelsByProvider[meta.Provider], modelID)
+	}
+
+	for provider, modelIDs := range modelsByProvider {
+		sort.Strings(modelIDs)
+		modelsByProvider[provider] = modelIDs
+	}
+
+	for name, provider := range builtinProfileProviders {
+		models := modelsByProvider[provider]
+		if models == nil {
+			models = []string{}
+		}
+		if err := dal.UpsertBuiltinProfile(ctx, db, name, provider, models); err != nil {
+			log.Printf("[profiles] failed to upsert builtin profile %s: %v", name, err)
+		}
+	}
 }
 
 // ──── Price Sync ────

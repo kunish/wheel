@@ -21,10 +21,11 @@ import (
 
 // Default settings values matching the TS implementation.
 var defaultSettings = map[string]string{
-	"log_retention_days":        "365",
-	"circuit_breaker_threshold": "5",
-	"circuit_breaker_cooldown":  "60",
+	"log_retention_days":           "365",
+	"circuit_breaker_threshold":    "5",
+	"circuit_breaker_cooldown":     "60",
 	"circuit_breaker_max_cooldown": "600",
+	"active_profile_id":            "0",
 }
 
 // ──── Setting Routes ────
@@ -98,7 +99,7 @@ func (h *Handler) ExportData(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	groups, err := dal.ListGroups(ctx, h.DB)
+	groups, err := dal.ListGroups(ctx, h.DB, 0)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return

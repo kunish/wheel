@@ -26,8 +26,9 @@ const tabsListVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-muted border-2 border-border shadow-[2px_2px_0_var(--nb-shadow)]",
-        line: "gap-1 bg-transparent border-b-2 border-border rounded-none",
+        default:
+          "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+        line: "gap-1 bg-transparent border-b border-border rounded-none",
       },
     },
     defaultVariants: {
@@ -56,7 +57,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "focus-visible:ring-ring/50 text-foreground/60 hover:text-foreground relative inline-flex h-[calc(100%-4px)] min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-sm border-2 border-transparent px-2 py-1.5 text-sm font-bold whitespace-nowrap transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "focus-visible:ring-ring/50 text-foreground/60 hover:text-foreground relative inline-flex h-[calc(100%-4px)] min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-sm border border-transparent px-2 py-1.5 text-sm font-medium whitespace-nowrap transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start focus-visible:ring-2 focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:border-border",
         "group-data-[variant=line]/tabs-list:data-[state=active]:border-foreground group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:border-0 group-data-[variant=line]/tabs-list:shadow-none group-data-[variant=line]/tabs-list:data-[state=active]:border-b-2 group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none",
         className,

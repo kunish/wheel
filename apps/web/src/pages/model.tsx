@@ -2,7 +2,7 @@ import type { DragEndEvent, DragOverEvent, DragStartEvent } from "@dnd-kit/core"
 import type { ChannelFormData } from "./model/channel-dialog"
 import type { GroupFormData, GroupItemForm } from "./model/group-dialog"
 import type { PriceFormData } from "./model/price-dialog"
-import type { ModelMeta } from "@/lib/api-client"
+import type { ModelMeta, ModelProfile } from "@/lib/api-client"
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +26,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   GripVertical,
+  Layers,
   List,
   Pencil,
   Plus,
@@ -56,9 +57,18 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { fuzzyLookup, useModelMetadataQuery } from "@/hooks/use-model-meta"
+import { useProfilesQuery } from "@/hooks/use-profiles"
 import {
+  activateProfile,
   createChannel,
   createGroup,
   createModelPrice,
@@ -68,6 +78,7 @@ import {
   enableChannel,
   getLastPriceUpdateTime,
   getModelList,
+  getSettings,
   listChannels,
   listGroups,
   listModelPrices,
@@ -90,6 +101,8 @@ const ChannelDialog = lazy(() => import("./model/channel-dialog"))
 const GroupDialog = lazy(() => import("./model/group-dialog"))
 
 const PriceDialog = lazy(() => import("./model/price-dialog"))
+
+const ProfileManageDialog = lazy(() => import("./model/profile-manage-dialog"))
 
 // ─── Types ─────────────────────────────────────
 
@@ -187,6 +200,35 @@ export default function ModelPage() {
   const [editingPriceId, setEditingPriceId] = useState<number | null>(null)
   const [deletePriceConfirm, setDeletePriceConfirm] = useState<ModelPrice | null>(null)
 
+  // Profile state
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+
+  // Read active_profile_id from backend settings
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+  })
+  const activeProfileId = useMemo(() => {
+    const raw = settingsData?.data?.settings?.active_profile_id
+    if (raw === undefined || raw === "0") return undefined
+    const n = Number(raw)
+    return Number.isNaN(n) || n === 0 ? undefined : n
+  }, [settingsData])
+
+  const activateProfileMut = useMutation({
+    mutationFn: (id: number) => activateProfile(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] })
+      queryClient.invalidateQueries({ queryKey: ["groups"] })
+    },
+  })
+  const setActiveProfileId = useCallback(
+    (id: number | undefined) => {
+      activateProfileMut.mutate(id ?? 0)
+    },
+    [activateProfileMut],
+  )
+
   // Queries
   const { data: channelData, isLoading: channelsLoading } = useQuery({
     queryKey: ["channels"],
@@ -194,8 +236,9 @@ export default function ModelPage() {
   })
 
   const { data: groupData, isLoading: groupsLoading } = useQuery({
-    queryKey: ["groups"],
-    queryFn: listGroups,
+    queryKey: ["groups", activeProfileId],
+    queryFn: () => listGroups(activeProfileId),
+    enabled: activeProfileId !== undefined,
   })
 
   const { data: modelData } = useQuery({
@@ -215,14 +258,39 @@ export default function ModelPage() {
     queryFn: getLastPriceUpdateTime,
   })
 
+  // Profile query
+  const { data: profileData } = useProfilesQuery()
+  const profileList = useMemo(() => {
+    const raw = (profileData?.data?.profiles ?? []) as ModelProfile[]
+    // 确保 Default 内置预设排在最前面
+    const defaultIdx = raw.findIndex((p) => p.isBuiltin && p.name === "Default")
+    if (defaultIdx > 0) {
+      const copy = [...raw]
+      const [def] = copy.splice(defaultIdx, 1)
+      copy.unshift(def)
+      return copy
+    }
+    return raw
+  }, [profileData])
+  const activeProfile = useMemo(
+    () => profileList.find((p) => p.id === activeProfileId),
+    [profileList, activeProfileId],
+  )
+  const isBuiltinProfile = !!activeProfile?.isBuiltin
+
+  useEffect(() => {
+    if (profileList.length === 0 || !settingsData) return
+    if (activeProfileId === undefined || !profileList.some((p) => p.id === activeProfileId)) {
+      setActiveProfileId(profileList[0].id)
+    }
+  }, [profileList, activeProfileId, settingsData])
+
   const channels = useMemo(
     () => (channelData?.data?.channels ?? []) as ChannelRecord[],
     [channelData],
   )
   const groups = useMemo(() => (groupData?.data?.groups ?? []) as GroupRecord[], [groupData])
   const models = useMemo(() => (modelData?.data?.models ?? []) as string[], [modelData])
-
-  // Price data
   const priceList = useMemo(() => (priceData?.data?.models ?? []) as ModelPrice[], [priceData])
   const priceMap = useMemo(() => {
     const map = new Map<string, ModelPrice>()
@@ -242,6 +310,15 @@ export default function ModelPage() {
   }
 
   const lastSync = formatDateTime(updateTimeData?.data?.lastUpdateTime ?? undefined)
+
+  function invalidateGroupQueries() {
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey[0]
+        return key === "groups" || key === "profile-group-preview"
+      },
+    })
+  }
 
   // ─── Highlight scroll logic ───────────────────
   const setChannelRef = useCallback((id: number, el: HTMLDivElement | null) => {
@@ -303,15 +380,16 @@ export default function ModelPage() {
   const groupDeleteMut = useMutation({
     mutationFn: deleteGroup,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      invalidateGroupQueries()
       toast.success(t("toast.groupDeleted"))
     },
   })
 
   const groupSaveMut = useMutation({
-    mutationFn: (data: GroupFormData) => (data.id ? updateGroup(data) : createGroup(data)),
+    mutationFn: (data: GroupFormData) =>
+      data.id ? updateGroup(data) : createGroup({ ...data, profileId: activeProfileId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      invalidateGroupQueries()
       setGroupDialogOpen(false)
       toast.success(groupForm.id ? t("toast.groupUpdated") : t("toast.groupCreated"))
     },
@@ -332,7 +410,7 @@ export default function ModelPage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      invalidateGroupQueries()
       toast.success(t("toast.channelAddedToGroup"))
     },
     onError: (err: Error) => toast.error(err.message),
@@ -348,7 +426,7 @@ export default function ModelPage() {
         items: [],
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      invalidateGroupQueries()
       toast.success(t("toast.groupCleared"))
     },
     onError: (err: Error) => toast.error(err.message),
@@ -367,13 +445,13 @@ export default function ModelPage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      invalidateGroupQueries()
     },
   })
 
   const groupReorderMut = useMutation({
     mutationFn: reorderGroups,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["groups"] }),
+    onSuccess: () => invalidateGroupQueries(),
     onError: (err: Error) => toast.error(err.message),
   })
 
@@ -616,8 +694,39 @@ export default function ModelPage() {
   }
 
   const channelMap = useMemo(() => new Map(channels.map((ch) => [ch.id, ch])), [channels])
+  const groupMap = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
   const groupIds = useMemo(() => groups.map((g) => `sortable-group-${g.id}`), [groups])
   const channelIds = useMemo(() => channels.map((ch) => `sortable-channel-${ch.id}`), [channels])
+  const renderSortableGroups = (
+    <SortableContext items={groupIds} strategy={verticalListSortingStrategy}>
+      <div className="flex flex-col gap-3">
+        <AnimatePresence initial={false}>
+          {groups.map((g) => (
+            <motion.div
+              key={g.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+            >
+              <SortableGroup
+                group={g}
+                channelMap={channelMap}
+                onEdit={() => openEditGroup(g)}
+                onDelete={() => setDeleteGroupConfirm(g)}
+                onClear={() => setClearGroupConfirm(g)}
+                onRemoveItem={(itemIndex) => groupRemoveItemMut.mutate({ group: g, itemIndex })}
+                isOver={activeDrag !== null}
+                hoverGroupId={hoverGroupId}
+                forceCollapsed={groupsCollapsed}
+                priceMap={priceMap}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+    </SortableContext>
+  )
 
   // ─── Render ────────────────────────────────────
 
@@ -653,6 +762,9 @@ export default function ModelPage() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => setModelListOpen(true)}>
               <List className="mr-2 h-4 w-4" /> {t("models")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setProfileDialogOpen(true)}>
+              <Layers className="mr-2 h-4 w-4" /> {t("profile.title")}
             </Button>
           </div>
         </div>
@@ -724,7 +836,26 @@ export default function ModelPage() {
           {/* ─── Right: Groups ────────────────── */}
           <div className="flex min-h-0 flex-col gap-3">
             <div className="flex shrink-0 items-center justify-between">
-              <h3 className="text-lg font-semibold">{t("groups")}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold">{t("groups")}</h3>
+                {profileList.length > 0 && (
+                  <Select
+                    value={activeProfileId !== undefined ? String(activeProfileId) : undefined}
+                    onValueChange={(v) => setActiveProfileId(Number(v))}
+                  >
+                    <SelectTrigger className="h-8 w-40 text-xs">
+                      <SelectValue placeholder={t("profile.switcherLabel")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profileList.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.name} ({p.models?.length ?? 0})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
               <div className="flex items-center gap-1">
                 {groups.length > 0 && (
                   <Button
@@ -741,6 +872,11 @@ export default function ModelPage() {
                     )}
                   </Button>
                 )}
+                {isBuiltinProfile && (
+                  <Button size="sm" variant="outline" onClick={() => setProfileDialogOpen(true)}>
+                    <Layers className="mr-1 h-3 w-3" /> {t("profile.materialize")}
+                  </Button>
+                )}
                 <Button size="sm" onClick={openCreateGroup}>
                   <Plus className="mr-1 h-3 w-3" /> {t("actions.add", { ns: "common" })}
                 </Button>
@@ -753,36 +889,7 @@ export default function ModelPage() {
               ) : groups.length === 0 ? (
                 <p className="text-muted-foreground text-sm">{t("emptyGroups")}</p>
               ) : (
-                <SortableContext items={groupIds} strategy={verticalListSortingStrategy}>
-                  <div className="flex flex-col gap-3">
-                    <AnimatePresence initial={false}>
-                      {groups.map((g) => (
-                        <motion.div
-                          key={g.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <SortableGroup
-                            group={g}
-                            channelMap={channelMap}
-                            onEdit={() => openEditGroup(g)}
-                            onDelete={() => setDeleteGroupConfirm(g)}
-                            onClear={() => setClearGroupConfirm(g)}
-                            onRemoveItem={(itemIndex) =>
-                              groupRemoveItemMut.mutate({ group: g, itemIndex })
-                            }
-                            isOver={activeDrag !== null}
-                            hoverGroupId={hoverGroupId}
-                            forceCollapsed={groupsCollapsed}
-                            priceMap={priceMap}
-                          />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                </SortableContext>
+                renderSortableGroups
               )}
             </ScrollArea>
           </div>
@@ -1016,6 +1123,11 @@ export default function ModelPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ─── Profile Manage Dialog ────────────── */}
+      <Suspense fallback={null}>
+        <ProfileManageDialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen} />
+      </Suspense>
     </DndContext>
   )
 }

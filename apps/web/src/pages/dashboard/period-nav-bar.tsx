@@ -14,7 +14,7 @@ function NavArrow({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border-2 border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
+      className="text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border rounded-md border border-transparent p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <path

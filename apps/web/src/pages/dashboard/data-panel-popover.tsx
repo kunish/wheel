@@ -113,10 +113,10 @@ export function DataPanelPopover({
         <PopoverTrigger asChild>
           <button
             onClick={() => setDataTab((prev) => (prev === null ? "cost" : null))}
-            className={`rounded-md border-2 p-1 transition-all ${
+            className={`rounded-md p-1.5 transition-colors ${
               dataTab !== null
-                ? "border-border bg-primary text-primary-foreground shadow-[2px_2px_0_var(--nb-shadow)]"
-                : "text-muted-foreground hover:text-foreground border-transparent"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
             <TrendingUp className="h-3.5 w-3.5" />
@@ -132,10 +132,10 @@ export function DataPanelPopover({
               <button
                 key={key}
                 onClick={() => setDataTab(key)}
-                className={`rounded-md border-2 p-1.5 transition-all ${
+                className={`rounded-md p-1.5 transition-colors ${
                   displayTab === key
-                    ? "border-border bg-primary text-primary-foreground shadow-[2px_2px_0_var(--nb-shadow)]"
-                    : "text-muted-foreground hover:text-foreground border-transparent"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
                 <Icon className="h-4 w-4" />

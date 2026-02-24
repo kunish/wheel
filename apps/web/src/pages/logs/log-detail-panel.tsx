@@ -526,7 +526,7 @@ function DetailPanel({
                 className="relative"
               >
                 <div
-                  className={`border-background absolute top-1 -left-[calc(0.5rem+1px)] h-3 w-3 rounded-full border-2 ${
+                  className={`border-background absolute top-1 -left-[calc(0.5rem+1px)] h-3 w-3 rounded-full border ${
                     attempt.status === "success"
                       ? "bg-green-500"
                       : attempt.status === "circuit_break" || attempt.status === "skipped"
@@ -994,12 +994,12 @@ function MessageBubble({
 
   return (
     <div
-      className={`rounded-md border-2 border-l-4 ${config.borderClass} ${config.bgClass}${isContext ? "opacity-60" : ""}`}
+      className={`rounded-md border border-l-4 ${config.borderClass} ${config.bgClass}${isContext ? "opacity-60" : ""}`}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
         <div
-          className={`border-border flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${config.avatarClass}`}
+          className={`border-border flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${config.avatarClass}`}
         >
           <Icon className="h-3.5 w-3.5" />
         </div>
@@ -1123,9 +1123,9 @@ function ResponseChoiceBlock({
   const showThinking = thinkingOpen || isThinkingPhase
 
   return (
-    <div className="border-l-nb-lime bg-nb-lime/15 dark:bg-nb-lime/10 rounded-md border-2 border-l-4">
+    <div className="border-l-nb-lime bg-nb-lime/15 dark:bg-nb-lime/10 rounded-md border border-l-4">
       <div className="flex items-center gap-2 px-3 py-2">
-        <div className="border-border bg-nb-lime text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2">
+        <div className="border-border bg-nb-lime text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-md border">
           <Bot className="h-3.5 w-3.5" />
         </div>
         <span className="text-xs font-bold tracking-wide uppercase">
@@ -1540,7 +1540,7 @@ function MessagesTabContent({
             {t("messagesTab.count", { count: messages.length })}
             {response ? t("messagesTab.plusResponse") : ""}
           </span>
-          <div className="border-border flex items-center rounded-md border-2">
+          <div className="border-border flex items-center rounded-md border">
             <button
               className={`flex items-center gap-1 px-2 py-1 text-xs font-bold transition-colors ${
                 viewMode === "conversation"
@@ -1553,7 +1553,7 @@ function MessagesTabContent({
               {t("messagesTab.chat")}
             </button>
             <button
-              className={`border-border flex items-center gap-1 border-l-2 px-2 py-1 text-xs font-bold transition-colors ${
+              className={`border-border flex items-center gap-1 border-l px-2 py-1 text-xs font-bold transition-colors ${
                 viewMode === "raw" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
               }`}
               onClick={() => setViewMode("raw")}

@@ -55,7 +55,7 @@ function MiniReactor({
           r={MINI_REACTOR_OUTER_R}
           fill="none"
           stroke={isToday ? "var(--nb-lime)" : "var(--border)"}
-          strokeWidth={isToday ? 1.5 : 1}
+          strokeWidth={isToday ? 1 : 0.5}
           opacity={isToday ? 0.7 : 0.3}
         />
 
@@ -66,7 +66,7 @@ function MiniReactor({
           r={MINI_REACTOR_ACTIVITY_R}
           fill="none"
           stroke={day.isFuture ? "var(--border)" : LEVEL_COLORS[level]}
-          strokeWidth={level > 0 ? 5 : 2}
+          strokeWidth={level > 0 ? 3.5 : 1.5}
           opacity={day.isFuture ? 0.15 : level === 0 ? 0.2 : 0.8}
           strokeDasharray={level === 0 || day.isFuture ? "3 3" : "none"}
         />

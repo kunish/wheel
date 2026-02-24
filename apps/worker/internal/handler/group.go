@@ -20,7 +20,13 @@ import (
 // @Security BearerAuth
 // @Router /api/v1/group/list [get]
 func (h *Handler) ListGroups(c *gin.Context) {
-	groups, err := dal.ListGroups(c.Request.Context(), h.DB)
+	profileID := 0
+	if pid := c.Query("profileId"); pid != "" {
+		if v, err := strconv.Atoi(pid); err == nil {
+			profileID = v
+		}
+	}
+	groups, err := dal.ListGroups(c.Request.Context(), h.DB, profileID)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -50,6 +56,7 @@ func (h *Handler) CreateGroup(c *gin.Context) {
 		Mode:              types.GroupMode(req.Mode),
 		FirstTokenTimeOut: req.FirstTokenTimeOut,
 		SessionKeepTime:   req.SessionKeepTime,
+		ProfileID:         req.ProfileID,
 	}
 
 	created, err := dal.CreateGroup(c.Request.Context(), h.DB, g, req.Items)

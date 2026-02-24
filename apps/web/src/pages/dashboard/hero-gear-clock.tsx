@@ -137,7 +137,7 @@ export function HeroGearClock({
         {/* ── Static gear teeth — 12 teeth aligned to hour segment boundaries ── */}
         <g
           style={{
-            filter: "drop-shadow(2px 2px 0 color-mix(in srgb, var(--nb-shadow) 25%, transparent))",
+            filter: "drop-shadow(0 2px 4px rgb(0 0 0 / 0.1))",
           }}
         >
           {Array.from({ length: 12 }, (_, i) => {
@@ -192,12 +192,12 @@ export function HeroGearClock({
                 d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_PM_INNER, GEAR_PM_OUTER)}
                 fill={hLevel === -1 ? "transparent" : LEVEL_COLORS[hLevel]}
                 stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
-                strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
+                strokeWidth={isCurrentHour ? "1.5" : hLevel === -1 ? "0.5" : "0"}
                 strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
-                opacity={hLevel === -1 ? 0.3 : 1}
-                className="cursor-pointer transition-all hover:opacity-80"
+                opacity={hLevel === -1 ? 0.3 : 0.85}
+                className="cursor-pointer transition-all hover:opacity-100"
                 style={
-                  isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined
+                  isCurrentHour ? { filter: "drop-shadow(0 0 4px var(--nb-lime))" } : undefined
                 }
                 onClick={() => navigateToHour(selectedDayDateStr, h)}
                 onMouseEnter={(e) =>
@@ -279,12 +279,12 @@ export function HeroGearClock({
                 d={gearArcPath(startDeg, GEAR_ARC_SPAN, GEAR_AM_INNER, GEAR_AM_OUTER)}
                 fill={hLevel === -1 ? "transparent" : LEVEL_COLORS[hLevel]}
                 stroke={isCurrentHour ? "var(--nb-lime)" : hLevel === -1 ? "var(--border)" : "none"}
-                strokeWidth={isCurrentHour ? "2" : hLevel === -1 ? "0.5" : "0"}
+                strokeWidth={isCurrentHour ? "1.5" : hLevel === -1 ? "0.5" : "0"}
                 strokeDasharray={hLevel === -1 && !isCurrentHour ? "3 2" : "none"}
-                opacity={hLevel === -1 ? 0.3 : 1}
-                className="cursor-pointer transition-all hover:opacity-80"
+                opacity={hLevel === -1 ? 0.3 : 0.85}
+                className="cursor-pointer transition-all hover:opacity-100"
                 style={
-                  isCurrentHour ? { filter: "drop-shadow(0 0 6px var(--nb-lime))" } : undefined
+                  isCurrentHour ? { filter: "drop-shadow(0 0 4px var(--nb-lime))" } : undefined
                 }
                 onClick={() => navigateToHour(selectedDayDateStr, h)}
                 onMouseEnter={(e) =>
@@ -338,7 +338,7 @@ export function HeroGearClock({
           r={GEAR_HUB_R}
           fill="var(--card)"
           stroke="var(--border)"
-          strokeWidth="2.5"
+          strokeWidth="1.5"
           pointerEvents="none"
         />
         <circle

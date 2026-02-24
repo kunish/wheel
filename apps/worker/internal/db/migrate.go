@@ -60,6 +60,7 @@ var initSchema = []string{
 		mode INT DEFAULT 0 NOT NULL,
 		first_token_time_out INT DEFAULT 0 NOT NULL,
 		session_keep_time INT DEFAULT 0 NOT NULL,
+		profile_id INT NOT NULL DEFAULT 0,
 		` + "`order`" + ` INT DEFAULT 0 NOT NULL
 	)`,
 	`CREATE TABLE IF NOT EXISTS users (
@@ -79,6 +80,15 @@ var initSchema = []string{
 		cache_read_price DOUBLE DEFAULT 0 NOT NULL,
 		cache_write_price DOUBLE DEFAULT 0 NOT NULL,
 		source VARCHAR(255) DEFAULT '' NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`,
+	`CREATE TABLE IF NOT EXISTS model_profiles (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		name VARCHAR(255) NOT NULL,
+		provider VARCHAR(255) NOT NULL,
+		models TEXT NOT NULL,
+		is_builtin BOOLEAN DEFAULT false NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`,
@@ -108,6 +118,7 @@ var initIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_time ON relay_logs(time)`,
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_channel_id ON relay_logs(channel_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_error ON relay_logs(error(255))`,
+	"CREATE INDEX IF NOT EXISTS idx_groups_profile_id ON `groups`(profile_id)",
 }
 
 // initAlters upgrades existing columns (idempotent).
@@ -116,6 +127,10 @@ var initAlters = []string{
 	`ALTER TABLE relay_logs MODIFY COLUMN response_content MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN attempts MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN upstream_content MEDIUMTEXT`,
+	`ALTER TABLE model_profiles ADD COLUMN IF NOT EXISTS provider VARCHAR(255) NOT NULL DEFAULT ''`,
+	`ALTER TABLE model_profiles ADD COLUMN IF NOT EXISTS models TEXT`,
+	`UPDATE model_profiles SET models = '[]' WHERE models IS NULL`,
+	"ALTER TABLE `groups` ADD COLUMN IF NOT EXISTS profile_id INT NOT NULL DEFAULT 0",
 }
 
 // Migrate ensures all tables exist, then applies any pending Drizzle migration files.
@@ -140,4 +155,3 @@ func Migrate(db *sql.DB) error {
 	log.Println("[migration] Schema ready")
 	return nil
 }
-

@@ -2,19 +2,26 @@ package dal
 
 import (
 	"context"
+	"slices"
+	"strings"
 
 	"github.com/uptrace/bun"
 
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
-func ListGroups(ctx context.Context, db *bun.DB) ([]types.Group, error) {
+func ListGroups(ctx context.Context, db *bun.DB, profileID int) ([]types.Group, error) {
 	var groups []types.Group
-	err := db.NewSelect().Model(&groups).
-		OrderExpr("`order` ASC, id ASC").
-		Scan(ctx)
+	q := db.NewSelect().Model(&groups)
+	if profileID > 0 {
+		q = q.Where("profile_id = ?", profileID)
+	}
+	err := q.OrderExpr("`order` ASC, id ASC").Scan(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if groups == nil {
+		groups = []types.Group{}
 	}
 
 	// Load all group items
@@ -144,6 +151,9 @@ func UpdateGroup(ctx context.Context, db *bun.DB, id int, data map[string]any, i
 }
 
 func DeleteGroup(ctx context.Context, db *bun.DB, id int) error {
+	if _, err := db.NewDelete().Model((*types.GroupItem)(nil)).Where("group_id = ?", id).Exec(ctx); err != nil {
+		return err
+	}
 	_, err := db.NewDelete().Model((*types.Group)(nil)).Where("id = ?", id).Exec(ctx)
 	return err
 }
@@ -159,4 +169,103 @@ func ReorderGroups(ctx context.Context, db *bun.DB, orderedIDs []int) error {
 		}
 	}
 	return nil
+}
+
+// AssignOrphanedGroups migrates groups with profile_id=0 to defaultProfileID.
+func AssignOrphanedGroups(ctx context.Context, db *bun.DB, defaultProfileID int) error {
+	_, err := db.NewUpdate().TableExpr("`groups`").
+		Set("profile_id = ?", defaultProfileID).
+		Where("profile_id = 0").
+		Exec(ctx)
+	return err
+}
+
+func ListGroupsByProfileLite(ctx context.Context, db *bun.DB, profileID int) ([]types.Group, error) {
+	var groups []types.Group
+	err := db.NewSelect().Model(&groups).
+		Where("profile_id = ?", profileID).
+		OrderExpr("`order` ASC, id ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if groups == nil {
+		groups = []types.Group{}
+	}
+	return groups, nil
+}
+
+func MaterializeProfileGroups(
+	ctx context.Context,
+	db *bun.DB,
+	profileID int,
+	modelNames []string,
+) (created int, existing int, err error) {
+	if profileID <= 0 {
+		return 0, 0, nil
+	}
+
+	seen := make(map[string]struct{}, len(modelNames))
+	uniqueNames := make([]string, 0, len(modelNames))
+	for _, modelName := range modelNames {
+		name := strings.TrimSpace(modelName)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		uniqueNames = append(uniqueNames, name)
+	}
+	if len(uniqueNames) == 0 {
+		return 0, 0, nil
+	}
+	slices.Sort(uniqueNames)
+
+	var existedGroups []types.Group
+	if err = db.NewSelect().Model(&existedGroups).
+		Where("profile_id = ?", profileID).
+		Where("name IN (?)", bun.In(uniqueNames)).
+		Scan(ctx); err != nil {
+		return 0, 0, err
+	}
+	existingNameSet := make(map[string]struct{}, len(existedGroups))
+	for _, g := range existedGroups {
+		existingNameSet[g.Name] = struct{}{}
+	}
+	existing = len(existedGroups)
+
+	for _, name := range uniqueNames {
+		if _, ok := existingNameSet[name]; ok {
+			continue
+		}
+		_, err = CreateGroup(ctx, db, types.Group{
+			Name:      name,
+			Mode:      types.GroupModeRoundRobin,
+			ProfileID: profileID,
+		}, nil)
+		if err != nil {
+			return created, existing, err
+		}
+		created++
+	}
+	return created, existing, nil
+}
+
+// ResetGroupProfilesOnce resets all groups' profile_id to 0 exactly once,
+// using a settings key as guard. This fixes data corrupted by earlier buggy assignment logic.
+func ResetGroupProfilesOnce(ctx context.Context, db *bun.DB) {
+	var count int
+	count, _ = db.NewSelect().TableExpr("settings").
+		Where("`key` = ?", "profile_id_reset_v2").
+		Count(ctx)
+	if count > 0 {
+		return
+	}
+	db.NewUpdate().TableExpr("`groups`").
+		Set("profile_id = 0").
+		Where("profile_id != 0").
+		Exec(ctx)
+	db.ExecContext(ctx, "INSERT INTO settings (`key`, value) VALUES (?, ?)", "profile_id_reset_v2", "done")
 }

@@ -76,7 +76,6 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --color-nb-shadow: var(--nb-shadow);
   --color-nb-lime: var(--nb-lime);
   --color-nb-pink: var(--nb-pink);
   --color-nb-sky: var(--nb-sky);
@@ -92,33 +91,31 @@
 }
 
 /* ═══════════════════════════════════════════
-   NEOBRUTALISM — Light Theme
-   Warm cream background, bold blacks, vivid accents
+   VERCEL / ZINC — Light Theme
    ═══════════════════════════════════════════ */
 
 :root {
-  --radius: 0.5rem;
-  --background: #fffdf7;
-  --foreground: #1a1a1a;
+  --radius: 0.75rem;
+  --background: #ffffff;
+  --foreground: #09090b;
   --card: #ffffff;
-  --card-foreground: #1a1a1a;
+  --card-foreground: #09090b;
   --popover: #ffffff;
-  --popover-foreground: #1a1a1a;
-  --primary: #1a1a1a;
-  --primary-foreground: #fffdf7;
-  --secondary: #f0ede6;
-  --secondary-foreground: #1a1a1a;
-  --muted: #f5f3ee;
-  --muted-foreground: #6b6560;
-  --accent: #c8f547;
-  --accent-foreground: #1a1a1a;
-  --destructive: #ff4444;
-  --border: #1a1a1a;
-  --input: #1a1a1a;
-  --ring: #1a1a1a;
+  --popover-foreground: #09090b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #ef4444;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #18181b;
 
-  /* Neobrutalism accent palette */
-  --nb-shadow: #1a1a1a;
+  /* Accent palette for animations (kept for compatibility) */
   --nb-lime: #c8f547;
   --nb-pink: #ff8fab;
   --nb-sky: #7dd3fc;
@@ -126,69 +123,67 @@
   --nb-lavender: #c4b5fd;
 
   /* Charts */
-  --chart-1: #c8f547;
-  --chart-2: #ff8fab;
-  --chart-3: #7dd3fc;
-  --chart-4: #fdba74;
-  --chart-5: #c4b5fd;
+  --chart-1: #09090b;
+  --chart-2: #71717a;
+  --chart-3: #a1a1aa;
+  --chart-4: #d4d4d8;
+  --chart-5: #e4e4e7;
 
   /* Sidebar */
-  --sidebar: #1a1a1a;
-  --sidebar-foreground: #fffdf7;
-  --sidebar-primary: #c8f547;
-  --sidebar-primary-foreground: #1a1a1a;
-  --sidebar-accent: #2a2a2a;
-  --sidebar-accent-foreground: #fffdf7;
-  --sidebar-border: #333333;
-  --sidebar-ring: #c8f547;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #09090b;
+  --sidebar-primary: #18181b;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #18181b;
 }
 
 /* ═══════════════════════════════════════════
-   NEOBRUTALISM — Dark Theme
-   Deep charcoal, neon accents
+   VERCEL / ZINC — Dark Theme
    ═══════════════════════════════════════════ */
 
 .dark {
-  --background: #151515;
-  --foreground: #f5f3ee;
-  --card: #1e1e1e;
-  --card-foreground: #f5f3ee;
-  --popover: #1e1e1e;
-  --popover-foreground: #f5f3ee;
-  --primary: #f5f3ee;
-  --primary-foreground: #1a1a1a;
-  --secondary: #2a2a2a;
-  --secondary-foreground: #f5f3ee;
-  --muted: #262626;
-  --muted-foreground: #999;
-  --accent: #c8f547;
-  --accent-foreground: #1a1a1a;
-  --destructive: #ff4444;
-  --border: #f5f3ee;
-  --input: #f5f3ee;
-  --ring: #c8f547;
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #09090b;
+  --card-foreground: #fafafa;
+  --popover: #09090b;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #7f1d1d;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #d4d4d8;
 
-  --nb-shadow: #000000;
   --nb-lime: #c8f547;
   --nb-pink: #ff8fab;
   --nb-sky: #7dd3fc;
   --nb-orange: #fdba74;
   --nb-lavender: #c4b5fd;
 
-  --chart-1: #c8f547;
-  --chart-2: #ff8fab;
-  --chart-3: #7dd3fc;
-  --chart-4: #fdba74;
-  --chart-5: #c4b5fd;
+  --chart-1: #fafafa;
+  --chart-2: #a1a1aa;
+  --chart-3: #71717a;
+  --chart-4: #52525b;
+  --chart-5: #27272a;
 
-  --sidebar: #111111;
-  --sidebar-foreground: #f5f3ee;
-  --sidebar-primary: #c8f547;
-  --sidebar-primary-foreground: #1a1a1a;
-  --sidebar-accent: #1e1e1e;
-  --sidebar-accent-foreground: #f5f3ee;
-  --sidebar-border: #333;
-  --sidebar-ring: #c8f547;
+  --sidebar: #09090b;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #fafafa;
+  --sidebar-primary-foreground: #18181b;
+  --sidebar-accent: #27272a;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #27272a;
+  --sidebar-ring: #d4d4d8;
 }
 
 @layer base {
@@ -212,32 +207,6 @@
 .prose :where(code)::before,
 .prose :where(code)::after {
   content: none;
-}
-
-/* ═══════════════════════════════════════════
-   NEOBRUTALISM — Utility classes
-   ═══════════════════════════════════════════ */
-
-@layer utilities {
-  .nb-shadow {
-    box-shadow: 4px 4px 0 var(--nb-shadow);
-  }
-  .nb-shadow-sm {
-    box-shadow: 2px 2px 0 var(--nb-shadow);
-  }
-  .nb-shadow-lg {
-    box-shadow: 6px 6px 0 var(--nb-shadow);
-  }
-  .nb-shadow-hover {
-    box-shadow: 2px 2px 0 var(--nb-shadow);
-    translate: 2px 2px;
-  }
-  .nb-border {
-    border: 2px solid var(--border);
-  }
-  .nb-border-3 {
-    border: 3px solid var(--border);
-  }
 }
 
 /* ═══════════════════════════════════════════
@@ -274,10 +243,14 @@
 @keyframes gear-pulse-shadow {
   0%,
   100% {
-    box-shadow: 4px 4px 0 var(--nb-shadow);
+    box-shadow:
+      0 4px 6px -1px rgb(0 0 0 / 0.1),
+      0 2px 4px -2px rgb(0 0 0 / 0.1);
   }
   50% {
-    box-shadow: 2px 2px 0 var(--nb-shadow);
+    box-shadow:
+      0 1px 3px 0 rgb(0 0 0 / 0.1),
+      0 1px 2px -1px rgb(0 0 0 / 0.1);
   }
 }
 

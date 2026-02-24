@@ -42,7 +42,7 @@ export function ModelCombobox({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "border-border data-[placeholder]:text-muted-foreground bg-background focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-44 items-center justify-between gap-2 rounded-md border-2 px-3 py-2 text-sm font-bold whitespace-nowrap shadow-[2px_2px_0_var(--nb-shadow)] transition-all outline-none focus-visible:shadow-[4px_4px_0_var(--nb-shadow)] focus-visible:ring-[3px]",
+            "data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 border-input bg-background flex h-10 w-44 items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm font-medium whitespace-nowrap shadow-sm transition-colors outline-none focus-visible:ring-2",
             className,
           )}
         >

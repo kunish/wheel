@@ -44,7 +44,7 @@ func ImportData(ctx context.Context, db *bun.DB, dump *types.DBDump) types.Impor
 
 	// Import groups (dedup by name)
 	if len(dump.Groups) > 0 {
-		existingGroups, _ := dal.ListGroups(ctx, db)
+		existingGroups, _ := dal.ListGroups(ctx, db, 0)
 		existingNames := make(map[string]bool)
 		for _, g := range existingGroups {
 			existingNames[g.Name] = true

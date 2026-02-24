@@ -57,7 +57,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <Card className="relative z-10 w-full max-w-sm shadow-[6px_6px_0_var(--nb-shadow)]">
+      <Card className="relative z-10 w-full max-w-sm shadow-xl">
         <CardHeader className="pb-2 text-center">
           <motion.div
             className="mb-4 flex justify-center"
@@ -65,7 +65,7 @@ export default function LoginPage() {
             animate={{ scale: 1, rotate: 0 }}
             transition={{ duration: 0.6, ease: "backOut" }}
           >
-            <div className="bg-nb-lime border-border flex size-14 items-center justify-center rounded-lg border-2 shadow-[3px_3px_0_var(--nb-shadow)]">
+            <div className="bg-nb-lime flex size-14 items-center justify-center rounded-xl shadow-sm">
               <svg
                 className="size-7"
                 viewBox="0 0 24 24"

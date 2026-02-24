@@ -18,16 +18,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/robfig/cron/v3"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db"
+	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/handler"
 	"github.com/kunish/wheel/apps/worker/internal/observe"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/seed"
 	"github.com/kunish/wheel/apps/worker/internal/service"
 	"github.com/kunish/wheel/apps/worker/internal/ws"
+	"github.com/robfig/cron/v3"
 )
 
 func main() {
@@ -52,6 +53,33 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// ── Cache (created early so startup can populate it) ──
+	kv := cache.New()
+	defer kv.Close()
+
+	// Fetch model metadata and create builtin profiles FIRST
+	var startupMetadata map[string]service.ModelMeta
+	if metadata, err := service.FetchAndFlattenMetadata(); err != nil {
+		log.Printf("[startup] Failed to fetch model metadata: %v", err)
+	} else {
+		startupMetadata = metadata
+		kv.Put(service.MetadataKVKey, metadata, service.MetadataTTL)
+		log.Printf("[startup] Synced %d model metadata entries", len(metadata))
+	}
+	if startupMetadata != nil {
+		service.UpsertBuiltinProfilesFromMetadata(context.Background(), database, startupMetadata)
+	} else {
+		service.UpsertBuiltinProfiles(context.Background(), database)
+	}
+
+	// One-time fix: reset groups incorrectly assigned by earlier buggy logic
+	dal.ResetGroupProfilesOnce(context.Background(), database)
+
+	// Now assign orphaned groups (builtin profiles already exist)
+	if dpID, err := dal.EnsureDefaultProfile(context.Background(), database); err == nil && dpID > 0 {
+		dal.AssignOrphanedGroups(context.Background(), database, dpID)
+	}
+
 	// ── Seed subcommand ──
 	if len(os.Args) > 1 && os.Args[1] == "seed" {
 		if err := seed.Run(context.Background(), database); err != nil {
@@ -59,10 +87,6 @@ func main() {
 		}
 		return
 	}
-
-	// ── Cache ──
-	kv := cache.New()
-	defer kv.Close()
 
 	// ── WebSocket Hub ──
 	hub := ws.New(cfg.JWTSecret, cfg.AllowedOrigins)
@@ -153,6 +177,16 @@ func main() {
 		log.Println("[cron] Syncing model prices from models.dev...")
 		if _, err := service.SyncPricesFromModelsDev(context.Background(), database); err != nil {
 			log.Printf("[cron] price sync error: %v", err)
+		}
+	})
+	c.AddFunc("0 */6 * * *", func() {
+		log.Println("[cron] Refreshing model metadata...")
+		if metadata, err := service.FetchAndFlattenMetadata(); err != nil {
+			log.Printf("[cron] metadata refresh error: %v", err)
+		} else {
+			kv.Put(service.MetadataKVKey, metadata, service.MetadataTTL)
+			service.UpsertBuiltinProfilesFromMetadata(context.Background(), database, metadata)
+			log.Printf("[cron] metadata refreshed: %d entries", len(metadata))
 		}
 	})
 	c.AddFunc("0 */6 * * *", func() {

@@ -206,7 +206,6 @@ func (h *Handler) GetModelMetadata(c *gin.Context) {
 	successJSON(c, metadata)
 }
 
-// RefreshModelMetadata godoc
 // @Summary Refresh model metadata from models.dev
 // @Tags Models
 // @Produce json
@@ -223,6 +222,16 @@ func (h *Handler) RefreshModelMetadata(c *gin.Context) {
 	}
 
 	h.Cache.Put(service.MetadataKVKey, metadata, service.MetadataTTL)
+
+	// Ensure builtin workspace profiles exist
+	service.UpsertBuiltinProfilesFromMetadata(c.Request.Context(), h.DB, metadata)
+
+	// Ensure default profile and migrate orphaned groups
+	defaultProfileID, err := dal.EnsureDefaultProfile(c.Request.Context(), h.DB)
+	if err == nil && defaultProfileID > 0 {
+		dal.AssignOrphanedGroups(c.Request.Context(), h.DB, defaultProfileID)
+	}
+
 	successJSON(c, gin.H{"count": len(metadata)})
 }
 

@@ -176,7 +176,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
       </PopoverTrigger>
       <PopoverContent align="start" className="flex w-auto gap-0 p-0">
         {/* Presets */}
-        <div className="border-border flex flex-col gap-0.5 border-r-2 p-3">
+        <div className="border-border flex flex-col gap-0.5 border-r p-3">
           <span className="text-muted-foreground mb-1 px-2 text-[10px] font-bold tracking-wider uppercase">
             {t("timeRange.presets")}
           </span>
@@ -215,7 +215,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
           />
 
           {/* Time inputs */}
-          <div className="border-border flex items-center gap-4 border-t-2 px-4 py-3">
+          <div className="border-border flex items-center gap-4 border-t px-4 py-3">
             <div className="flex items-center gap-1.5">
               <span className="text-muted-foreground text-xs font-medium">
                 {t("timeRange.from")}
@@ -233,7 +233,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
                   const n = Math.min(23, Math.max(0, Number.parseInt(e.target.value) || 0))
                   setFromTime((p) => ({ ...p, hours: String(n).padStart(2, "0") }))
                 }}
-                className="border-border bg-background w-7 rounded border-2 px-1 py-0.5 text-center font-mono text-xs"
+                className="border-input bg-background w-7 rounded border px-1 py-0.5 text-center font-mono text-xs"
               />
               <span className="text-muted-foreground text-xs">:</span>
               <input
@@ -249,7 +249,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
                   const n = Math.min(59, Math.max(0, Number.parseInt(e.target.value) || 0))
                   setFromTime((p) => ({ ...p, minutes: String(n).padStart(2, "0") }))
                 }}
-                className="border-border bg-background w-7 rounded border-2 px-1 py-0.5 text-center font-mono text-xs"
+                className="border-input bg-background w-7 rounded border px-1 py-0.5 text-center font-mono text-xs"
               />
             </div>
 
@@ -268,7 +268,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
                   const n = Math.min(23, Math.max(0, Number.parseInt(e.target.value) || 0))
                   setToTime((p) => ({ ...p, hours: String(n).padStart(2, "0") }))
                 }}
-                className="border-border bg-background w-7 rounded border-2 px-1 py-0.5 text-center font-mono text-xs"
+                className="border-input bg-background w-7 rounded border px-1 py-0.5 text-center font-mono text-xs"
               />
               <span className="text-muted-foreground text-xs">:</span>
               <input
@@ -284,7 +284,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
                   const n = Math.min(59, Math.max(0, Number.parseInt(e.target.value) || 0))
                   setToTime((p) => ({ ...p, minutes: String(n).padStart(2, "0") }))
                 }}
-                className="border-border bg-background w-7 rounded border-2 px-1 py-0.5 text-center font-mono text-xs"
+                className="border-input bg-background w-7 rounded border px-1 py-0.5 text-center font-mono text-xs"
               />
             </div>
 

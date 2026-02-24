@@ -910,7 +910,15 @@ func (h *RelayHandler) loadGroups() []types.Group {
 		return *groups
 	}
 
-	g, err := dal.ListGroups(context.Background(), h.DB)
+	// Read active_profile_id from settings to filter groups
+	profileID := 0
+	if val, _ := dal.GetSetting(context.Background(), h.DB, "active_profile_id"); val != nil {
+		if id, err := strconv.Atoi(*val); err == nil {
+			profileID = id
+		}
+	}
+
+	g, err := dal.ListGroups(context.Background(), h.DB, profileID)
 	if err != nil {
 		return nil
 	}

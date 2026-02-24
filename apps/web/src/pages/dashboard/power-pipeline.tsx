@@ -148,8 +148,9 @@ export function PowerPipeline({
                   width={pipeW}
                   height={seg.h}
                   rx={4}
-                  fill="var(--nb-shadow)"
-                  opacity={0.1}
+                  fill="rgb(0 0 0 / 0.1)"
+                  opacity={0.05}
+                  filter="url(#pipe-glow)"
                 />
               )}
 
@@ -166,13 +167,13 @@ export function PowerPipeline({
                     ? "var(--nb-lime)"
                     : seg.day.isFuture
                       ? "var(--border)"
-                      : "var(--border)"
+                      : "transparent"
                 }
-                strokeWidth={seg.isToday ? 2.5 : seg.day.isFuture ? 1 : 1.5}
+                strokeWidth={seg.isToday ? 1.5 : seg.day.isFuture ? 1 : 0}
                 strokeDasharray={seg.day.isFuture ? "4 3" : "none"}
-                opacity={seg.day.isFuture ? 0.3 : 1}
+                opacity={seg.day.isFuture ? 0.3 : 0.85}
                 className={
-                  seg.day.isFuture ? "" : "cursor-pointer transition-opacity hover:opacity-80"
+                  seg.day.isFuture ? "" : "cursor-pointer transition-opacity hover:opacity-100"
                 }
                 style={
                   seg.isToday
@@ -221,7 +222,7 @@ export function PowerPipeline({
               x2={next.cx - pipeW / 2}
               y2={spineY}
               stroke="var(--nb-lime)"
-              strokeWidth="2"
+              strokeWidth="1.5"
               opacity={0.25}
               strokeDasharray="4 4"
               style={{

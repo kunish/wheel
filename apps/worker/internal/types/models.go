@@ -28,30 +28,30 @@ type ChannelKey struct {
 	Enabled          bool    `bun:"enabled"             json:"enabled"`
 	ChannelKey       string  `bun:"channel_key"         json:"channelKey"`
 	StatusCode       int     `bun:"status_code"         json:"statusCode"`
-	LastUseTimestamp  int64   `bun:"last_use_timestamp"  json:"lastUseTimestamp"`
+	LastUseTimestamp int64   `bun:"last_use_timestamp"  json:"lastUseTimestamp"`
 	TotalCost        float64 `bun:"total_cost"          json:"totalCost"`
 	Remark           string  `bun:"remark"              json:"remark"`
 }
 
 // Channel represents an upstream provider channel.
 type Channel struct {
-	bun.BaseModel  `bun:"table:channels"`
-	ID             int              `bun:"id,pk,autoincrement" json:"id"`
-	Name           string           `bun:"name"                json:"name"`
-	Type           OutboundType     `bun:"type"                json:"type"`
-	Enabled        bool             `bun:"enabled"             json:"enabled"`
-	BaseUrls       BaseUrlList      `bun:"base_urls"           json:"baseUrls"`
-	Keys           []ChannelKey     `bun:"-"                   json:"keys"`
-	Model          StringList       `bun:"model"               json:"model"`
-	FetchedModel   StringList       `bun:"fetched_model"       json:"fetchedModel"`
-	CustomModel    string           `bun:"custom_model"        json:"customModel"`
-	Proxy          bool             `bun:"proxy"               json:"proxy"`
-	AutoSync       bool             `bun:"auto_sync"           json:"autoSync"`
-	AutoGroup      AutoGroupType    `bun:"auto_group"          json:"autoGroup"`
-	CustomHeader   CustomHeaderList `bun:"custom_header"       json:"customHeader"`
-	ParamOverride  *string          `bun:"param_override"      json:"paramOverride"`
-	ChannelProxy   *string          `bun:"channel_proxy"       json:"channelProxy"`
-	Order          int              `bun:"order,default:0" json:"order"`
+	bun.BaseModel `bun:"table:channels"`
+	ID            int              `bun:"id,pk,autoincrement" json:"id"`
+	Name          string           `bun:"name"                json:"name"`
+	Type          OutboundType     `bun:"type"                json:"type"`
+	Enabled       bool             `bun:"enabled"             json:"enabled"`
+	BaseUrls      BaseUrlList      `bun:"base_urls"           json:"baseUrls"`
+	Keys          []ChannelKey     `bun:"-"                   json:"keys"`
+	Model         StringList       `bun:"model"               json:"model"`
+	FetchedModel  StringList       `bun:"fetched_model"       json:"fetchedModel"`
+	CustomModel   string           `bun:"custom_model"        json:"customModel"`
+	Proxy         bool             `bun:"proxy"               json:"proxy"`
+	AutoSync      bool             `bun:"auto_sync"           json:"autoSync"`
+	AutoGroup     AutoGroupType    `bun:"auto_group"          json:"autoGroup"`
+	CustomHeader  CustomHeaderList `bun:"custom_header"       json:"customHeader"`
+	ParamOverride *string          `bun:"param_override"      json:"paramOverride"`
+	ChannelProxy  *string          `bun:"channel_proxy"       json:"channelProxy"`
+	Order         int              `bun:"order,default:0" json:"order"`
 }
 
 // GroupItem links a channel to a group with routing metadata.
@@ -74,6 +74,7 @@ type Group struct {
 	Mode              GroupMode   `bun:"mode"                   json:"mode"`
 	FirstTokenTimeOut int         `bun:"first_token_time_out"   json:"firstTokenTimeOut"`
 	SessionKeepTime   int         `bun:"session_keep_time"      json:"sessionKeepTime"`
+	ProfileID         int         `bun:"profile_id"             json:"profileId"`
 	Order             int         `bun:"order"                  json:"order,omitempty"`
 	Items             []GroupItem `bun:"-"                      json:"items"`
 }
@@ -107,23 +108,23 @@ type ChannelAttempt struct {
 // RelayLog records a single relay request with its outcome.
 type RelayLog struct {
 	bun.BaseModel    `bun:"table:relay_logs"`
-	ID               int              `bun:"id,pk,autoincrement"  json:"id"`
-	Time             int64            `bun:"time"                 json:"time"`
-	RequestModelName string           `bun:"request_model_name"   json:"requestModelName"`
-	ChannelID        int              `bun:"channel_id"           json:"channelId"`
-	ChannelName      string           `bun:"channel_name"         json:"channelName"`
-	ActualModelName  string           `bun:"actual_model_name"    json:"actualModelName"`
-	InputTokens      int              `bun:"input_tokens"         json:"inputTokens"`
-	OutputTokens     int              `bun:"output_tokens"        json:"outputTokens"`
-	FTUT             int              `bun:"ftut"                 json:"ftut"`
-	UseTime          int              `bun:"use_time"             json:"useTime"`
-	Cost             float64          `bun:"cost"                 json:"cost"`
-	RequestContent   string           `bun:"request_content"      json:"requestContent"`
-	UpstreamContent  *string          `bun:"upstream_content"     json:"upstreamContent,omitempty"`
-	ResponseContent  string           `bun:"response_content"     json:"responseContent"`
-	Error            string           `bun:"error"                json:"error"`
-	Attempts         AttemptList      `bun:"attempts"             json:"attempts"`
-	TotalAttempts    int              `bun:"total_attempts"       json:"totalAttempts"`
+	ID               int         `bun:"id,pk,autoincrement"  json:"id"`
+	Time             int64       `bun:"time"                 json:"time"`
+	RequestModelName string      `bun:"request_model_name"   json:"requestModelName"`
+	ChannelID        int         `bun:"channel_id"           json:"channelId"`
+	ChannelName      string      `bun:"channel_name"         json:"channelName"`
+	ActualModelName  string      `bun:"actual_model_name"    json:"actualModelName"`
+	InputTokens      int         `bun:"input_tokens"         json:"inputTokens"`
+	OutputTokens     int         `bun:"output_tokens"        json:"outputTokens"`
+	FTUT             int         `bun:"ftut"                 json:"ftut"`
+	UseTime          int         `bun:"use_time"             json:"useTime"`
+	Cost             float64     `bun:"cost"                 json:"cost"`
+	RequestContent   string      `bun:"request_content"      json:"requestContent"`
+	UpstreamContent  *string     `bun:"upstream_content"     json:"upstreamContent,omitempty"`
+	ResponseContent  string      `bun:"response_content"     json:"responseContent"`
+	Error            string      `bun:"error"                json:"error"`
+	Attempts         AttemptList `bun:"attempts"             json:"attempts"`
+	TotalAttempts    int         `bun:"total_attempts"       json:"totalAttempts"`
 }
 
 // User represents an admin user.
@@ -164,6 +165,18 @@ type LLMInfo struct {
 	Source      string  `json:"source"`
 	CreatedAt   *string `json:"createdAt,omitempty"`
 	UpdatedAt   *string `json:"updatedAt,omitempty"`
+}
+
+// ModelProfile represents a workspace for organizing groups.
+type ModelProfile struct {
+	bun.BaseModel `bun:"table:model_profiles"`
+	ID            int        `bun:"id,pk,autoincrement" json:"id"`
+	Name          string     `bun:"name"                json:"name"`
+	Provider      string     `bun:"provider"            json:"provider"`
+	Models        StringList `bun:"models"           json:"models"`
+	IsBuiltin     bool       `bun:"is_builtin"          json:"isBuiltin"`
+	CreatedAt     *string    `bun:"created_at"          json:"createdAt,omitempty"`
+	UpdatedAt     *string    `bun:"updated_at"          json:"updatedAt,omitempty"`
 }
 
 // ──── JSON Scanner/Valuer types for SQLite TEXT columns ────
