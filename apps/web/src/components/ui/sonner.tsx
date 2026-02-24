@@ -9,11 +9,12 @@ import {
 import { Toaster as Sonner } from "sonner"
 import { useTheme } from "@/components/theme-provider"
 
-const Toaster = ({ ...props }: ToasterProps) => {
+function Toaster({ ...props }: ToasterProps) {
   const { theme = "system" } = useTheme()
 
   return (
     <Sonner
+      data-slot="sonner"
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
       icons={{

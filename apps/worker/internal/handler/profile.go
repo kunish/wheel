@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -230,27 +229,6 @@ type profileGroupsMaterializeRequest struct {
 	Models []string `json:"models"`
 }
 
-func normalizeProfileModels(models []string) []string {
-	if len(models) == 0 {
-		return []string{}
-	}
-	seen := make(map[string]struct{}, len(models))
-	result := make([]string, 0, len(models))
-	for _, m := range models {
-		model := strings.TrimSpace(m)
-		if model == "" {
-			continue
-		}
-		if _, ok := seen[model]; ok {
-			continue
-		}
-		seen[model] = struct{}{}
-		result = append(result, model)
-	}
-	sort.Strings(result)
-	return result
-}
-
 // ListProfileGroupsPreview godoc
 // @Summary List virtual preview groups for a profile
 // @Tags Profiles
@@ -276,7 +254,7 @@ func (h *Handler) ListProfileGroupsPreview(c *gin.Context) {
 		return
 	}
 
-	models := normalizeProfileModels([]string(profile.Models))
+	models := dal.NormalizeModels([]string(profile.Models))
 	groups, err := dal.ListGroupsByProfileLite(c.Request.Context(), h.DB, profileID)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
@@ -344,7 +322,7 @@ func (h *Handler) MaterializeProfileGroups(c *gin.Context) {
 	if len(targetModels) == 0 {
 		targetModels = []string(profile.Models)
 	}
-	targetModels = normalizeProfileModels(targetModels)
+	targetModels = dal.NormalizeModels(targetModels)
 
 	created, existing, err := dal.MaterializeProfileGroups(c.Request.Context(), h.DB, profileID, targetModels)
 	if err != nil {

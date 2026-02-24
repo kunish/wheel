@@ -12,7 +12,7 @@ const badgeVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground",
         secondary: "bg-secondary text-secondary-foreground",
-        destructive: "bg-destructive text-white",
+        destructive: "bg-destructive text-destructive-foreground",
         outline: "bg-background text-foreground",
         ghost: "border-transparent shadow-none bg-muted text-muted-foreground",
         lime: "bg-nb-lime text-foreground",
@@ -41,7 +41,7 @@ function Badge({
     <Comp
       data-slot="badge"
       data-variant={variant}
-      className={cn(badgeVariants({ variant }), className)}
+      className={cn(badgeVariants({ variant, className }))}
       {...props}
     />
   )

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/uptrace/bun"
@@ -38,7 +39,8 @@ func GetProfile(ctx context.Context, db *bun.DB, id int) (*types.ModelProfile, e
 	return p, nil
 }
 
-func normalizeModels(models []string) []string {
+// NormalizeModels deduplicates, trims, and sorts model names.
+func NormalizeModels(models []string) []string {
 	if len(models) == 0 {
 		return []string{}
 	}
@@ -55,6 +57,7 @@ func normalizeModels(models []string) []string {
 		seen[m] = struct{}{}
 		result = append(result, m)
 	}
+	sort.Strings(result)
 	return result
 }
 
@@ -68,7 +71,7 @@ func CreateProfile(
 	p := &types.ModelProfile{
 		Name:      name,
 		Provider:  strings.TrimSpace(provider),
-		Models:    types.StringList(normalizeModels(models)),
+		Models:    types.StringList(NormalizeModels(models)),
 		IsBuiltin: false,
 	}
 	if p.Provider == "" {
@@ -99,18 +102,32 @@ func UpdateProfile(
 		q = q.Set("provider = ?", strings.TrimSpace(*provider))
 	}
 	if replaceModels {
-		q = q.Set("models = ?", types.StringList(normalizeModels(models)))
+		q = q.Set("models = ?", types.StringList(NormalizeModels(models)))
 	}
-	_, err := q.Exec(ctx)
-	return err
+	res, err := q.Exec(ctx)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return errors.New("profile not found or is builtin")
+	}
+	return nil
 }
 
 func DeleteProfile(ctx context.Context, db *bun.DB, id int) error {
-	_, err := db.NewDelete().Model((*types.ModelProfile)(nil)).
+	res, err := db.NewDelete().Model((*types.ModelProfile)(nil)).
 		Where("id = ?", id).
 		Where("is_builtin = false").
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return errors.New("profile not found or is builtin")
+	}
+	return nil
 }
 
 func UpsertBuiltinProfile(
@@ -133,7 +150,7 @@ func UpsertBuiltinProfile(
 		normalizedProvider = "custom"
 	}
 	shouldUpdateModels := models != nil
-	normalizedModels := types.StringList(normalizeModels(models))
+	normalizedModels := types.StringList(NormalizeModels(models))
 	if len(normalizedModels) > 1 {
 		slices.Sort(normalizedModels)
 	}

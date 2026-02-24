@@ -219,7 +219,7 @@ export default function ModelPage() {
     mutationFn: (id: number) => activateProfile(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings"] })
-      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      invalidateGroupQueries()
     },
   })
   const setActiveProfileId = useCallback(
@@ -283,7 +283,7 @@ export default function ModelPage() {
     if (activeProfileId === undefined || !profileList.some((p) => p.id === activeProfileId)) {
       setActiveProfileId(profileList[0].id)
     }
-  }, [profileList, activeProfileId, settingsData])
+  }, [profileList, activeProfileId, settingsData, setActiveProfileId])
 
   const channels = useMemo(
     () => (channelData?.data?.channels ?? []) as ChannelRecord[],
@@ -694,7 +694,6 @@ export default function ModelPage() {
   }
 
   const channelMap = useMemo(() => new Map(channels.map((ch) => [ch.id, ch])), [channels])
-  const groupMap = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
   const groupIds = useMemo(() => groups.map((g) => `sortable-group-${g.id}`), [groups])
   const channelIds = useMemo(() => channels.map((ch) => `sortable-channel-${ch.id}`), [channels])
   const renderSortableGroups = (
@@ -884,7 +883,7 @@ export default function ModelPage() {
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
-              {groupsLoading ? (
+              {groupsLoading || activeProfileId === undefined ? (
                 <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
               ) : groups.length === 0 ? (
                 <p className="text-muted-foreground text-sm">{t("emptyGroups")}</p>
