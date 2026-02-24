@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/kunish/wheel/compare/v1.12.0...v1.12.1) (2026-02-24)
+
+
+### Bug Fixes
+
+* optimize drag-and-drop interaction for channel and group sorting ([bcaa58d](https://github.com/kunish/wheel/commit/bcaa58da0db4d5be830f0e23e8ffa158ea339baf))
+
 ## [1.12.0](https://github.com/kunish/wheel/compare/v1.11.3...v1.12.0) (2026-02-24)
 
 
