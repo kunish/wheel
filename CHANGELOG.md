@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.12.0](https://github.com/kunish/wheel/compare/v1.11.3...v1.12.0) (2026-02-24)
+
+
+### Features
+
+* improve model profiles UX and sync workflow ([7eb24b1](https://github.com/kunish/wheel/commit/7eb24b1b9c99a4f6f294d4cbe6e012480641dbba))
+
+
+### Bug Fixes
+
+* enable scrolling in log detail sheet panel ([29b99a5](https://github.com/kunish/wheel/commit/29b99a5aa9b651e6c572a86fb151b152f1ece728))
+
 ## [1.11.3](https://github.com/kunish/wheel/compare/v1.11.2...v1.11.3) (2026-02-24)
 
 
