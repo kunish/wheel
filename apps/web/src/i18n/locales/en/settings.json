@@ -71,7 +71,10 @@
       "circuit_breaker_threshold": "Consecutive failures before tripping (default: 5)",
       "circuit_breaker_cooldown": "Base cooldown in seconds (default: 60)",
       "circuit_breaker_max_cooldown": "Maximum cooldown in seconds after exponential backoff (default: 600)"
-    }
+    },
+    "resetCircuitBreakers": "Reset Circuit Breakers",
+    "resetCircuitBreakersDescription": "Manually reset all tripped circuit breakers. Use this when you've confirmed upstream services have recovered.",
+    "circuitBreakersReset": "{{count}} circuit breaker(s) reset"
   },
   "connection": {
     "title": "API Connection",

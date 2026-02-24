@@ -196,6 +196,22 @@ func (h *Handler) ImportData(c *gin.Context) {
 	successJSON(c, result)
 }
 
+// ResetCircuitBreakers godoc
+// @Summary Reset all circuit breakers
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} object "{success: true, data: {reset: int}}"
+// @Security BearerAuth
+// @Router /api/v1/setting/reset-circuit-breakers [post]
+func (h *Handler) ResetCircuitBreakers(c *gin.Context) {
+	if h.CircuitBreakers == nil {
+		errorJSON(c, http.StatusInternalServerError, "Circuit breaker manager not available")
+		return
+	}
+	count := h.CircuitBreakers.ResetAll()
+	successJSON(c, gin.H{"reset": count})
+}
+
 // GetVersion godoc
 // @Summary Get current server version
 // @Tags Settings

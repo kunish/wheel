@@ -8,15 +8,17 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/middleware"
+	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/types"
 	"github.com/uptrace/bun"
 )
 
 // Handler holds shared dependencies for all route handlers.
 type Handler struct {
-	DB     *bun.DB
-	Cache  *cache.MemoryKV
-	Config *config.Config
+	DB              *bun.DB
+	Cache           *cache.MemoryKV
+	Config          *config.Config
+	CircuitBreakers *relay.CircuitBreakerManager
 }
 
 // JSON helpers

@@ -365,6 +365,13 @@ export function applyUpdate() {
   })
 }
 
+export function resetCircuitBreakers() {
+  return apiFetch<{ success: boolean; data: { reset: number } }>(
+    "/api/v1/setting/reset-circuit-breakers",
+    { method: "POST" },
+  )
+}
+
 // ── Model Metadata ──
 
 export function getModelMetadata() {

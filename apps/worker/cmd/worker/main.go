@@ -110,9 +110,10 @@ func main() {
 
 	// ── Handlers ──
 	h := &handler.Handler{
-		DB:     database,
-		Cache:  kv,
-		Config: cfg,
+		DB:              database,
+		Cache:           kv,
+		Config:          cfg,
+		CircuitBreakers: cbm,
 	}
 
 	rh := &handler.RelayHandler{

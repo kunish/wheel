@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getSettings, updateSettings } from "@/lib/api-client"
+import { getSettings, resetCircuitBreakers, updateSettings } from "@/lib/api-client"
 
 const SETTING_KEYS = [
   "log_retention_days",
@@ -57,6 +57,14 @@ export default function SystemConfigSection() {
     },
   })
 
+  const resetMutation = useMutation({
+    mutationFn: resetCircuitBreakers,
+    onSuccess: (res) => {
+      const count = res?.data?.reset ?? 0
+      toast.success(t("systemConfig.circuitBreakersReset", { count }))
+    },
+  })
+
   if (isLoading) {
     return <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
   }
@@ -96,6 +104,18 @@ export default function SystemConfigSection() {
             {t("systemConfig.saveChanges")}
           </Button>
         </form>
+        <div className="mt-4 border-t pt-4">
+          <p className="text-muted-foreground mb-2 text-sm">
+            {t("systemConfig.resetCircuitBreakersDescription")}
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => resetMutation.mutate()}
+            disabled={resetMutation.isPending}
+          >
+            {t("systemConfig.resetCircuitBreakers")}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

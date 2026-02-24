@@ -217,6 +217,25 @@ func (m *CircuitBreakerManager) RecordFailure(channelID, keyID int, modelName st
 	}
 }
 
+// ResetAll clears all circuit breaker entries, returning the number of open/half-open breakers that were reset.
+func (m *CircuitBreakerManager) ResetAll() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	openCount := 0
+	for _, entry := range m.breakers {
+		if entry.state == CircuitOpen || entry.state == CircuitHalfOpen {
+			openCount++
+		}
+	}
+	m.breakers = make(map[string]*circuitEntry)
+
+	if openCount > 0 && m.observer != nil {
+		go m.observer.SetCircuitBreakerState(context.Background(), "reset_all", int64(-openCount))
+	}
+	return openCount
+}
+
 // StartCleanup runs a background goroutine that removes stale closed breakers every 5 minutes.
 // Breakers in closed state with no failure for 30+ minutes are considered stale.
 func (m *CircuitBreakerManager) StartCleanup(ctx context.Context) {

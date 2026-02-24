@@ -92,6 +92,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.GET("/setting/version", h.GetVersion)
 	admin.GET("/setting/check-update", h.CheckUpdate)
 	admin.POST("/setting/apply-update", h.ApplyUpdate)
+	admin.POST("/setting/reset-circuit-breakers", h.ResetCircuitBreakers)
 
 	// Model routes
 	admin.GET("/model/list", h.ListModels)
