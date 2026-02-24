@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/kunish/wheel/compare/v1.11.0...v1.11.1) (2026-02-24)
+
+
+### Bug Fixes
+
+* code quality, UI consistency, and tooltip arrow issues ([45e6b67](https://github.com/kunish/wheel/commit/45e6b672b2de607c6833444f6ec0f6019e0b890d))
+
 ## [1.11.0](https://github.com/kunish/wheel/compare/v1.10.0...v1.11.0) (2026-02-24)
 
 
