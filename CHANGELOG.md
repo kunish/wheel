@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/kunish/wheel/compare/v1.10.0...v1.11.0) (2026-02-24)
+
+
+### Features
+
+* add manual circuit breaker reset via settings page ([a87dac8](https://github.com/kunish/wheel/commit/a87dac8587d1f2e18a050f0ae06294b8ac307765))
+
 ## [1.10.0](https://github.com/kunish/wheel/compare/v1.9.2...v1.10.0) (2026-02-23)
 
 
