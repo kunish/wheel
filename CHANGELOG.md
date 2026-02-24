@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.2](https://github.com/kunish/wheel/compare/v1.12.1...v1.12.2) (2026-02-24)
+
+
+### Bug Fixes
+
+* optimize materialize/unmaterialize selection interaction ([#49](https://github.com/kunish/wheel/issues/49)) ([879ced6](https://github.com/kunish/wheel/commit/879ced67f658b4fa4f9604595d8d4a60bccd4826))
+
 ## [1.12.1](https://github.com/kunish/wheel/compare/v1.12.0...v1.12.1) (2026-02-24)
 
 
