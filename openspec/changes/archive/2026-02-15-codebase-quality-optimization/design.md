@@ -87,7 +87,7 @@ handler 层变为薄包装，只做参数解析和响应格式化。
 
 ### D8: WebSocket 认证 — query parameter JWT
 
-WebSocket 升级前通过 `?token=xxx` query parameter 传递 JWT，在 `HandleWS` 中验证。CORS 改为从配置读取允许的 origin 列表。
+WebSocket 升级前通过 `?token=xxx` query parameter 传递 JWT，在 `HandleWS` 中验证。
 
 **替代方案**: 使用 cookie 认证。放弃原因：当前系统使用 JWT，保持一致性。
 

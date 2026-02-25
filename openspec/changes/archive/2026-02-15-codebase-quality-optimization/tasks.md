@@ -43,11 +43,10 @@
 - [x] 5.2 将 `getThreshold()` 和 `GetCooldownConfig()` 的数据库查询结果缓存到 MemoryKV（TTL 60s）
 - [x] 5.3 将 `relay/adapter.go` 中的 `copyBody` 改为 JSON marshal/unmarshal 深拷贝
 
-## 6. WebSocket 认证与 CORS
+## 6. WebSocket 认证
 
 - [x] 6.1 在 `ws/hub.go` 的 `HandleWS` 中添加 JWT token 验证（从 `?token=xxx` query parameter 读取）
-- [x] 6.2 将 WebSocket upgrader 的 `CheckOrigin` 改为从配置读取允许的 origin 列表，开发模式允许 localhost
-- [x] 6.3 更新前端 `use-stats-ws.ts`，在 WebSocket URL 中附带 JWT token
+- [x] 6.2 更新前端 `use-stats-ws.ts`，在 WebSocket URL 中附带 JWT token
 
 ## 7. 前端 logs.tsx 拆分
 

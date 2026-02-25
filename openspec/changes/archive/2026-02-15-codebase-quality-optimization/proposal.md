@@ -8,7 +8,7 @@
 - 重构 `handleRelay`（490 行 God Function）为职责清晰的方法链
 - 消除 `handler/channel.go` 与 `relay/sync.go` 之间的模型获取函数完全重复
 - 将全局可变状态（breakers、sessions、rrCounters）改为结构体 + 依赖注入
-- 为 WebSocket 端点添加 JWT 认证，收紧 CORS 配置
+- 为 WebSocket 端点添加 JWT 认证
 - 为 `http.DefaultClient` 添加超时配置
 - 拆分 `activity-section.tsx`（1300 行）为独立组件和 hooks
 - 统一前端 API 客户端（废弃手写 `api.ts`，迁移到 OpenAPI 生成的 `api-client.ts`）
@@ -28,7 +28,7 @@
 - `relay-handler-refactor`: 重构 handleRelay God Function，拆分为方法链，合并 asyncLog 重复，全局状态改为 DI
 - `frontend-component-decomposition`: 拆分 logs.tsx 和 activity-section.tsx God Component，抽取可复用组件和 hooks
 - `model-sync-consolidation`: 消除 handler/channel.go 与 relay/sync.go 之间的模型获取函数重复，统一到 relay 包
-- `websocket-auth`: WebSocket 端点 JWT 认证 + CORS origin 校验
+- `websocket-auth`: WebSocket 端点 JWT 认证
 - `api-client-unification`: 废弃手写 api.ts，统一使用 OpenAPI 生成的 api-client.ts
 - `backend-code-consistency`: 统一 Go 代码风格（any、请求结构体、Handler 组合、Update handler 模式）
 - `frontend-code-consistency`: 统一前端代码风格（导出方式、Props 类型、import type）
