@@ -16,7 +16,6 @@ const WEB_URL = `http://localhost:${WEB_PORT}`
 const PAGES = [
   { name: "dashboard", path: "/dashboard" },
   { name: "model", path: "/model" },
-  { name: "groups", path: "/groups" },
   { name: "logs", path: "/logs" },
   { name: "settings", path: "/settings" },
 ]

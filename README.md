@@ -30,13 +30,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/model-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/model-light.png">
-  <img alt="模型管理" src="docs/screenshots/model-light.png" width="100%">
-</picture>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/groups-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/groups-light.png">
-  <img alt="分组管理" src="docs/screenshots/groups-light.png" width="100%">
+  <img alt="模型与分组管理" src="docs/screenshots/model-light.png" width="100%">
 </picture>
 
 <picture>
