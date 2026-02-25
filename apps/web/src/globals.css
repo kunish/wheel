@@ -195,6 +195,16 @@
   }
 }
 
+@layer utilities {
+  .ease-spring {
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .animate-in,
+  .animate-out {
+    animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
 /* Prose inline code styling */
 .prose :where(code):not(:where(pre code)) {
   background-color: var(--muted);

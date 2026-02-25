@@ -1,3 +1,4 @@
+import { motion } from "motion/react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ModelSourceBadge } from "@/components/model-source-badge"
@@ -132,10 +133,14 @@ export default function ChannelModelPickerDialog({
       }
       renderProviderItems={(provider) =>
         grouped[provider].map((m) => (
-          <button
+          <motion.button
             key={`${m.channelId}-${m.modelId}`}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
             type="button"
-            className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
+            className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm transition-colors"
             onClick={() => onSelect(m.channelId, m.modelId)}
           >
             {m.logoUrl && (
@@ -153,7 +158,7 @@ export default function ChannelModelPickerDialog({
             <span className="flex-1 truncate">{m.modelId}</span>
             <ModelSourceBadge modelId={m.modelId} isApiFetched={m.isApiFetched} />
             <span className="text-muted-foreground shrink-0 text-xs">{m.channelName}</span>
-          </button>
+          </motion.button>
         ))
       }
     />

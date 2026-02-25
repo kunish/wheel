@@ -400,9 +400,9 @@ function DetailPanel({
 
       {/* Overview Tab */}
       <TabsContent value="overview" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
-        <div className="flex flex-col gap-4 text-sm">
+        <div className="flex flex-col gap-6 text-sm">
           {/* Model Flow */}
-          <div className="flex flex-col gap-1">
+          <div className="bg-muted/30 rounded-xl border p-4">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <ModelFlowNode modelId={detail.requestModelName} channelId={detail.channelId} />
               <span className="text-muted-foreground">{t("detail.via")}</span>
@@ -425,7 +425,7 @@ function DetailPanel({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+          <div className="bg-muted/30 grid grid-cols-1 gap-4 rounded-xl border p-4 sm:grid-cols-2 md:grid-cols-3">
             <CopyableField
               label={t("detail.field.time")}
               value={new Date(detail.time * 1000).toLocaleString(undefined, { hour12: false })}
@@ -994,7 +994,7 @@ function MessageBubble({
 
   return (
     <div
-      className={`rounded-md border border-l-4 ${config.borderClass} ${config.bgClass}${isContext ? "opacity-60" : ""}`}
+      className={`rounded-xl border border-l-4 shadow-sm ${config.borderClass} ${config.bgClass}${isContext ? "opacity-60" : ""}`}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
@@ -1089,7 +1089,7 @@ function ToolCallBlock({
   }
 
   return (
-    <div className="bg-background/60 rounded-md border p-2">
+    <div className="bg-background/60 rounded-lg border p-2 shadow-sm">
       <div className="flex items-center gap-1.5">
         <Code2 className="text-muted-foreground h-3 w-3 shrink-0" />
         <span className="font-mono text-xs font-bold">{toolCall.function.name}</span>
@@ -1097,7 +1097,7 @@ function ToolCallBlock({
       </div>
       {args && args !== "{}" && (
         <div className="mt-1.5">
-          <pre className="bg-muted/50 rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+          <pre className="bg-muted/50 rounded-md border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
             {args}
           </pre>
         </div>
@@ -1123,7 +1123,7 @@ function ResponseChoiceBlock({
   const showThinking = thinkingOpen || isThinkingPhase
 
   return (
-    <div className="border-l-nb-lime bg-nb-lime/15 dark:bg-nb-lime/10 rounded-md border border-l-4">
+    <div className="border-l-nb-lime bg-nb-lime/15 dark:bg-nb-lime/10 rounded-xl border border-l-4 shadow-sm">
       <div className="flex items-center gap-2 px-3 py-2">
         <div className="border-border bg-nb-lime text-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-md border">
           <Bot className="h-3.5 w-3.5" />
@@ -1223,7 +1223,7 @@ function ResponseMetadata({ response }: { response: ParsedResponse }) {
   if (!hasMetadata) return null
 
   return (
-    <div className="bg-muted/30 rounded-md border p-2.5">
+    <div className="bg-muted/30 rounded-xl border p-3 shadow-sm">
       <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
         {t("messagesTab.responseMetadata")}
       </p>
@@ -1262,7 +1262,7 @@ function ResponseMetadata({ response }: { response: ParsedResponse }) {
 function UsageDetails({ usage }: { usage: ParsedResponseUsage }) {
   const { t } = useTranslation("logs")
   return (
-    <div className="bg-muted/30 rounded-md border p-2.5">
+    <div className="bg-muted/30 rounded-xl border p-3 shadow-sm">
       <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
         {t("messagesTab.usage")}
       </p>
@@ -1383,7 +1383,7 @@ function RequestParamsSummary({ params }: { params: ParsedRequestParams }) {
   if (entries.length === 0) return null
 
   return (
-    <div className="bg-muted/30 rounded-md border p-2.5">
+    <div className="bg-muted/30 rounded-xl border p-3 shadow-sm">
       <p className="text-muted-foreground mb-1.5 text-[10px] font-bold tracking-wider uppercase">
         {t("messagesTab.requestParams")}
       </p>
@@ -1423,7 +1423,7 @@ function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
   })()
 
   return (
-    <div className="bg-muted/30 rounded-md border p-2.5">
+    <div className="bg-muted/30 rounded-xl border p-3 shadow-sm">
       <button className="flex w-full items-center gap-2" onClick={() => setCollapsed(!collapsed)}>
         <Wrench className="text-muted-foreground h-3 w-3 shrink-0" />
         <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
@@ -1540,9 +1540,9 @@ function MessagesTabContent({
             {t("messagesTab.count", { count: messages.length })}
             {response ? t("messagesTab.plusResponse") : ""}
           </span>
-          <div className="border-border flex items-center rounded-md border">
+          <div className="border-border flex items-center overflow-hidden rounded-lg border shadow-sm">
             <button
-              className={`flex items-center gap-1 px-2 py-1 text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-bold transition-colors ${
                 viewMode === "conversation"
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -1553,7 +1553,7 @@ function MessagesTabContent({
               {t("messagesTab.chat")}
             </button>
             <button
-              className={`border-border flex items-center gap-1 border-l px-2 py-1 text-xs font-bold transition-colors ${
+              className={`border-border flex items-center gap-1 border-l px-3 py-1.5 text-xs font-bold transition-colors ${
                 viewMode === "raw" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
               }`}
               onClick={() => setViewMode("raw")}
@@ -1652,10 +1652,10 @@ function CollapsibleCodeBlock({
   const [open, setOpen] = useState(defaultOpen)
 
   return (
-    <div className="rounded-md border">
+    <div className="overflow-hidden rounded-xl border shadow-sm">
       <button
         type="button"
-        className="bg-muted/50 flex w-full items-center justify-between px-3 py-2"
+        className="bg-muted/50 hover:bg-muted/80 flex w-full items-center justify-between px-4 py-3 transition-colors"
         onClick={() => setOpen(!open)}
       >
         <span className="text-xs font-medium">{label}</span>
@@ -1664,7 +1664,7 @@ function CollapsibleCodeBlock({
         />
       </button>
       {open && (
-        <div className="p-3 pt-2">
+        <div className="p-4 pt-2">
           <CodeBlock label="" content={content} />
         </div>
       )}
@@ -1767,7 +1767,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
         )}
       </div>
       {searchTerm ? (
-        <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-md border p-3">
+        <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-xl border p-4 shadow-sm">
           <pre
             className="text-xs break-words whitespace-pre-wrap"
             style={{
@@ -1784,7 +1784,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
               {t("codeBlock.truncatedRecovered")}
             </p>
           )}
-          <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-md border p-3">
+          <div className="bg-muted/30 max-h-[50vh] min-w-0 overflow-auto rounded-xl border p-4 shadow-sm">
             <Suspense
               fallback={
                 <div className="flex flex-col gap-2 p-3">
@@ -1810,7 +1810,7 @@ function CodeBlock({ label, content }: { label: string; content: string }) {
           </div>
         </div>
       ) : (
-        <div className="bg-muted/30 prose prose-sm dark:prose-invert max-h-[50vh] max-w-none overflow-auto rounded-md border p-3 break-words">
+        <div className="bg-muted/30 prose prose-sm dark:prose-invert max-h-[50vh] max-w-none overflow-auto rounded-xl border p-4 break-words shadow-sm">
           <Suspense
             fallback={
               <div className="flex flex-col gap-2 p-3">

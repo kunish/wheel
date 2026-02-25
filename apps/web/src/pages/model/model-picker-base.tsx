@@ -1,4 +1,5 @@
 import { Loader2, Search } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -75,17 +76,30 @@ export function ModelPickerBase({
             <p className="text-muted-foreground py-8 text-center text-sm">{emptyText}</p>
           ) : (
             <div className="flex flex-col gap-3 pr-3">
-              {providerKeys.map((provider) => (
-                <div key={provider}>
-                  <p className="text-muted-foreground mb-1.5 px-1 text-xs font-semibold">
-                    {provider}
-                    <span className="text-muted-foreground/60 ml-1">
-                      ({getProviderCount(provider)})
-                    </span>
-                  </p>
-                  <div className="flex flex-col gap-0.5">{renderProviderItems(provider)}</div>
-                </div>
-              ))}
+              <AnimatePresence initial={false}>
+                {providerKeys.map((provider) => (
+                  <motion.div
+                    key={provider}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <p className="text-muted-foreground mb-1.5 px-1 text-xs font-semibold">
+                      {provider}
+                      <span className="text-muted-foreground/60 ml-1">
+                        ({getProviderCount(provider)})
+                      </span>
+                    </p>
+                    <div className="flex flex-col gap-0.5">
+                      <AnimatePresence initial={false}>
+                        {renderProviderItems(provider)}
+                      </AnimatePresence>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           )}
         </ScrollArea>

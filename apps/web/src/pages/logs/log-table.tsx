@@ -9,6 +9,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { AlertCircle, ChevronLeft, ChevronRight, FileText, RefreshCw } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
@@ -129,51 +130,66 @@ export function LogTable({
             ))}
           </thead>
           <TableBody>
-            {table.getRowModel().rows.map((row) => {
-              if (row.getIsGrouped()) {
-                return (
-                  <TableRow key={row.id} className="bg-muted/30">
-                    <TableCell colSpan={columns.length}>
-                      <button
-                        className="flex items-center gap-1.5 text-sm font-medium"
-                        onClick={row.getToggleExpandedHandler()}
-                      >
-                        <ChevronRight
-                          className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
-                        />
-                        {String(row.groupingValue)}
-                        <Badge variant="secondary" className="text-xs">
-                          {row.subRows.length}
-                        </Badge>
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                )
-              }
-              const log = row.original
-              return (
-                <tr
-                  key={row.id}
-                  className={`hover:bg-muted/50 cursor-pointer border-b ${
-                    log._streaming
-                      ? "bg-muted/20"
-                      : log.error
-                        ? "border-l-destructive bg-destructive/5 border-l-2"
-                        : ""
-                  }`}
-                  onClick={() => onRowClick(log)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={(cell.column.columnDef.meta as { className?: string })?.className}
+            <AnimatePresence initial={false}>
+              {table.getRowModel().rows.map((row) => {
+                if (row.getIsGrouped()) {
+                  return (
+                    <motion.tr
+                      key={row.id}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="bg-muted/30"
                     >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </tr>
-              )
-            })}
+                      <TableCell colSpan={columns.length}>
+                        <button
+                          className="flex items-center gap-1.5 text-sm font-medium"
+                          onClick={row.getToggleExpandedHandler()}
+                        >
+                          <ChevronRight
+                            className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
+                          />
+                          {String(row.groupingValue)}
+                          <Badge variant="secondary" className="text-xs">
+                            {row.subRows.length}
+                          </Badge>
+                        </button>
+                      </TableCell>
+                    </motion.tr>
+                  )
+                }
+                const log = row.original
+                return (
+                  <motion.tr
+                    key={row.id}
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className={`hover:bg-muted/50 cursor-pointer border-b ${
+                      log._streaming
+                        ? "bg-muted/20"
+                        : log.error
+                          ? "border-l-destructive bg-destructive/5 border-l-2"
+                          : ""
+                    }`}
+                    onClick={() => onRowClick(log)}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className={
+                          (cell.column.columnDef.meta as { className?: string })?.className
+                        }
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </motion.tr>
+                )
+              })}
+            </AnimatePresence>
             {logs.length === 0 && !isLoading && (
               <TableRow>
                 <TableCell colSpan={columns.length} className="py-12 text-center">

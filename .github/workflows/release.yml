@@ -135,7 +135,7 @@ jobs:
       - run: pnpm --filter @wheel/web build
         env:
           VITE_HASH_ROUTER: "true"
-          VITE_BASE_PATH: "/wheel/"
+          VITE_BASE_PATH: /wheel/
 
       - uses: actions/upload-pages-artifact@v4
         with:

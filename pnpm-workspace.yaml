@@ -1,3 +1,6 @@
+shellEmulator: true
+
+trustPolicy: no-downgrade
 packages:
   - apps/web
 
@@ -61,7 +64,3 @@ catalog:
   zustand: ^5.0.11
 
 neverBuiltDependencies: []
-
-shellEmulator: true
-
-trustPolicy: no-downgrade

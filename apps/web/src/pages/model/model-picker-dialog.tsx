@@ -1,3 +1,4 @@
+import { motion } from "motion/react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useModelMetadataQuery } from "@/hooks/use-model-meta"
@@ -63,10 +64,14 @@ export default function ModelPickerDialog({
       totalCount={totalCount}
       renderProviderItems={(provider) =>
         grouped[provider].map((m) => (
-          <button
+          <motion.button
             key={m.id}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
             type="button"
-            className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
+            className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm transition-colors"
             onClick={() => onSelect(m.id)}
           >
             <img
@@ -80,7 +85,7 @@ export default function ModelPickerDialog({
               }}
             />
             <span className="truncate">{m.id}</span>
-          </button>
+          </motion.button>
         ))
       }
     />
