@@ -175,9 +175,9 @@ func (o *Observer) Shutdown(ctx context.Context) {
 		return
 	}
 	if o.meterProvider != nil {
-		o.meterProvider.Shutdown(ctx)
+		_ = o.meterProvider.Shutdown(ctx)
 	}
 	if o.tracerProvider != nil {
-		o.tracerProvider.Shutdown(ctx)
+		_ = o.tracerProvider.Shutdown(ctx)
 	}
 }

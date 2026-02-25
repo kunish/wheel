@@ -42,7 +42,7 @@ function HubCostChart({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex justify-between text-[9px] tabular-nums">
+      <div className="flex justify-between text-[10px] tabular-nums">
         {[
           { label: "REQ", value: formatCount(periodTotals.req) },
           { label: "IN", value: formatCount(periodTotals.inTok) },
@@ -50,11 +50,11 @@ function HubCostChart({
           { label: "$", value: formatMoney(periodTotals.cost) },
         ].map((m) => (
           <div key={m.label} className="flex flex-col items-center">
-            <span className="text-muted-foreground text-[7px] font-bold">{m.label}</span>
+            <span className="text-muted-foreground text-[10px] font-bold">{m.label}</span>
             <span className="font-bold">
               {m.value.value}
               {m.value.unit && (
-                <span className="text-muted-foreground ml-px text-[7px]">{m.value.unit}</span>
+                <span className="text-muted-foreground ml-px text-[10px]">{m.value.unit}</span>
               )}
             </span>
           </div>

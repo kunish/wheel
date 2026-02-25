@@ -210,13 +210,13 @@ export function PowerPipeline({
         })}
 
         {/* ── Energy flow lines between adjacent active segments ── */}
-        {segments.slice(0, -1).map((seg, i) => {
-          const next = segments[i + 1]
+        {segments.slice(0, -1).map((seg) => {
+          const next = segments[seg.i + 1]
           if (seg.level <= 0 || next.level <= 0) return null
           const pipeW = segW * 0.55
           return (
             <line
-              key={`flow-${i}`}
+              key={`flow-${seg.i}`}
               x1={seg.cx + pipeW / 2}
               y1={spineY}
               x2={next.cx - pipeW / 2}
@@ -233,10 +233,10 @@ export function PowerPipeline({
         })}
 
         {/* ── Connection nodes (gear circles between segments) ── */}
-        {segments.slice(0, -1).map((seg, i) => {
+        {segments.slice(0, -1).map((seg) => {
           const nodeX = seg.x + segW
           return (
-            <g key={`conn-${i}`}>
+            <g key={`conn-${seg.i}`}>
               <circle
                 cx={nodeX}
                 cy={spineY}
@@ -250,7 +250,7 @@ export function PowerPipeline({
                 const rad = ((deg + gearAngle) * Math.PI) / 180
                 return (
                   <line
-                    key={`gear-mark-${i}-${deg}`}
+                    key={`gear-mark-${seg.i}-${deg}`}
                     x1={nodeX + 3.5 * Math.cos(rad)}
                     y1={spineY + 3.5 * Math.sin(rad)}
                     x2={nodeX + 6.5 * Math.cos(rad)}

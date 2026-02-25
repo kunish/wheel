@@ -20,7 +20,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ChevronDown,
   ChevronsDownUp,
@@ -39,19 +39,10 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router"
 import { toast } from "sonner"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
 import { ModelSourceBadge } from "@/components/model-source-badge"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -68,31 +59,21 @@ import { Switch } from "@/components/ui/switch"
 import { fuzzyLookup, useModelMetadataQuery } from "@/hooks/use-model-meta"
 import { useProfilesQuery } from "@/hooks/use-profiles"
 import {
-  activateProfile,
-  createChannel,
-  createGroup,
-  createModelPrice,
-  deleteChannel,
-  deleteGroup,
-  deleteModelPrice,
-  enableChannel,
   getLastPriceUpdateTime,
   getModelList,
   getSettings,
   listChannels,
   listGroups,
   listModelPrices,
-  reorderChannels,
-  reorderGroups,
-  syncModelPrices,
-  updateChannel,
-  updateGroup,
-  updateModelPrice,
 } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
 import { EMPTY_CHANNEL_FORM } from "./model/channel-dialog"
 import { EMPTY_GROUP_FORM } from "./model/group-dialog"
 import { EMPTY_PRICE_FORM } from "./model/price-dialog"
+import { useChannelMutations } from "./model/use-channel-mutations"
+import { useGroupMutations } from "./model/use-group-mutations"
+import { usePriceMutations } from "./model/use-price-mutations"
+import { useProfileMutations } from "./model/use-profile-mutations"
 
 // ─── Lazy-loaded Dialog components ──────────────
 
@@ -215,20 +196,6 @@ export default function ModelPage() {
     return Number.isNaN(n) || n === 0 ? undefined : n
   }, [settingsData])
 
-  const activateProfileMut = useMutation({
-    mutationFn: (id: number) => activateProfile(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings"] })
-      invalidateGroupQueries()
-    },
-  })
-  const setActiveProfileId = useCallback(
-    (id: number | undefined) => {
-      activateProfileMut.mutate(id ?? 0)
-    },
-    [activateProfileMut],
-  )
-
   // Queries
   const { data: channelData, isLoading: channelsLoading } = useQuery({
     queryKey: ["channels"],
@@ -245,12 +212,14 @@ export default function ModelPage() {
     queryKey: ["model-list"],
     queryFn: getModelList,
     enabled: modelListOpen,
+    staleTime: 60_000,
   })
 
   // Price queries
   const { data: priceData } = useQuery({
     queryKey: ["model-prices"],
     queryFn: listModelPrices,
+    staleTime: 60_000,
   })
 
   const { data: updateTimeData } = useQuery({
@@ -258,11 +227,49 @@ export default function ModelPage() {
     queryFn: getLastPriceUpdateTime,
   })
 
+  // ─── Extracted mutation hooks ──────────────────
+
+  const { channelDeleteMut, channelEnableMut, channelSaveMut, channelReorderMut } =
+    useChannelMutations({
+      onSaveSuccess: () => setChannelDialogOpen(false),
+      channelForm,
+    })
+
+  const {
+    groupDeleteMut,
+    groupSaveMut,
+    groupAddItemMut,
+    groupClearMut,
+    groupRemoveItemMut,
+    groupReorderMut,
+    invalidateGroupQueries,
+  } = useGroupMutations({
+    activeProfileId,
+    onSaveSuccess: () => setGroupDialogOpen(false),
+    groupForm,
+  })
+
+  const { setActiveProfileId } = useProfileMutations({
+    onActivateSuccess: () => invalidateGroupQueries(),
+  })
+
+  const { syncPriceMut, createPriceMut, updatePriceMut, deletePriceMut } = usePriceMutations({
+    onCreateSuccess: () => {
+      setPriceForm(EMPTY_PRICE_FORM)
+      setPriceDialogOpen(false)
+    },
+    onUpdateSuccess: () => {
+      setPriceDialogOpen(false)
+      setEditingPriceId(null)
+    },
+  })
+
+  // ─── Derived data ─────────────────────────────
+
   // Profile query
   const { data: profileData } = useProfilesQuery()
   const profileList = useMemo(() => {
     const raw = (profileData?.data?.profiles ?? []) as ModelProfile[]
-    // 确保 Default 内置预设排在最前面
     const defaultIdx = raw.findIndex((p) => p.isBuiltin && p.name === "Default")
     if (defaultIdx > 0) {
       const copy = [...raw]
@@ -305,15 +312,6 @@ export default function ModelPage() {
 
   const lastSync = formatDateTime(updateTimeData?.data?.lastUpdateTime ?? undefined)
 
-  function invalidateGroupQueries() {
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const key = query.queryKey[0]
-        return key === "groups" || key === "profile-group-preview" || key === "profiles"
-      },
-    })
-  }
-
   // ─── Highlight scroll logic ───────────────────
   const setChannelRef = useCallback((id: number, el: HTMLDivElement | null) => {
     if (el) channelRefsRef.current.set(id, el)
@@ -325,6 +323,7 @@ export default function ModelPage() {
     // Verify channel exists
     if (!channels.some((ch) => ch.id === highlightChannelId)) return
 
+    // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- intentional: sync highlight from URL param
     setHighlightedId(highlightChannelId)
     requestAnimationFrame(() => {
       const el = channelRefsRef.current.get(highlightChannelId)
@@ -343,172 +342,6 @@ export default function ModelPage() {
     }, 3000)
     return () => clearTimeout(timer)
   }, [highlightChannelId, channelsLoading, channels, searchParams, setSearchParams])
-
-  // ─── Channel mutations ─────────────────────────
-
-  const channelDeleteMut = useMutation({
-    mutationFn: deleteChannel,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels"] })
-      toast.success(t("toast.channelDeleted"))
-    },
-  })
-
-  const channelEnableMut = useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => enableChannel(id, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels"] }),
-  })
-
-  const channelSaveMut = useMutation({
-    mutationFn: (data: ChannelFormData) => (data.id ? updateChannel(data) : createChannel(data)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels"] })
-      setChannelDialogOpen(false)
-      toast.success(channelForm.id ? t("toast.channelUpdated") : t("toast.channelCreated"))
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  // ─── Group mutations ───────────────────────────
-
-  const groupDeleteMut = useMutation({
-    mutationFn: deleteGroup,
-    onSuccess: () => {
-      invalidateGroupQueries()
-      toast.success(t("toast.groupDeleted"))
-    },
-  })
-
-  const groupSaveMut = useMutation({
-    mutationFn: (data: GroupFormData) =>
-      data.id ? updateGroup(data) : createGroup({ ...data, profileId: activeProfileId }),
-    onSuccess: () => {
-      invalidateGroupQueries()
-      setGroupDialogOpen(false)
-      toast.success(groupForm.id ? t("toast.groupUpdated") : t("toast.groupCreated"))
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  // Quick-add item to group (from drag or button)
-  const groupAddItemMut = useMutation({
-    mutationFn: (data: { group: GroupRecord; newItems: GroupItemForm[] }) => {
-      const merged = [...data.group.items, ...data.newItems]
-      return updateGroup({
-        id: data.group.id,
-        name: data.group.name,
-        mode: data.group.mode,
-        firstTokenTimeOut: data.group.firstTokenTimeOut,
-        sessionKeepTime: data.group.sessionKeepTime ?? 0,
-        items: merged,
-      })
-    },
-    onSuccess: () => {
-      invalidateGroupQueries()
-      toast.success(t("toast.channelAddedToGroup"))
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  const groupClearMut = useMutation({
-    mutationFn: (group: GroupRecord) =>
-      updateGroup({
-        id: group.id,
-        name: group.name,
-        mode: group.mode,
-        firstTokenTimeOut: group.firstTokenTimeOut,
-        items: [],
-      }),
-    onSuccess: () => {
-      invalidateGroupQueries()
-      toast.success(t("toast.groupCleared"))
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  const groupRemoveItemMut = useMutation({
-    mutationFn: (data: { group: GroupRecord; itemIndex: number }) => {
-      const items = data.group.items.filter((_, i) => i !== data.itemIndex)
-      return updateGroup({
-        id: data.group.id,
-        name: data.group.name,
-        mode: data.group.mode,
-        firstTokenTimeOut: data.group.firstTokenTimeOut,
-        sessionKeepTime: data.group.sessionKeepTime ?? 0,
-        items,
-      })
-    },
-    onSuccess: () => {
-      invalidateGroupQueries()
-    },
-  })
-
-  const groupReorderMut = useMutation({
-    mutationFn: reorderGroups,
-    onSuccess: () => invalidateGroupQueries(),
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  const channelReorderMut = useMutation({
-    mutationFn: reorderChannels,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels"] }),
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  // ─── Price mutations ──────────────────────────────
-
-  const syncPriceMut = useMutation({
-    mutationFn: syncModelPrices,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
-      queryClient.invalidateQueries({ queryKey: ["price-update-time"] })
-      queryClient.invalidateQueries({ queryKey: ["profiles"] })
-      toast.success(t("toast.syncSuccess"))
-    },
-    onError: () => toast.error(t("toast.syncFailed")),
-  })
-
-  const createPriceMut = useMutation({
-    mutationFn: (form: PriceFormData) =>
-      createModelPrice({
-        name: form.name,
-        inputPrice: Number.parseFloat(form.inputPrice),
-        outputPrice: Number.parseFloat(form.outputPrice),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
-      setPriceForm(EMPTY_PRICE_FORM)
-      setPriceDialogOpen(false)
-      toast.success(t("toast.priceCreated"))
-    },
-    onError: () => toast.error(t("toast.createFailed")),
-  })
-
-  const updatePriceMut = useMutation({
-    mutationFn: ({ id, form }: { id: number; form: PriceFormData }) =>
-      updateModelPrice({
-        id,
-        name: form.name,
-        inputPrice: Number.parseFloat(form.inputPrice),
-        outputPrice: Number.parseFloat(form.outputPrice),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
-      setPriceDialogOpen(false)
-      setEditingPriceId(null)
-      toast.success(t("toast.priceUpdated"))
-    },
-    onError: () => toast.error(t("toast.updateFailed")),
-  })
-
-  const deletePriceMut = useMutation({
-    mutationFn: (name: string) => deleteModelPrice({ name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["model-prices"] })
-      toast.success(t("toast.priceDeleted"))
-    },
-    onError: () => toast.error(t("toast.deleteFailed")),
-  })
 
   // ─── Drag handlers ─────────────────────────────
 
@@ -773,6 +606,7 @@ export default function ModelPage() {
                     className="h-9 w-9"
                     onClick={() => setChannelsCollapsed((v) => !v)}
                     title={channelsCollapsed ? t("expandAll") : t("collapseAll")}
+                    aria-label={channelsCollapsed ? t("expandAll") : t("collapseAll")}
                   >
                     {channelsCollapsed ? (
                       <ChevronsUpDown className="h-4 w-4" />
@@ -855,6 +689,7 @@ export default function ModelPage() {
                     className="h-9 w-9"
                     onClick={() => setGroupsCollapsed((v) => !v)}
                     title={groupsCollapsed ? t("expandAll") : t("collapseAll")}
+                    aria-label={groupsCollapsed ? t("expandAll") : t("collapseAll")}
                   >
                     {groupsCollapsed ? (
                       <ChevronsUpDown className="h-4 w-4" />
@@ -894,83 +729,44 @@ export default function ModelPage() {
       </DragOverlay>
 
       {/* ─── Delete Confirmations ────────────────── */}
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={!!deleteChannelConfirm}
         onOpenChange={(open) => !open && setDeleteChannelConfirm(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("deleteChannelTitle", { name: deleteChannelConfirm?.name })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>{t("deleteChannelDesc")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (deleteChannelConfirm) channelDeleteMut.mutate(deleteChannelConfirm.id)
-                setDeleteChannelConfirm(null)
-              }}
-            >
-              {t("actions.delete", { ns: "common" })}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("deleteChannelTitle", { name: deleteChannelConfirm?.name })}
+        description={t("deleteChannelDesc")}
+        cancelLabel={t("actions.cancel", { ns: "common" })}
+        confirmLabel={t("actions.delete", { ns: "common" })}
+        onConfirm={() => {
+          if (deleteChannelConfirm) channelDeleteMut.mutate(deleteChannelConfirm.id)
+          setDeleteChannelConfirm(null)
+        }}
+      />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={!!deleteGroupConfirm}
         onOpenChange={(open) => !open && setDeleteGroupConfirm(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("deleteGroupTitle", { name: deleteGroupConfirm?.name })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>{t("deleteGroupDesc")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (deleteGroupConfirm) groupDeleteMut.mutate(deleteGroupConfirm.id)
-                setDeleteGroupConfirm(null)
-              }}
-            >
-              {t("actions.delete", { ns: "common" })}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("deleteGroupTitle", { name: deleteGroupConfirm?.name })}
+        description={t("deleteGroupDesc")}
+        cancelLabel={t("actions.cancel", { ns: "common" })}
+        confirmLabel={t("actions.delete", { ns: "common" })}
+        onConfirm={() => {
+          if (deleteGroupConfirm) groupDeleteMut.mutate(deleteGroupConfirm.id)
+          setDeleteGroupConfirm(null)
+        }}
+      />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={!!clearGroupConfirm}
         onOpenChange={(open) => !open && setClearGroupConfirm(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("clearGroupTitle", { name: clearGroupConfirm?.name })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>{t("clearGroupDesc")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (clearGroupConfirm) groupClearMut.mutate(clearGroupConfirm)
-                setClearGroupConfirm(null)
-              }}
-            >
-              {t("clearAllAction")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("clearGroupTitle", { name: clearGroupConfirm?.name })}
+        description={t("clearGroupDesc")}
+        cancelLabel={t("actions.cancel", { ns: "common" })}
+        confirmLabel={t("clearAllAction")}
+        onConfirm={() => {
+          if (clearGroupConfirm) groupClearMut.mutate(clearGroupConfirm)
+          setClearGroupConfirm(null)
+        }}
+      />
 
       {/* ─── Channel Dialog ───────────────────── */}
       <Suspense fallback={null}>
@@ -1072,31 +868,18 @@ export default function ModelPage() {
       </Suspense>
 
       {/* ─── Delete Price Confirmation ────────────── */}
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={!!deletePriceConfirm}
         onOpenChange={(open) => !open && setDeletePriceConfirm(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("price.deleteDialog.title", { name: deletePriceConfirm?.name })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>{t("price.deleteDialog.description")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (deletePriceConfirm) deletePriceMut.mutate(deletePriceConfirm.name)
-                setDeletePriceConfirm(null)
-              }}
-            >
-              {t("actions.delete", { ns: "common" })}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("price.deleteDialog.title", { name: deletePriceConfirm?.name })}
+        description={t("price.deleteDialog.description")}
+        cancelLabel={t("actions.cancel", { ns: "common" })}
+        confirmLabel={t("actions.delete", { ns: "common" })}
+        onConfirm={() => {
+          if (deletePriceConfirm) deletePriceMut.mutate(deletePriceConfirm.name)
+          setDeletePriceConfirm(null)
+        }}
+      />
 
       {/* ─── Profile Manage Dialog ────────────── */}
       <Suspense fallback={null}>
@@ -1302,10 +1085,22 @@ function DraggableChannel({
         </div>
         <div className="flex items-center gap-1">
           <Switch checked={channel.enabled} onCheckedChange={onToggle} disabled={enablePending} />
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onEdit}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            aria-label="Edit channel"
+            onClick={onEdit}
+          >
             <Pencil className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onDelete}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            aria-label="Delete channel"
+            onClick={onDelete}
+          >
             <Trash2 className="text-destructive h-3 w-3" />
           </Button>
         </div>
@@ -1457,6 +1252,7 @@ function SortableGroup({
   useEffect(() => {
     if (!dragActive && expandedByDragRef.current) {
       expandedByDragRef.current = false
+      // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- intentional: restore UI state after drag ends
       setCollapsed(true)
     }
   }, [dragActive])
@@ -1536,14 +1332,27 @@ function SortableGroup({
               className="h-9 w-9"
               onClick={onClear}
               title={t("clearAll")}
+              aria-label={t("clearAll")}
             >
               <X className="h-3 w-3" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onEdit}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            aria-label="Edit group"
+            onClick={onEdit}
+          >
             <Pencil className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onDelete}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            aria-label="Delete group"
+            onClick={onDelete}
+          >
             <Trash2 className="text-destructive h-3 w-3" />
           </Button>
         </div>

@@ -17,6 +17,13 @@ COPY . .
 RUN pnpm --filter @wheel/web build
 
 FROM caddy:2-alpine AS runner
-COPY --from=builder /app/apps/web/dist /srv
-COPY apps/web/Caddyfile /etc/caddy/Caddyfile
+
+RUN addgroup -g 1001 -S wheel && adduser -S wheel -u 1001 -G wheel \
+    && mkdir -p /data /config \
+    && chown -R wheel:wheel /srv /data /config
+
+COPY --from=builder --chown=wheel:wheel /app/apps/web/dist /srv
+COPY --chown=wheel:wheel apps/web/Caddyfile /etc/caddy/Caddyfile
+
+USER wheel
 EXPOSE 3000

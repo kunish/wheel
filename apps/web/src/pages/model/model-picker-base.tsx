@@ -48,6 +48,7 @@ export function ModelPickerBase({
               <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
               <Input
                 placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="pl-9"
@@ -60,6 +61,7 @@ export function ModelPickerBase({
             <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
             <Input
               placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               className="pl-9"

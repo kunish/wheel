@@ -154,7 +154,7 @@ func SyncAllFromModelsDev(ctx context.Context, db *bun.DB) (*SyncResult, error) 
 		return nil, err
 	}
 
-	dal.SetLastPriceSyncTime(ctx, db)
+	_ = dal.SetLastPriceSyncTime(ctx, db)
 	return result, nil
 }
 

@@ -18,6 +18,7 @@ import {
   useUpdateProfile,
 } from "@/hooks/use-profiles"
 import { deleteGroup, listProfileGroupsPreview, materializeProfileGroups } from "@/lib/api-client"
+import { defaultMutationCallbacks } from "@/lib/mutation-utils"
 
 // ─── Profile Form ────────────────────────────
 
@@ -114,6 +115,7 @@ function ProfileCard({
               className="h-7 w-7"
               onClick={onEdit}
               title={t("actions.edit", { ns: "common" })}
+              aria-label={t("actions.edit", { ns: "common" })}
             >
               <Pencil className="h-3 w-3" />
             </Button>
@@ -123,6 +125,7 @@ function ProfileCard({
               className="h-7 w-7"
               onClick={onDelete}
               title={t("actions.delete", { ns: "common" })}
+              aria-label={t("actions.delete", { ns: "common" })}
             >
               <Trash2 className="text-destructive h-3 w-3" />
             </Button>
@@ -138,7 +141,7 @@ function ProfileCard({
 function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: () => void }) {
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
 
   const { data: previewData, isLoading: previewLoading } = useQuery({
     queryKey: ["profile-group-preview", profile.id],
@@ -152,6 +155,7 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
   useEffect(() => {
     // 默认选中所有未落地项
     const defaults = previewGroups.filter((g) => !g.materialized).map((g) => g.model)
+    // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- intentional: sync selection with server data
     setSelected(new Set(defaults))
   }, [previewGroups])
 
@@ -182,7 +186,7 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
       invalidate()
       toast.success(t("profile.toast.unmaterializedAll"))
     },
-    onError: (err: Error) => toast.error(err.message),
+    ...defaultMutationCallbacks,
   })
 
   function toggleSelection(model: string, checked: boolean) {
@@ -234,7 +238,13 @@ function MaterializeView({ profile, onBack }: { profile: ModelProfile; onBack: (
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBack}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label="Go back"
+          onClick={onBack}
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <span className="text-sm font-medium">{profile.name}</span>

@@ -45,7 +45,7 @@ type wsClient struct {
 func (c *wsClient) writePump() {
 	defer c.conn.Close()
 	for msg := range c.send {
-		c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			return
 		}
@@ -82,6 +82,12 @@ func (h *Hub) HandleWS(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
 		return
 	}
+
+	// Strip token from the URL so Gin's Logger middleware won't record it.
+	q := c.Request.URL.Query()
+	q.Del("token")
+	c.Request.URL.RawQuery = q.Encode()
+
 	if _, err := middleware.VerifyJWT(token, h.jwtSecret); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 		return

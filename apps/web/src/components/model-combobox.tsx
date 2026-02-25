@@ -62,6 +62,7 @@ export function ModelCombobox({
             <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
             <Input
               placeholder={t("models.searchPlaceholder")}
+              aria-label={t("models.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-8 pl-8 text-xs"

@@ -18,13 +18,13 @@ function easeOut(t: number) {
 
 export function AnimatedNumber({ value, formatter, className }: AnimatedNumberProps) {
   const ref = useRef<HTMLSpanElement>(null)
-  const prevValue = useRef(value)
-  const rafId = useRef(0)
+  const prevValueRef = useRef(value)
+  const rafIdRef = useRef(0)
 
   useEffect(() => {
-    const from = prevValue.current
+    const from = prevValueRef.current
     const to = value
-    prevValue.current = value
+    prevValueRef.current = value
 
     if (from === to) return
 
@@ -40,12 +40,12 @@ export function AnimatedNumber({ value, formatter, className }: AnimatedNumberPr
       }
 
       if (progress < 1) {
-        rafId.current = requestAnimationFrame(tick)
+        rafIdRef.current = requestAnimationFrame(tick)
       }
     }
 
-    rafId.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafId.current)
+    rafIdRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafIdRef.current)
   }, [value, formatter])
 
   return (

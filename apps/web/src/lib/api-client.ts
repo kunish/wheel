@@ -55,7 +55,10 @@ export function getApiBaseUrl(): string {
   return useAuthStore.getState().apiBaseUrl || ""
 }
 
-async function apiFetch<T>(endpoint: string, opts: ApiOptions = {}): Promise<T> {
+async function apiFetch<T extends { success: boolean }>(
+  endpoint: string,
+  opts: ApiOptions = {},
+): Promise<T> {
   const { method = "GET", body, headers = {} } = opts
   const token = useAuthStore.getState().token
 
@@ -86,14 +89,19 @@ async function apiFetch<T>(endpoint: string, opts: ApiOptions = {}): Promise<T> 
   }
 
   if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}))
-    throw new ApiError(
-      resp.status,
-      (data as { error?: string }).error ?? `Request failed with status ${resp.status}`,
-    )
+    const errBody: unknown = await resp.json().catch(() => ({}))
+    const errMsg =
+      typeof errBody === "object" && errBody !== null && "error" in errBody
+        ? String((errBody as { error: unknown }).error)
+        : `Request failed with status ${resp.status}`
+    throw new ApiError(resp.status, errMsg)
   }
 
-  return resp.json() as Promise<T>
+  const json: unknown = await resp.json()
+  if (typeof json !== "object" || json === null || !("success" in json)) {
+    throw new ApiError(resp.status, "Invalid API response: missing success field")
+  }
+  return json as T
 }
 
 function apiRawFetch(endpoint: string, init?: RequestInit): Promise<Response> {
@@ -138,18 +146,31 @@ export function getAuthStatus() {
 
 // ── Channels ──
 
+export interface ChannelInput {
+  id?: number
+  name: string
+  type: number
+  enabled: boolean
+  baseUrls: { url: string; delay: number }[]
+  keys: { channelKey: string; remark: string }[]
+  model: string[]
+  fetchedModel: string[]
+  customModel: string
+  paramOverride: string
+}
+
 export function listChannels() {
   return apiFetch<{ success: boolean; data: { channels: unknown[] } }>("/api/v1/channel/list")
 }
 
-export function createChannel(data: object) {
+export function createChannel(data: ChannelInput) {
   return apiFetch<{ success: boolean; data: unknown }>("/api/v1/channel/create", {
     method: "POST",
     body: data,
   })
 }
 
-export function updateChannel(data: object) {
+export function updateChannel(data: ChannelInput) {
   return apiFetch<{ success: boolean; data: unknown }>("/api/v1/channel/update", {
     method: "POST",
     body: data,
@@ -188,19 +209,37 @@ export function reorderChannels(orderedIds: number[]) {
 
 // ── Groups ──
 
+export interface GroupItemInput {
+  channelId: number
+  modelName: string
+  priority: number
+  weight: number
+  enabled: boolean
+}
+
+export interface GroupInput {
+  id?: number
+  name: string
+  mode: number
+  firstTokenTimeOut: number
+  sessionKeepTime?: number
+  items: GroupItemInput[]
+  profileId?: number
+}
+
 export function listGroups(profileId?: number) {
   const qs = profileId ? `?profileId=${profileId}` : ""
   return apiFetch<{ success: boolean; data: { groups: unknown[] } }>(`/api/v1/group/list${qs}`)
 }
 
-export function createGroup(data: object) {
+export function createGroup(data: GroupInput) {
   return apiFetch<{ success: boolean; data: unknown }>("/api/v1/group/create", {
     method: "POST",
     body: data,
   })
 }
 
-export function updateGroup(data: object) {
+export function updateGroup(data: GroupInput) {
   return apiFetch<{ success: boolean; data: unknown }>("/api/v1/group/update", {
     method: "POST",
     body: data,
@@ -226,19 +265,38 @@ export function getModelList() {
 
 // ── API Keys ──
 
-export function listApiKeys() {
-  return apiFetch<{ success: boolean; data: { apiKeys: unknown[] } }>("/api/v1/apikey/list")
+export interface ApiKeyRecord {
+  id: number
+  name: string
+  apiKey: string
+  enabled: boolean
+  expireAt: number
+  maxCost: number
+  totalCost: number
+  supportedModels: string
 }
 
-export function createApiKey(data: object) {
-  return apiFetch<{ success: boolean; data: unknown }>("/api/v1/apikey/create", {
+export interface ApiKeyInput {
+  id?: number
+  name: string
+  expireAt: number
+  maxCost: number
+  supportedModels: string
+}
+
+export function listApiKeys() {
+  return apiFetch<{ success: boolean; data: { apiKeys: ApiKeyRecord[] } }>("/api/v1/apikey/list")
+}
+
+export function createApiKey(data: Omit<ApiKeyInput, "id">) {
+  return apiFetch<{ success: boolean; data: { apiKey: string } }>("/api/v1/apikey/create", {
     method: "POST",
     body: data,
   })
 }
 
-export function updateApiKey(data: object) {
-  return apiFetch<{ success: boolean; data: unknown }>("/api/v1/apikey/update", {
+export function updateApiKey(data: ApiKeyInput & { id: number }) {
+  return apiFetch<{ success: boolean }>("/api/v1/apikey/update", {
     method: "POST",
     body: data,
   })
@@ -519,11 +577,23 @@ export function exportData(includeLogs: boolean = false) {
   return apiRawFetch(`/api/v1/setting/export?include_logs=${includeLogs}`)
 }
 
-export function importData(file: File) {
+export interface ImportDataResult {
+  success: boolean
+  data?: {
+    channels?: { added: number; skipped: number }
+    groups?: { added: number; skipped: number }
+    groupItems?: { added: number; skipped: number }
+    apiKeys?: { added: number; skipped: number }
+    settings?: { added: number; skipped: number }
+  }
+  error?: string
+}
+
+export function importData(file: File): Promise<ImportDataResult> {
   const formData = new FormData()
   formData.append("file", file)
   return apiRawFetch("/api/v1/setting/import", {
     method: "POST",
     body: formData,
-  }).then((res) => res.json())
+  }).then((res) => res.json() as Promise<ImportDataResult>)
 }

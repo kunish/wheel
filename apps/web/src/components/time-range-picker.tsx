@@ -143,7 +143,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
     setOpen(false)
   }
 
-  const handleClear = (e: React.MouseEvent) => {
+  const handleClear = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation()
     onChange(undefined, undefined)
   }
@@ -165,8 +165,7 @@ export function TimeRangePicker({ from, to, onChange }: TimeRangePickerProps) {
               className="hover:bg-muted -mr-1 ml-0.5 rounded-sm p-0.5"
               onClick={handleClear}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ")
-                  handleClear(e as unknown as React.MouseEvent)
+                if (e.key === "Enter" || e.key === " ") handleClear(e)
               }}
             >
               <X className="h-3 w-3" />

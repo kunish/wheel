@@ -214,6 +214,7 @@ export function ReactorGrid({
       {/* Reactor grid */}
       <div className="grid grid-cols-7 gap-1">
         {monthDays.map((day, i) => {
+          // eslint-disable-next-line react/no-array-index-key -- padding slots have no unique data
           if (!day) return <div key={`pad-${i}`} />
 
           if (day.isFuture) {

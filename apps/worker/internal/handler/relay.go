@@ -615,7 +615,7 @@ func (h *RelayHandler) executeWithRetry(
 				h.Observer.EndAttemptSpan(attemptSpan, 0, attemptDuration, proxyErr)
 				h.Observer.RecordRetry(c.Request.Context(), channel.Name, targetModel)
 
-				go h.CircuitBreakers.RecordFailure(channel.ID, selectedKey.ID, targetModel, context.Background(), h.DB)
+				h.CircuitBreakers.RecordFailure(channel.ID, selectedKey.ID, targetModel, c.Request.Context(), h.DB)
 
 				if pe, ok := proxyErr.(*relay.ProxyError); ok && pe.StatusCode == 429 {
 					lastRetryAfterMs = int64(math.Max(float64(lastRetryAfterMs), float64(pe.RetryAfterMs)))
@@ -623,7 +623,8 @@ func (h *RelayHandler) executeWithRetry(
 						lastRetryAfterMs = 1000
 					}
 					rateLimited = true
-					go dal.UpdateChannelKeyStatus(context.Background(), h.DB, selectedKey.ID, 429)
+					_ = dal.UpdateChannelKeyStatus(c.Request.Context(), h.DB, selectedKey.ID, 429)
+					h.Cache.Delete("channels")
 				}
 
 				streamID := ""
@@ -656,7 +657,8 @@ func (h *RelayHandler) executeWithRetry(
 			}
 
 			if selectedKey.StatusCode == 429 {
-				go dal.UpdateChannelKeyStatus(context.Background(), h.DB, selectedKey.ID, 0)
+				_ = dal.UpdateChannelKeyStatus(c.Request.Context(), h.DB, selectedKey.ID, 0)
+				h.Cache.Delete("channels")
 			}
 
 			// Update attempts in params for logging
@@ -813,7 +815,7 @@ func (h *RelayHandler) asyncRecordLog(
 
 	attemptsJSON, _ := json.Marshal(attempts)
 	var attemptsVal types.AttemptList
-	json.Unmarshal(attemptsJSON, &attemptsVal)
+	_ = json.Unmarshal(attemptsJSON, &attemptsVal)
 
 	var costInfo *db.CostInfo
 	if cost > 0 {
@@ -871,7 +873,7 @@ func (h *RelayHandler) asyncErrorLog(
 
 	attemptsJSON, _ := json.Marshal(attempts)
 	var attemptsVal types.AttemptList
-	json.Unmarshal(attemptsJSON, &attemptsVal)
+	_ = json.Unmarshal(attemptsJSON, &attemptsVal)
 
 	h.LogWriter.Submit(types.RelayLog{
 		Time:             time.Now().Unix(),

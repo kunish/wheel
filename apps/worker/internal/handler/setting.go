@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -302,17 +306,23 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 		return
 	}
 
-	// 2. Find matching asset
+	// 2. Find matching binary asset and checksums asset
 	wantName := fmt.Sprintf("wheel-%s-%s", runtime.GOOS, runtime.GOARCH)
-	var downloadURL string
+	var downloadURL, checksumsURL string
 	for _, a := range release.Assets {
-		if a.Name == wantName {
+		switch a.Name {
+		case wantName:
 			downloadURL = a.BrowserDownloadURL
-			break
+		case "checksums.txt":
+			checksumsURL = a.BrowserDownloadURL
 		}
 	}
 	if downloadURL == "" {
 		errorJSON(c, http.StatusBadGateway, fmt.Sprintf("No asset found for %s", wantName))
+		return
+	}
+	if checksumsURL == "" {
+		errorJSON(c, http.StatusBadGateway, "Release has no checksums.txt — cannot verify integrity. Please update manually.")
 		return
 	}
 
@@ -329,7 +339,7 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 		return
 	}
 
-	// 4. Write to temp file next to current binary
+	// 4. Write to temp file, computing SHA256 as we go
 	exe, err := os.Executable()
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, "Cannot determine executable path")
@@ -348,15 +358,32 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 		return
 	}
 
-	if _, err := io.Copy(out, dlResp.Body); err != nil {
+	hasher := sha256.New()
+	if _, err := io.Copy(out, io.TeeReader(dlResp.Body, hasher)); err != nil {
 		out.Close()
 		os.Remove(tmpPath)
 		errorJSON(c, http.StatusInternalServerError, "Failed to write binary")
 		return
 	}
 	out.Close()
+	actualHash := hex.EncodeToString(hasher.Sum(nil))
 
-	// 5. chmod +x and atomic rename
+	// 5. Download and verify checksum
+	expectedHash, err := fetchExpectedChecksum(checksumsURL, wantName)
+	if err != nil {
+		os.Remove(tmpPath)
+		slog.Error("checksum fetch failed", "error", err)
+		errorJSON(c, http.StatusBadGateway, "Failed to fetch checksums")
+		return
+	}
+	if actualHash != expectedHash {
+		os.Remove(tmpPath)
+		slog.Error("checksum mismatch", "expected", expectedHash, "actual", actualHash)
+		errorJSON(c, http.StatusBadGateway, "Checksum verification failed — downloaded binary may be corrupted")
+		return
+	}
+
+	// 6. chmod +x and atomic rename
 	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		os.Remove(tmpPath)
 		errorJSON(c, http.StatusInternalServerError, "Failed to set permissions")
@@ -368,11 +395,38 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 		return
 	}
 
-	// 6. Respond success, then schedule self-termination
+	// 7. Respond success, then schedule self-termination
 	successNoData(c)
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}()
+}
+
+// fetchExpectedChecksum downloads checksums.txt and returns the SHA256 hash
+// for the given filename. The file format is "hash  filename" per line.
+func fetchExpectedChecksum(checksumsURL, filename string) (string, error) {
+	resp, err := http.Get(checksumsURL)
+	if err != nil {
+		return "", fmt.Errorf("download checksums: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("checksums returned %d", resp.StatusCode)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		// Format: "<hash>  <filename>" (two spaces, matching shasum output)
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 2 && parts[1] == filename {
+			return parts[0], nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("reading checksums: %w", err)
+	}
+	return "", fmt.Errorf("no checksum entry for %s", filename)
 }

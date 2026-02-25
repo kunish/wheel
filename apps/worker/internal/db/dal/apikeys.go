@@ -13,7 +13,7 @@ const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
 func generateAPIKey() string {
 	bytes := make([]byte, 48)
-	rand.Read(bytes)
+	_, _ = rand.Read(bytes)
 	key := "sk-wheel-"
 	for _, b := range bytes {
 		key += string(charset[int(b)%len(charset)])

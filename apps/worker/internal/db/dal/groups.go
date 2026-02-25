@@ -226,7 +226,7 @@ func MaterializeProfileGroups(
 	var existedGroups []types.Group
 	if err = db.NewSelect().Model(&existedGroups).
 		Where("profile_id = ?", profileID).
-		Where("name IN (?)", bun.In(uniqueNames)).
+		Where("name IN (?)", bun.List(uniqueNames)).
 		Scan(ctx); err != nil {
 		return 0, 0, err
 	}
@@ -263,9 +263,9 @@ func ResetGroupProfilesOnce(ctx context.Context, db *bun.DB) {
 	if count > 0 {
 		return
 	}
-	db.NewUpdate().TableExpr("`groups`").
+	_, _ = db.NewUpdate().TableExpr("`groups`").
 		Set("profile_id = 0").
 		Where("profile_id != 0").
 		Exec(ctx)
-	db.ExecContext(ctx, "INSERT INTO settings (`key`, value) VALUES (?, ?)", "profile_id_reset_v2", "done")
+	_, _ = db.ExecContext(ctx, "INSERT INTO settings (`key`, value) VALUES (?, ?)", "profile_id_reset_v2", "done")
 }

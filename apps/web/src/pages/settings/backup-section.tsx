@@ -1,20 +1,15 @@
+import type { ImportDataResult } from "@/lib/api-client"
 import { Download, FileUp, Upload } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { exportData, importData } from "@/lib/api-client"
 
-interface ImportResult {
-  channels?: { added: number; skipped: number }
-  groups?: { added: number; skipped: number }
-  groupItems?: { added: number; skipped: number }
-  apiKeys?: { added: number; skipped: number }
-  settings?: { added: number; skipped: number }
-}
+type ImportResult = NonNullable<ImportDataResult["data"]>
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -64,8 +59,8 @@ export default function BackupSection() {
     setImportResult(null)
     try {
       const result = await importData(selectedFile)
-      if (result.success) {
-        setImportResult(result.data as ImportResult)
+      if (result.success && result.data) {
+        setImportResult(result.data)
         toast.success(t("backup.importCompleted"))
       } else {
         toast.error(result.error ?? t("backup.importFailed"))
@@ -115,10 +110,9 @@ export default function BackupSection() {
       <Card>
         <CardHeader>
           <CardTitle>{t("backup.exportTitle")}</CardTitle>
+          <CardDescription>{t("backup.exportDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">{t("backup.exportDescription")}</p>
-
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Switch id="include-logs" checked={includeLogs} onCheckedChange={setIncludeLogs} />
@@ -141,10 +135,9 @@ export default function BackupSection() {
       <Card>
         <CardHeader>
           <CardTitle>{t("backup.importTitle")}</CardTitle>
+          <CardDescription>{t("backup.importDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">{t("backup.importDescription")}</p>
-
           <div
             className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 transition-colors ${
               isDragOver
@@ -152,6 +145,14 @@ export default function BackupSection() {
                 : "border-muted-foreground/25 hover:border-muted-foreground/50"
             }`}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                fileInputRef.current?.click()
+              }
+            }}
+            role="button"
+            tabIndex={0}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}

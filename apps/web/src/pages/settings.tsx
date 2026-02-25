@@ -1,19 +1,11 @@
+import type { ApiKeyRecord } from "@/lib/api-client"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Pencil, Plus, Trash2 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { lazy, Suspense, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -54,17 +46,6 @@ const ConnectionSection = lazy(() => import("./settings/connection-section"))
 const VersionSection = lazy(() => import("./settings/version-section"))
 
 // ───────────── API Keys types ─────────────
-
-interface ApiKeyRecord {
-  id: number
-  name: string
-  apiKey: string
-  enabled: boolean
-  expireAt: number
-  maxCost: number
-  totalCost: number
-  supportedModels: string
-}
 
 interface ApiKeyFormData {
   name: string
@@ -217,10 +198,11 @@ function ApiKeysSection() {
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["apikeys"] })
-      const key = (res.data as { apiKey?: string })?.apiKey
+      const key = res.data?.apiKey
       if (key) setCreatedKey(key)
       setCreateForm(EMPTY_FORM)
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const updateMutation = useMutation({
@@ -237,6 +219,7 @@ function ApiKeysSection() {
       setEditingKey(null)
       toast.success(t("apiKeys.apiKeyUpdated"))
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const deleteMutation = useMutation({
@@ -245,9 +228,10 @@ function ApiKeysSection() {
       queryClient.invalidateQueries({ queryKey: ["apikeys"] })
       toast.success(t("apiKeys.apiKeyDeleted"))
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
-  const apiKeys = (data?.data?.apiKeys ?? []) as ApiKeyRecord[]
+  const apiKeys = data?.data?.apiKeys ?? []
 
   function maskKey(key: string) {
     if (key.length <= 16) return key
@@ -310,6 +294,7 @@ function ApiKeysSection() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    aria-label="Copy API key"
                     onClick={() => {
                       navigator.clipboard.writeText(createdKey)
                       setKeyCopied(true)
@@ -367,31 +352,18 @@ function ApiKeysSection() {
         </Dialog>
 
         {/* Delete Confirmation */}
-        <AlertDialog
+        <ConfirmDeleteDialog
           open={!!deleteConfirm}
           onOpenChange={(open) => !open && setDeleteConfirm(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t("apiKeys.deleteTitle", { name: deleteConfirm?.name })}
-              </AlertDialogTitle>
-              <AlertDialogDescription>{t("apiKeys.deleteDescription")}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                onClick={() => {
-                  if (deleteConfirm) deleteMutation.mutate(deleteConfirm.id)
-                  setDeleteConfirm(null)
-                }}
-              >
-                {t("actions.delete", { ns: "common" })}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          title={t("apiKeys.deleteTitle", { name: deleteConfirm?.name })}
+          description={t("apiKeys.deleteDescription")}
+          cancelLabel={t("actions.cancel", { ns: "common" })}
+          confirmLabel={t("actions.delete", { ns: "common" })}
+          onConfirm={() => {
+            if (deleteConfirm) deleteMutation.mutate(deleteConfirm.id)
+            setDeleteConfirm(null)
+          }}
+        />
 
         {isLoading ? (
           <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
@@ -451,10 +423,20 @@ function ApiKeysSection() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(k)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Edit API key"
+                            onClick={() => openEdit(k)}
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(k)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Delete API key"
+                            onClick={() => setDeleteConfirm(k)}
+                          >
                             <Trash2 className="text-destructive h-4 w-4" />
                           </Button>
                         </div>

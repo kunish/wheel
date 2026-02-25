@@ -56,6 +56,7 @@ export function LogFilterBar({
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder={t("searchPlaceholder")}
+            aria-label={t("searchPlaceholder")}
             value={keywordInput}
             onChange={(e) => {
               setKeywordInput(e.target.value)
@@ -67,6 +68,7 @@ export function LogFilterBar({
             <Button
               variant="ghost"
               size="icon"
+              aria-label="Clear search"
               className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
               onClick={() => {
                 setKeywordInput("")

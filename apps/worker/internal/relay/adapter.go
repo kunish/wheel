@@ -507,7 +507,7 @@ func copyBody(body map[string]any) map[string]any {
 		return out
 	}
 	var out map[string]any
-	json.Unmarshal(data, &out)
+	_ = json.Unmarshal(data, &out)
 	return out
 }
 

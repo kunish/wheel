@@ -21,7 +21,7 @@ export default function LogsPage() {
         q.setDetailId(log.id)
       }
     },
-    [q.setDetailId, q.setDetailStreamId],
+    [q],
   )
 
   const handleNavigate = useCallback(
@@ -34,13 +34,13 @@ export default function LogsPage() {
         q.setDetailId(log.id)
       }
     },
-    [q.setDetailId, q.setDetailStreamId],
+    [q],
   )
 
   const handleClearAll = useCallback(() => {
     q.navigate(q.pathname, { replace: true })
     q.setKeywordInput("")
-  }, [q.navigate, q.pathname, q.setKeywordInput])
+  }, [q])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

@@ -14,7 +14,7 @@ function useRouteKey() {
 }
 
 export function ProtectedLayout() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated())
   const queryClient = useQueryClient()
   useStatsWebSocket(queryClient)
   const routeKey = useRouteKey()
@@ -31,7 +31,7 @@ export function ProtectedLayout() {
     prevKeyRef.current = routeKey
   }
 
-  if (!isAuthenticated()) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />
   }
 

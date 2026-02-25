@@ -34,7 +34,15 @@ function getWsUrl() {
 
 // ── Global singleton WS with pub/sub ──
 
-type WsListener = (msg: { event: string; data?: any; ts: number }) => void
+interface WsEventData {
+  [key: string]: any
+}
+interface WsMessage {
+  event: string
+  data?: WsEventData
+  ts: number
+}
+type WsListener = (msg: WsMessage) => void
 
 let globalWs: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -122,7 +130,7 @@ export function useStatsWebSocket(queryClient: QueryClient) {
 /**
  * Subscribe to a specific WS event. Reuses the global WS connection.
  */
-export function useWsEvent(event: string, handler: (data: any) => void) {
+export function useWsEvent(event: string, handler: (data: WsEventData | undefined) => void) {
   const handlerRef = useRef(handler)
   handlerRef.current = handler
 

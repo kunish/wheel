@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/subtle"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,11 @@ func successNoData(c *gin.Context) {
 }
 
 func errorJSON(c *gin.Context, status int, msg string) {
+	if status >= 500 {
+		slog.Error("internal error", "status", status, "error", msg, "path", c.Request.URL.Path)
+		c.JSON(status, gin.H{"success": false, "error": "Internal server error"})
+		return
+	}
 	c.JSON(status, gin.H{"success": false, "error": msg})
 }
 

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getSettings, resetCircuitBreakers, updateSettings } from "@/lib/api-client"
@@ -45,6 +45,7 @@ export default function SystemConfigSection() {
       const filtered = Object.fromEntries(
         Object.entries(data.data.settings).filter(([key]) => key in settingLabels),
       )
+      // eslint-disable-next-line react-hooks-extra/no-direct-set-state-in-use-effect -- intentional: sync form with query data
       setFormData(filtered)
     }
   }, [data?.data?.settings, settingLabels])
@@ -55,6 +56,7 @@ export default function SystemConfigSection() {
       queryClient.invalidateQueries({ queryKey: ["settings"] })
       toast.success(t("systemConfig.settingsSaved"))
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const resetMutation = useMutation({
@@ -63,6 +65,7 @@ export default function SystemConfigSection() {
       const count = res?.data?.reset ?? 0
       toast.success(t("systemConfig.circuitBreakersReset", { count }))
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   if (isLoading) {
@@ -73,9 +76,9 @@ export default function SystemConfigSection() {
     <Card>
       <CardHeader>
         <CardTitle>{t("systemConfig.title")}</CardTitle>
+        <CardDescription>{t("systemConfig.description")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-muted-foreground mb-4 text-sm">{t("systemConfig.description")}</p>
         <form
           onSubmit={(e) => {
             e.preventDefault()

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strings"
 )
@@ -59,4 +60,23 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// Validate checks for insecure default credentials and logs warnings.
+// It does not prevent startup, but makes the warnings hard to miss.
+func (c *Config) Validate() {
+	insecureSecrets := []string{"change-me-in-production", "dummy"}
+	for _, s := range insecureSecrets {
+		if c.JWTSecret == s {
+			log.Println("========================================")
+			log.Println("[SECURITY WARNING] JWT_SECRET is using a default/insecure value. Set JWT_SECRET env var in production!")
+			log.Println("========================================")
+			break
+		}
+	}
+	if c.AdminPassword == "admin" {
+		log.Println("========================================")
+		log.Println("[SECURITY WARNING] ADMIN_PASSWORD is using the default value 'admin'. Set ADMIN_PASSWORD env var in production!")
+		log.Println("========================================")
+	}
 }

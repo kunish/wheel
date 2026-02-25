@@ -98,6 +98,7 @@ export function ActivitySection({
 }) {
   const { t } = useTranslation("dashboard")
   const gearAngle = useGearRotation()
+  const now = useMemo(() => new Date(), [])
 
   const dataMap = useMemo(() => new Map((data ?? []).map((d) => [d.date, d])), [data])
   const nav = useDateNavigation(dataMap)
@@ -239,9 +240,9 @@ export function ActivitySection({
           <GearClockFit>
             <HeroGearClock
               dayHourlyMap={nav.dayHourlyMap}
-              isToday={nav.selectedDayDateStr === toDateStr(new Date())}
-              nowHour={new Date().getHours()}
-              now={new Date()}
+              isToday={nav.selectedDayDateStr === toDateStr(now)}
+              nowHour={now.getHours()}
+              now={now}
               selectedDayDateStr={nav.selectedDayDateStr}
               selectedDisplayDate={nav.selectedDisplayDate}
               gearAngle={gearAngle}
@@ -451,25 +452,25 @@ export function ActivitySection({
                 className="bg-popover text-popover-foreground pointer-events-none z-50 w-fit min-w-max rounded-md border p-3 text-sm shadow-md"
               >
                 <p className="mb-1 font-bold">{activeTooltip.label}</p>
-                {m ? (
+                {m && reqCount && inputTokens && outputTokens && cost ? (
                   <div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                     <span>{t("stats.requests")}</span>
                     <span className="text-foreground text-right font-medium">
-                      {reqCount!.value}
-                      {reqCount!.unit}
+                      {reqCount.value}
+                      {reqCount.unit}
                     </span>
                     <span>{t("stats.inputTokens")}</span>
                     <span className="text-foreground text-right font-medium">
-                      {inputTokens!.value}
-                      {inputTokens!.unit}
+                      {inputTokens.value}
+                      {inputTokens.unit}
                     </span>
                     <span>{t("stats.outputTokens")}</span>
                     <span className="text-foreground text-right font-medium">
-                      {outputTokens!.value}
-                      {outputTokens!.unit}
+                      {outputTokens.value}
+                      {outputTokens.unit}
                     </span>
                     <span>{t("stats.cost")}</span>
-                    <span className="text-foreground text-right font-medium">{cost!.value}</span>
+                    <span className="text-foreground text-right font-medium">{cost.value}</span>
                   </div>
                 ) : (
                   <p className="text-muted-foreground">{t("activity.noData")}</p>

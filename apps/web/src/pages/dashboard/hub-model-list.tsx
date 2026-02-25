@@ -1,109 +1,67 @@
+import type { HubListItem, HubListSortOption } from "./hub-list"
 import type { ModelStatsItem } from "@/lib/api-client"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router"
 import { formatCount, formatMoney, formatTime } from "@/lib/format"
+import { HubList } from "./hub-list"
 
 type ModelSortKey = "requests" | "tokens" | "cost" | "latency"
 
+const SORT_OPTIONS: HubListSortOption<ModelSortKey>[] = [
+  { key: "requests", label: "REQ" },
+  { key: "tokens", label: "TOK" },
+  { key: "cost", label: "$" },
+  { key: "latency", label: "LAT" },
+]
+
 export function HubModelList({ data }: { data?: ModelStatsItem[] }) {
   const { t } = useTranslation("dashboard")
-  const [sortBy, setSortBy] = useState<ModelSortKey>("requests")
 
-  const sorted = useMemo(() => {
-    if (!data) return []
-    return [...data].sort((a, b) => {
-      switch (sortBy) {
+  const items = useMemo<HubListItem[] | undefined>(() => {
+    if (!data) return undefined
+    return data.map((item) => ({
+      id: item.model,
+      label: item.model.split("/").pop()!,
+      link: `/logs?model=${encodeURIComponent(item.model)}`,
+      stats: (
+        <>
+          <span>{formatCount(item.requestCount).value}r</span>
+          <span>{formatMoney(item.totalCost).value}</span>
+          <span>
+            {formatTime(item.avgLatency).value}
+            {formatTime(item.avgLatency).unit}
+          </span>
+        </>
+      ),
+      _raw: item,
+    }))
+  }, [data])
+
+  const getSortValue = useCallback(
+    (item: HubListItem, sortKey: ModelSortKey) => {
+      const raw = data?.find((d) => d.model === item.id)
+      if (!raw) return 0
+      switch (sortKey) {
         case "requests":
-          return b.requestCount - a.requestCount
+          return raw.requestCount
         case "tokens":
-          return b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens)
+          return raw.inputTokens + raw.outputTokens
         case "cost":
-          return b.totalCost - a.totalCost
+          return raw.totalCost
         case "latency":
-          return b.avgLatency - a.avgLatency
-        default:
-          return 0
+          return raw.avgLatency
       }
-    })
-  }, [data, sortBy])
-
-  const maxVal = useMemo(() => {
-    if (sorted.length === 0) return 1
-    const first = sorted[0]
-    switch (sortBy) {
-      case "requests":
-        return first.requestCount || 1
-      case "tokens":
-        return first.inputTokens + first.outputTokens || 1
-      case "cost":
-        return first.totalCost || 1
-      case "latency":
-        return first.avgLatency || 1
-    }
-  }, [sorted, sortBy])
-
-  const barPct = (item: ModelStatsItem) => {
-    switch (sortBy) {
-      case "requests":
-        return (item.requestCount / maxVal) * 100
-      case "tokens":
-        return ((item.inputTokens + item.outputTokens) / maxVal) * 100
-      case "cost":
-        return (item.totalCost / maxVal) * 100
-      case "latency":
-        return (item.avgLatency / maxVal) * 100
-    }
-  }
-
-  if (!data || data.length === 0) {
-    return <p className="text-muted-foreground text-center text-[9px]">{t("modelUsage.noData")}</p>
-  }
+    },
+    [data],
+  )
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex gap-0.5">
-        {(["requests", "tokens", "cost", "latency"] as const).map((key) => (
-          <button
-            key={key}
-            onClick={() => setSortBy(key)}
-            className={`rounded px-1 py-px text-[7px] font-bold transition-all ${
-              sortBy === key
-                ? "bg-foreground/10 text-foreground"
-                : "text-muted-foreground/50 hover:text-muted-foreground"
-            }`}
-          >
-            {key === "requests" ? "REQ" : key === "tokens" ? "TOK" : key === "cost" ? "$" : "LAT"}
-          </button>
-        ))}
-      </div>
-      <div className="max-h-[90px] space-y-px overflow-y-auto">
-        {sorted.map((item) => (
-          <Link
-            key={item.model}
-            to={`/logs?model=${encodeURIComponent(item.model)}`}
-            className="hover:bg-muted/40 relative block rounded px-1 py-0.5 transition-colors"
-          >
-            <div
-              className="absolute inset-y-0 left-0 rounded opacity-[0.07]"
-              style={{ width: `${barPct(item)}%`, backgroundColor: "var(--primary)" }}
-            />
-            <div className="relative flex items-center justify-between gap-1">
-              <span className="min-w-0 truncate text-[9px] font-medium">
-                {item.model.split("/").pop()}
-              </span>
-              <span className="text-muted-foreground flex shrink-0 gap-1.5 text-[7px] tabular-nums">
-                <span>{formatCount(item.requestCount).value}r</span>
-                <span>{formatMoney(item.totalCost).value}</span>
-                <span>
-                  {formatTime(item.avgLatency).value}
-                  {formatTime(item.avgLatency).unit}
-                </span>
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
+    <HubList
+      sortOptions={SORT_OPTIONS}
+      defaultSort="requests"
+      noDataMessage={t("modelUsage.noData")}
+      items={items}
+      getSortValue={getSortValue}
+    />
   )
 }

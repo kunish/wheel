@@ -331,7 +331,7 @@ func SyncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*SyncRe
 
 		// Remove group items for disappeared models
 		for _, modelName := range removed {
-			db.NewDelete().TableExpr("group_items").
+			_, _ = db.NewDelete().TableExpr("group_items").
 				Where("channel_id = ?", channel.ID).
 				Where("model_name = ?", modelName).
 				Exec(ctx)
@@ -349,7 +349,7 @@ func SyncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*SyncRe
 
 	// Save last sync time
 	now := fmt.Sprintf("%d", time.Now().Unix())
-	dal.UpdateSettings(ctx, db, map[string]string{"last_sync_time": now})
+	_ = dal.UpdateSettings(ctx, db, map[string]string{"last_sync_time": now})
 
 	// Invalidate caches
 	kv.Delete("channels")
@@ -422,7 +422,7 @@ func autoGroupChannel(ctx context.Context, db *bun.DB, channel types.Channel, mo
 				Priority:  0,
 				Weight:    1,
 			}
-			db.NewInsert().Model(item).Exec(ctx)
+			_, _ = db.NewInsert().Model(item).Exec(ctx)
 		}
 	}
 }

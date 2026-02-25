@@ -139,7 +139,13 @@ function SortableDialogItem({
         onCheckedChange={(checked) => onUpdate({ enabled: checked })}
         className="shrink-0"
       />
-      <Button variant="ghost" size="icon" className="shrink-0" onClick={onRemove}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        aria-label="Remove item"
+        onClick={onRemove}
+      >
         <X className="h-4 w-4" />
       </Button>
     </div>

@@ -1,15 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  createProfile,
-  deleteProfile,
-  listProfiles,
-  updateProfile,
-} from "@/lib/api-client"
+import { toast } from "sonner"
+import { createProfile, deleteProfile, listProfiles, updateProfile } from "@/lib/api-client"
 
 export function useProfilesQuery() {
   return useQuery({
     queryKey: ["model-profiles"],
     queryFn: listProfiles,
+    staleTime: 30_000,
   })
 }
 
@@ -18,6 +15,7 @@ export function useCreateProfile() {
   return useMutation({
     mutationFn: createProfile,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["model-profiles"] }),
+    onError: (err: Error) => toast.error(err.message),
   })
 }
 
@@ -26,6 +24,7 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: updateProfile,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["model-profiles"] }),
+    onError: (err: Error) => toast.error(err.message),
   })
 }
 
@@ -34,5 +33,6 @@ export function useDeleteProfile() {
   return useMutation({
     mutationFn: (id: number) => deleteProfile(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["model-profiles"] }),
+    onError: (err: Error) => toast.error(err.message),
   })
 }

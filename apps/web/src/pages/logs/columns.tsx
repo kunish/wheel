@@ -292,6 +292,7 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
           <Button
             variant="ghost"
             size="icon"
+            aria-label="View log detail"
             onClick={(e) => {
               e.stopPropagation()
               onViewDetail(row.id)

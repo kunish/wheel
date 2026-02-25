@@ -104,7 +104,7 @@ func ImportData(ctx context.Context, db *bun.DB, dump *types.DBDump) types.Impor
 				result.Settings.Skipped++
 				continue
 			}
-			dal.UpdateSettings(ctx, db, map[string]string{s.Key: s.Value})
+			_ = dal.UpdateSettings(ctx, db, map[string]string{s.Key: s.Value})
 			result.Settings.Added++
 		}
 	}

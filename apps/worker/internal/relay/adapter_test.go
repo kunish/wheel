@@ -104,7 +104,9 @@ func TestBuildUpstreamRequest_AnthropicPassthrough(t *testing.T) {
 	}
 	// Passthrough should preserve original body structure
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 	if parsed["model"] != "claude-3-opus" {
 		t.Error("model not set in body")
 	}
@@ -170,7 +172,9 @@ func TestBuildGeminiRequest_NativeFormat(t *testing.T) {
 	}
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 	if parsed["contents"] == nil {
 		t.Error("expected 'contents' field in Gemini body")
 	}
@@ -204,7 +208,9 @@ func TestBuildOpenAIRequest_ParamOverride(t *testing.T) {
 	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "gpt-4o", false)
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 	if parsed["temperature"] != 0.7 {
 		t.Errorf("temperature = %v, want 0.7", parsed["temperature"])
 	}
@@ -219,7 +225,9 @@ func TestBuildOpenAIRequest_OverridesModel(t *testing.T) {
 	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "target-model", false)
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 	if parsed["model"] != "target-model" {
 		t.Errorf("model = %q, want target-model", parsed["model"])
 	}
@@ -246,7 +254,9 @@ func TestBuildAnthropicRequest_SystemMessage(t *testing.T) {
 	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 
 	if parsed["system"] != "You are helpful." {
 		t.Errorf("system = %v", parsed["system"])
@@ -301,7 +311,9 @@ func TestBuildAnthropicRequest_ToolCalls(t *testing.T) {
 	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 
 	messages := parsed["messages"].([]any)
 	if len(messages) != 3 {
@@ -363,7 +375,9 @@ func TestBuildAnthropicRequest_MaxTokensFallback(t *testing.T) {
 	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 
 	// Should default to 4096 then ensureMaxTokens may adjust
 	mt, ok := parsed["max_tokens"].(float64)
@@ -388,7 +402,9 @@ func TestBuildAnthropicRequest_ForwardsStreamAndParams(t *testing.T) {
 	req := BuildUpstreamRequest(ch, "key", body, "/v1/chat/completions", "claude-3-opus", false)
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(req.Body), &parsed)
+	if err := json.Unmarshal([]byte(req.Body), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
 
 	if parsed["stream"] != true {
 		t.Error("stream not forwarded")

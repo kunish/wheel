@@ -229,7 +229,7 @@ func (h *Handler) RefreshModelMetadata(c *gin.Context) {
 	// Ensure default profile and migrate orphaned groups
 	defaultProfileID, err := dal.EnsureDefaultProfile(c.Request.Context(), h.DB)
 	if err == nil && defaultProfileID > 0 {
-		dal.AssignOrphanedGroups(c.Request.Context(), h.DB, defaultProfileID)
+		_ = dal.AssignOrphanedGroups(c.Request.Context(), h.DB, defaultProfileID)
 	}
 
 	successJSON(c, gin.H{"count": len(metadata)})

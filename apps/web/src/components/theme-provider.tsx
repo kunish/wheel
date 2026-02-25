@@ -25,6 +25,7 @@ export function ThemeProvider({
   defaultTheme?: Theme
   disableTransitionOnChange?: boolean
 }) {
+  // eslint-disable-next-line react-naming-convention/use-state -- setTheme is exposed via context with different semantics
   const [theme, setThemeState] = useState<Theme>(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
     return (stored as Theme) || defaultTheme

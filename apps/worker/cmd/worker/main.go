@@ -33,14 +33,7 @@ import (
 
 func main() {
 	cfg := config.Load()
-
-	// ── Security warnings ──
-	if cfg.JWTSecret == "change-me-in-production" {
-		log.Println("[SECURITY WARNING] JWT_SECRET is using the default value. Set JWT_SECRET env var in production!")
-	}
-	if cfg.AdminPassword == "admin" {
-		log.Println("[SECURITY WARNING] ADMIN_PASSWORD is using the default value. Set ADMIN_PASSWORD env var in production!")
-	}
+	cfg.Validate()
 
 	// ── Database ──
 	database, err := db.Open(cfg.DBDSN)
@@ -77,7 +70,7 @@ func main() {
 
 	// Now assign orphaned groups (builtin profiles already exist)
 	if dpID, err := dal.EnsureDefaultProfile(context.Background(), database); err == nil && dpID > 0 {
-		dal.AssignOrphanedGroups(context.Background(), database, dpID)
+		_ = dal.AssignOrphanedGroups(context.Background(), database, dpID)
 	}
 
 	// ── Seed subcommand ──
@@ -173,13 +166,13 @@ func main() {
 	// ── Cron Jobs ──
 	c := cron.New()
 	// Sync model prices and builtin profiles every 6 hours
-	c.AddFunc("0 */6 * * *", func() {
+	_, _ = c.AddFunc("0 */6 * * *", func() {
 		log.Println("[cron] Syncing from models.dev...")
 		if _, err := service.SyncAllFromModelsDev(context.Background(), database); err != nil {
 			log.Printf("[cron] models.dev sync error: %v", err)
 		}
 	})
-	c.AddFunc("0 */6 * * *", func() {
+	_, _ = c.AddFunc("0 */6 * * *", func() {
 		log.Println("[cron] Refreshing model metadata...")
 		if metadata, err := service.FetchAndFlattenMetadata(); err != nil {
 			log.Printf("[cron] metadata refresh error: %v", err)
@@ -189,7 +182,7 @@ func main() {
 			log.Printf("[cron] metadata refreshed: %d entries", len(metadata))
 		}
 	})
-	c.AddFunc("0 */6 * * *", func() {
+	_, _ = c.AddFunc("0 */6 * * *", func() {
 		log.Println("[cron] Syncing all channel models...")
 		result, err := relay.SyncAllModels(context.Background(), database, kv)
 		if err != nil {

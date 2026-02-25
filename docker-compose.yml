@@ -3,12 +3,29 @@ volumes:
   prometheus-data:
   grafana-data:
 
+networks:
+  internal:
+    driver: bridge
+
 services:
   tidb:
-    image: pingcap/tidb:latest
+    image: pingcap/tidb:v8.5.0
     restart: always
+    networks:
+      - internal
     volumes:
       - tidb-data:/tmp/tidb
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-P", "4000", "-u", "root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
 
   worker:
     image: ghcr.io/kunish/wheel-worker
@@ -19,6 +36,8 @@ services:
         - linux/amd64
         - linux/arm64
     restart: always
+    networks:
+      - internal
     environment:
       JWT_SECRET: ${JWT_SECRET:-dummy}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
@@ -26,7 +45,19 @@ services:
       DB_DSN: root:@tcp(tidb:4000)/wheel?parseTime=true&charset=utf8mb4
       METRICS_ENABLED: "true"
     depends_on:
-      - tidb
+      tidb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
 
   web:
     image: ghcr.io/kunish/wheel-web
@@ -37,36 +68,81 @@ services:
         - linux/amd64
         - linux/arm64
     restart: always
+    networks:
+      - internal
     depends_on:
-      - worker
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
 
   caddy:
     image: caddy:2-alpine
     restart: always
+    networks:
+      - internal
     ports:
       - 3000:3000
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
     depends_on:
-      - worker
-      - web
+      worker:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:v3.2.1
     restart: always
+    networks:
+      - internal
     ports:
-      - 9090:9090
+      - 127.0.0.1:9090:9090
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     depends_on:
-      - worker
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:11.5.2
     restart: always
+    networks:
+      - internal
     ports:
-      - 3001:3000
+      - 127.0.0.1:3001:3000
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -75,4 +151,16 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"

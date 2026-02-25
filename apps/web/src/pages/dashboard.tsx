@@ -115,11 +115,13 @@ export default function DashboardPage() {
   const { data: channelData } = useQuery({
     queryKey: ["stats", "channel"],
     queryFn: getChannelStats,
+    staleTime: 30_000,
   })
 
   const { data: modelData } = useQuery({
     queryKey: ["stats", "model"],
     queryFn: getModelStats,
+    staleTime: 30_000,
   })
 
   const isStatsError = isTotalError || isDailyError || isHourlyError
