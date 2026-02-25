@@ -1,11 +1,4 @@
 :3000 {
-	header {
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-	}
-
 	# /v1/* and /api/* -> worker (direct, no buffering)
 	handle /v1/* {
 		reverse_proxy worker:8787
