@@ -46,6 +46,9 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// ── Ensure a default API key exists for new installations ──
+	dal.EnsureDefaultApiKey(context.Background(), database)
+
 	// ── Cache (created early so startup can populate it) ──
 	kv := cache.New()
 	defer kv.Close()

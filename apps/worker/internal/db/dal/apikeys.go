@@ -3,6 +3,7 @@ package dal
 import (
 	"context"
 	"crypto/rand"
+	"log"
 
 	"github.com/uptrace/bun"
 
@@ -85,6 +86,31 @@ func GetApiKeyByKey(ctx context.Context, db *bun.DB, key string) (*types.APIKey,
 		return nil, err
 	}
 	return ak, nil
+}
+
+// EnsureDefaultApiKey creates a default API key if none exist yet.
+// This runs at startup so new installations have a usable key immediately.
+func EnsureDefaultApiKey(ctx context.Context, db *bun.DB) {
+	count, err := db.NewSelect().Model((*types.APIKey)(nil)).Count(ctx)
+	if err != nil {
+		log.Printf("[startup] Failed to check API keys: %v", err)
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	key := generateAPIKey()
+	ak := &types.APIKey{
+		Name:    "Default",
+		APIKey:  key,
+		Enabled: true,
+	}
+	if _, err := db.NewInsert().Model(ak).Exec(ctx); err != nil {
+		log.Printf("[startup] Failed to create default API key: %v", err)
+		return
+	}
+	log.Printf("[startup] Created default API key: %s", key)
 }
 
 func IncrementApiKeyCost(ctx context.Context, db *bun.DB, id int, cost float64) error {
