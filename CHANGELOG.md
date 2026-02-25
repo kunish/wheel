@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.3](https://github.com/kunish/wheel/compare/v1.12.2...v1.12.3) (2026-02-25)
+
+
+### Bug Fixes
+
+* **ui:** remove jarring zoom animation from tabs content ([1632bb4](https://github.com/kunish/wheel/commit/1632bb496521a783949aa59d14a8263b16dd14ed))
+
 ## [1.12.2](https://github.com/kunish/wheel/compare/v1.12.1...v1.12.2) (2026-02-24)
 
 
