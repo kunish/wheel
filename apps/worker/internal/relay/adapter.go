@@ -257,7 +257,7 @@ func convertAssistantMessage(msg map[string]any) map[string]any {
 				"text": content,
 			})
 		}
-		for _, tc := range toolCalls {
+		for i, tc := range toolCalls {
 			tcMap, ok := tc.(map[string]any)
 			if !ok {
 				continue
@@ -273,9 +273,13 @@ func convertAssistantMessage(msg map[string]any) map[string]any {
 					input = parsed
 				}
 			}
+			id, _ := tcMap["id"].(string)
+			if id == "" {
+				id = fmt.Sprintf("call_%d", i)
+			}
 			contentBlocks = append(contentBlocks, map[string]any{
 				"type":  "tool_use",
-				"id":    tcMap["id"],
+				"id":    id,
 				"name":  fn["name"],
 				"input": input,
 			})
