@@ -8,10 +8,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/config"
+	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/middleware"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/types"
 	"github.com/uptrace/bun"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Handler holds shared dependencies for all route handlers.
@@ -60,10 +62,24 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// Use constant-time comparison to prevent timing attacks
-	usernameMatch := subtle.ConstantTimeCompare([]byte(req.Username), []byte(h.Config.AdminUsername))
-	passwordMatch := subtle.ConstantTimeCompare([]byte(req.Password), []byte(h.Config.AdminPassword))
-	if usernameMatch&passwordMatch != 1 {
+	authenticated := false
+
+	// Try DB user first (set via reset-password CLI)
+	if user, err := dal.GetUser(c.Request.Context(), h.DB); err == nil && user != nil {
+		if subtle.ConstantTimeCompare([]byte(req.Username), []byte(user.Username)) == 1 &&
+			bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) == nil {
+			authenticated = true
+		}
+	}
+
+	// Fallback to env config
+	if !authenticated {
+		usernameMatch := subtle.ConstantTimeCompare([]byte(req.Username), []byte(h.Config.AdminUsername))
+		passwordMatch := subtle.ConstantTimeCompare([]byte(req.Password), []byte(h.Config.AdminPassword))
+		authenticated = usernameMatch&passwordMatch == 1
+	}
+
+	if !authenticated {
 		errorJSON(c, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
@@ -105,6 +121,20 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
+	// Persist to DB if a DB user exists
+	ctx := c.Request.Context()
+	if user, err := dal.GetUser(ctx, h.DB); err == nil && user != nil {
+		hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, "Failed to hash password")
+			return
+		}
+		if err := dal.UpdatePassword(ctx, h.DB, user.ID, string(hashed)); err != nil {
+			errorJSON(c, http.StatusInternalServerError, "Failed to update password")
+			return
+		}
+	}
+
 	h.Config.AdminPassword = req.NewPassword
 	successNoData(c)
 }
@@ -128,6 +158,19 @@ func (h *Handler) ChangeUsername(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errorJSON(c, http.StatusBadRequest, "Invalid request body")
 		return
+	}
+
+	if req.Username == "" {
+		errorJSON(c, http.StatusBadRequest, "Username is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	if user, err := dal.GetUser(ctx, h.DB); err == nil && user != nil {
+		if err := dal.UpdateUsername(ctx, h.DB, user.ID, req.Username); err != nil {
+			errorJSON(c, http.StatusInternalServerError, "Failed to update username")
+			return
+		}
 	}
 
 	h.Config.AdminUsername = req.Username

@@ -9,6 +9,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -18,6 +20,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/uptrace/bun"
+
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db"
@@ -29,6 +33,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/service"
 	"github.com/kunish/wheel/apps/worker/internal/ws"
 	"github.com/robfig/cron/v3"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
@@ -76,12 +81,18 @@ func main() {
 		_ = dal.AssignOrphanedGroups(context.Background(), database, dpID)
 	}
 
-	// ── Seed subcommand ──
-	if len(os.Args) > 1 && os.Args[1] == "seed" {
-		if err := seed.Run(context.Background(), database); err != nil {
-			log.Fatalf("Seed failed: %v", err)
+	// ── CLI subcommands ──
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "seed":
+			if err := seed.Run(context.Background(), database); err != nil {
+				log.Fatalf("Seed failed: %v", err)
+			}
+			return
+		case "reset-password":
+			resetPassword(context.Background(), database)
+			return
 		}
-		return
 	}
 
 	// ── WebSocket Hub ──
@@ -222,4 +233,41 @@ func main() {
 	// Wait for LogWriter to flush remaining buffered logs
 	<-logWriterDone
 	log.Println("[shutdown] All logs flushed, exiting.")
+}
+
+func resetPassword(ctx context.Context, database *bun.DB) {
+	fs := flag.NewFlagSet("reset-password", flag.ExitOnError)
+	username := fs.String("u", "", "Admin username")
+	password := fs.String("p", "", "Admin password")
+	fs.Parse(os.Args[2:])
+
+	if *username == "" || *password == "" {
+		fmt.Println("Usage: wheel reset-password -u <username> -p <password>")
+		os.Exit(1)
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatalf("Failed to hash password: %v", err)
+	}
+
+	user, err := dal.GetUser(ctx, database)
+	if err != nil {
+		log.Fatalf("Failed to query user: %v", err)
+	}
+
+	if user == nil {
+		if _, err := dal.CreateUser(ctx, database, *username, string(hashed)); err != nil {
+			log.Fatalf("Failed to create user: %v", err)
+		}
+		log.Printf("Admin user created: %s", *username)
+	} else {
+		if err := dal.UpdateUsername(ctx, database, user.ID, *username); err != nil {
+			log.Fatalf("Failed to update username: %v", err)
+		}
+		if err := dal.UpdatePassword(ctx, database, user.ID, string(hashed)); err != nil {
+			log.Fatalf("Failed to update password: %v", err)
+		}
+		log.Printf("Admin user updated: %s", *username)
+	}
 }
