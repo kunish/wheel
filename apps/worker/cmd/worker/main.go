@@ -82,7 +82,7 @@ func main() {
 	}
 
 	// ── WebSocket Hub ──
-	hub := ws.New(cfg.JWTSecret, cfg.AllowedOrigins)
+	hub := ws.New(cfg.JWTSecret)
 
 	// ── Observability (must be before LogWriter so it can record drop metrics) ──
 	obs, err := observe.New(cfg.MetricsEnabled, cfg.OtelEnabled, cfg.OtelEndpoint, cfg.OtelServiceName)

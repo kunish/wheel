@@ -9,7 +9,7 @@ import (
 // RegisterRoutes sets up all API routes on the given Gin engine.
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	// CORS
-	r.Use(middleware.CORSMiddleware(h.Config.AllowedOrigins))
+	r.Use(middleware.CORSMiddleware())
 
 	// Health check
 	r.GET("/", func(c *gin.Context) {

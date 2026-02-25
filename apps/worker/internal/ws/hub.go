@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"slices"
 	"sync"
 	"time"
 
@@ -19,19 +18,6 @@ const (
 	// Write deadline for WebSocket writes.
 	writeWait = 5 * time.Second
 )
-
-// checkOrigin returns an origin checker based on the hub's allowed origins.
-// If no origins are configured (dev mode), localhost origins are allowed.
-func (h *Hub) checkOrigin(r *http.Request) bool {
-	if len(h.allowedOrigins) == 0 {
-		return true // no restriction when ALLOWED_ORIGINS is not set
-	}
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return true
-	}
-	return slices.Contains(h.allowedOrigins, origin)
-}
 
 // wsClient wraps a WebSocket connection with a buffered send channel.
 // A dedicated goroutine drains the channel and writes to the connection.
@@ -60,17 +46,15 @@ type Hub struct {
 	streamMu     sync.RWMutex
 	activeStreams map[string]map[string]any // streamId -> log-stream-start payload
 
-	jwtSecret      string
-	allowedOrigins []string
+	jwtSecret string
 }
 
 // New creates a new WebSocket Hub.
-func New(jwtSecret string, allowedOrigins []string) *Hub {
+func New(jwtSecret string) *Hub {
 	return &Hub{
-		clients:        make(map[*wsClient]struct{}),
-		activeStreams:   make(map[string]map[string]any),
-		jwtSecret:      jwtSecret,
-		allowedOrigins: allowedOrigins,
+		clients:      make(map[*wsClient]struct{}),
+		activeStreams: make(map[string]map[string]any),
+		jwtSecret:    jwtSecret,
 	}
 }
 
@@ -93,7 +77,7 @@ func (h *Hub) HandleWS(c *gin.Context) {
 		return
 	}
 
-	u := websocket.Upgrader{CheckOrigin: h.checkOrigin}
+	u := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	conn, err := u.Upgrade(c.Writer, c.Request, http.Header{})
 	if err != nil {
 		log.Printf("[ws] upgrade error: %v", err)
