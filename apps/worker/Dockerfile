@@ -17,13 +17,13 @@ RUN make build
 FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates tzdata curl \
-    && addgroup -g 1001 -S wheel \
-    && adduser -S wheel -u 1001 -G wheel
+    && addgroup -g 1001 -S app \
+    && adduser -S app -u 1001 -G app
 
 WORKDIR /app
-COPY --from=builder --chown=wheel:wheel /wheel .
+COPY --from=builder --chown=app:app /wheel .
 
-USER wheel
+USER app
 
 ENV PORT=8787
 

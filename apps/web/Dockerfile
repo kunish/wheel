@@ -18,12 +18,12 @@ RUN pnpm --filter @wheel/web build
 
 FROM caddy:2-alpine AS runner
 
-RUN addgroup -g 1001 -S wheel && adduser -S wheel -u 1001 -G wheel \
+RUN addgroup -g 1001 -S app && adduser -S app -u 1001 -G app \
     && mkdir -p /data /config \
-    && chown -R wheel:wheel /srv /data /config
+    && chown -R app:app /srv /data /config
 
-COPY --from=builder --chown=wheel:wheel /app/apps/web/dist /srv
-COPY --chown=wheel:wheel apps/web/Caddyfile /etc/caddy/Caddyfile
+COPY --from=builder --chown=app:app /app/apps/web/dist /srv
+COPY --chown=app:app apps/web/Caddyfile /etc/caddy/Caddyfile
 
-USER wheel
+USER app
 EXPOSE 3000
