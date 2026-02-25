@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/kunish/wheel/compare/v1.14.0...v1.14.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* **relay:** add fallback ID for tool_calls missing id field ([#55](https://github.com/kunish/wheel/issues/55)) ([1115c9b](https://github.com/kunish/wheel/commit/1115c9b0686a06b0110db9e07ab57e50a508bbf1))
+
 ## [1.14.0](https://github.com/kunish/wheel/compare/v1.13.0...v1.14.0) (2026-02-25)
 
 
