@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.4](https://github.com/kunish/wheel/compare/v1.12.3...v1.12.4) (2026-02-25)
+
+
+### Bug Fixes
+
+* **docker:** rename container user from 'wheel' to 'app' to avoid Alpine built-in group conflict ([afd1bee](https://github.com/kunish/wheel/commit/afd1beebf4ec77bfdac45c39535697b8204e3636))
+
 ## [1.12.3](https://github.com/kunish/wheel/compare/v1.12.2...v1.12.3) (2026-02-25)
 
 
