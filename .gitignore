@@ -7,4 +7,6 @@ data/
 *.db
 *.db-shm
 *.db-wal
-tmp/apps/worker/worker
+apps/worker/worker
+apps/worker/bin/
+apps/worker/tmp/
