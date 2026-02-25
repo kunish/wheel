@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/kunish/wheel/compare/v1.13.0...v1.14.0) (2026-02-25)
+
+
+### Features
+
+* **web:** redesign model page card styling and remove animation wrappers ([5e71ed2](https://github.com/kunish/wheel/commit/5e71ed26d9250c35e1459f4035e27f1d9b12c236))
+
 ## [1.13.0](https://github.com/kunish/wheel/compare/v1.12.4...v1.13.0) (2026-02-25)
 
 
