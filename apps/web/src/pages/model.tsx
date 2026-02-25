@@ -34,7 +34,6 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { AnimatePresence, motion } from "motion/react"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router"
@@ -346,7 +345,7 @@ export default function ModelPage() {
   // ─── Drag handlers ─────────────────────────────
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 1 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 
@@ -527,30 +526,21 @@ export default function ModelPage() {
   const renderSortableGroups = (
     <SortableContext items={groupIds} strategy={verticalListSortingStrategy}>
       <div className="flex flex-col gap-3">
-        <AnimatePresence initial={false}>
-          {groups.map((g) => (
-            <motion.div
-              key={g.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-            >
-              <SortableGroup
-                group={g}
-                channelMap={channelMap}
-                onEdit={() => openEditGroup(g)}
-                onDelete={() => setDeleteGroupConfirm(g)}
-                onClear={() => setClearGroupConfirm(g)}
-                onRemoveItem={(itemIndex) => groupRemoveItemMut.mutate({ group: g, itemIndex })}
-                isOver={activeDrag !== null}
-                hoverGroupId={hoverGroupId}
-                forceCollapsed={groupsCollapsed}
-                priceMap={priceMap}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+        {groups.map((g) => (
+          <SortableGroup
+            key={g.id}
+            group={g}
+            channelMap={channelMap}
+            onEdit={() => openEditGroup(g)}
+            onDelete={() => setDeleteGroupConfirm(g)}
+            onClear={() => setClearGroupConfirm(g)}
+            onRemoveItem={(itemIndex) => groupRemoveItemMut.mutate({ group: g, itemIndex })}
+            isOver={activeDrag !== null}
+            hoverGroupId={hoverGroupId}
+            forceCollapsed={groupsCollapsed}
+            priceMap={priceMap}
+          />
+        ))}
       </div>
     </SortableContext>
   )
@@ -629,29 +619,20 @@ export default function ModelPage() {
               ) : (
                 <SortableContext items={channelIds} strategy={verticalListSortingStrategy}>
                   <div className="flex flex-col gap-3">
-                    <AnimatePresence initial={false}>
-                      {channels.map((ch) => (
-                        <motion.div
-                          key={ch.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <DraggableChannel
-                            channel={ch}
-                            highlighted={highlightedId === ch.id}
-                            refCallback={(el) => setChannelRef(ch.id, el)}
-                            onEdit={() => openEditChannel(ch)}
-                            onDelete={() => setDeleteChannelConfirm(ch)}
-                            onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
-                            enablePending={channelEnableMut.isPending}
-                            forceCollapsed={channelsCollapsed}
-                            priceMap={priceMap}
-                          />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
+                    {channels.map((ch) => (
+                      <DraggableChannel
+                        key={ch.id}
+                        channel={ch}
+                        highlighted={highlightedId === ch.id}
+                        refCallback={(el) => setChannelRef(ch.id, el)}
+                        onEdit={() => openEditChannel(ch)}
+                        onDelete={() => setDeleteChannelConfirm(ch)}
+                        onToggle={(enabled) => channelEnableMut.mutate({ id: ch.id, enabled })}
+                        enablePending={channelEnableMut.isPending}
+                        forceCollapsed={channelsCollapsed}
+                        priceMap={priceMap}
+                      />
+                    ))}
                   </div>
                 </SortableContext>
               )}
@@ -720,7 +701,20 @@ export default function ModelPage() {
       {/* Drag overlay — reuse original element structure, no drop animation */}
       <DragOverlay dropAnimation={null}>
         {activeDrag?.type === "model" && (
-          <ModelCard modelId={activeDrag.model} className="cursor-grabbing shadow-lg" />
+          <ModelCard
+            modelId={activeDrag.model}
+            className="cursor-grabbing shadow-lg"
+            price={priceMap.get(activeDrag.model)}
+          >
+            <ModelSourceBadge
+              modelId={activeDrag.model}
+              isApiFetched={
+                channels
+                  .find((c) => c.id === activeDrag.channelId)
+                  ?.fetchedModel?.includes(activeDrag.model) ?? false
+              }
+            />
+          </ModelCard>
         )}
         {activeDrag?.type === "channel" && <ChannelOverlay channel={activeDrag.channel} />}
         {activeDrag?.type === "group" && (
@@ -903,35 +897,55 @@ function ChannelOverlay({ channel }: { channel: ChannelRecord }) {
   const modelNames = parseModels(channel.model)
 
   return (
-    <Card
-      className={cn(
-        "overflow-hidden border-l-4 shadow-lg",
-        channel.enabled ? "border-l-nb-lime" : "border-l-muted-foreground/30",
-      )}
-    >
-      <CardHeader className="flex flex-row items-start space-y-0 p-3 pb-1">
-        <div className="flex items-start gap-2">
-          <span className="text-muted-foreground mt-0.5 -ml-1 cursor-grabbing rounded p-1">
+    <Card className="relative mx-[1px] gap-0 overflow-hidden shadow-lg">
+      <div
+        className={cn(
+          "absolute top-0 bottom-0 left-0 w-1.5",
+          channel.enabled
+            ? "bg-gradient-to-b from-lime-400 to-green-400"
+            : "bg-muted-foreground/30",
+        )}
+      />
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 py-2.5">
+        <div className="flex items-center gap-2 pl-1.5">
+          <button className="text-muted-foreground cursor-grabbing rounded p-1">
             <GripVertical className="h-4 w-4" />
-          </span>
-          <div className="flex items-start gap-1.5">
-            <ChevronDown className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0 -rotate-90" />
+          </button>
+          <div className="flex items-center gap-1.5 text-left">
+            <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0 -rotate-90" />
             <div>
-              <CardTitle className="text-sm">{channel.name}</CardTitle>
+              <CardTitle className="text-sm font-semibold">{channel.name}</CardTitle>
               <div className="mt-1 flex items-center gap-1.5">
-                <Badge variant="secondary" className="text-xs">
+                <Badge
+                  variant="secondary"
+                  className="bg-secondary/60 text-muted-foreground rounded-full px-2 py-0 text-[10px] font-normal"
+                >
                   {t(`typeLabels.${channel.type}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {modelNames.length > 0 && (
-                  <Badge variant="ghost" className="text-[10px]">
+                  <span className="bg-secondary/30 text-muted-foreground rounded-full px-2 py-0 text-[10px]">
                     {t("modelCount", { count: modelNames.length })}
-                  </Badge>
+                  </span>
                 )}
               </div>
             </div>
           </div>
         </div>
+        <div className="flex items-center gap-1 pr-1 opacity-0">
+          <Switch checked={channel.enabled} className="scale-90" />
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </CardHeader>
+      <div className="grid grid-rows-[0fr]">
+        <div className="overflow-hidden">
+          <CardContent className="px-3 pt-0 pb-2.5" />
+        </div>
+      </div>
     </Card>
   )
 }
@@ -941,17 +955,18 @@ function GroupOverlay({ group }: { group: GroupRecord | undefined }) {
   if (!group) return null
 
   return (
-    <Card className="border-l-nb-lavender overflow-hidden border-l-4 shadow-lg">
-      <CardHeader className="flex flex-row items-start space-y-0 p-3 pb-1">
-        <div className="flex items-start gap-2">
-          <span className="text-muted-foreground mt-0.5 -ml-1 cursor-grabbing rounded p-1">
+    <Card className="relative mx-[1px] gap-0 overflow-hidden shadow-lg">
+      <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-gradient-to-b from-purple-400 to-indigo-400" />
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 py-2.5">
+        <div className="flex items-center gap-2 pl-1.5">
+          <button className="text-muted-foreground cursor-grabbing rounded p-1">
             <GripVertical className="h-4 w-4" />
-          </span>
-          <div className="flex items-start gap-1.5">
-            <ChevronDown className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0 -rotate-90" />
+          </button>
+          <div className="flex items-center gap-1.5 text-left">
+            <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0 -rotate-90" />
             <div>
-              <CardTitle className="text-sm">{group.name}</CardTitle>
-              <div className="mt-1 flex items-center gap-1">
+              <CardTitle className="text-sm font-semibold">{group.name}</CardTitle>
+              <div className="mt-1 flex items-center gap-1.5">
                 <Badge
                   variant={
                     group.mode === 1
@@ -964,20 +979,38 @@ function GroupOverlay({ group }: { group: GroupRecord | undefined }) {
                             ? "pink"
                             : "secondary"
                   }
-                  className="text-xs"
+                  className="rounded-full px-2 py-0 text-[10px] font-normal"
                 >
                   {t(`modeLabels.${group.mode}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {group.items.length > 0 && (
-                  <Badge variant="ghost" className="text-[10px]">
+                  <span className="bg-secondary/30 text-muted-foreground rounded-full px-2 py-0 text-[10px]">
                     {t("itemCount", { count: group.items.length })}
-                  </Badge>
+                  </span>
                 )}
               </div>
             </div>
           </div>
         </div>
+        <div className="flex items-center gap-1 pr-1 opacity-0">
+          {group.items.length > 0 && (
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </CardHeader>
+      <div className="grid grid-rows-[0fr]">
+        <div className="overflow-hidden">
+          <CardContent className="px-3 pt-0 pb-2.5" />
+        </div>
+      </div>
     </Card>
   )
 }
@@ -1042,66 +1075,86 @@ function DraggableChannel({
       }}
       style={style}
       className={cn(
-        "overflow-hidden border-l-4 transition-all",
-        channel.enabled ? "border-l-nb-lime" : "border-l-muted-foreground/30",
-        isDragging && "border-dashed opacity-30",
-        highlighted && "ring-primary animate-pulse ring-2",
+        "relative mx-[1px] gap-0 overflow-hidden shadow-sm transition-shadow hover:shadow-md",
+        isDragging && "opacity-30",
+        highlighted && "border-primary animate-pulse border-2",
       )}
     >
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 p-3 pb-1">
-        <div className="flex items-start gap-2">
+      <div
+        className={cn(
+          "absolute top-0 bottom-0 left-0 w-1.5",
+          channel.enabled
+            ? "bg-gradient-to-b from-lime-400 to-green-400"
+            : "bg-muted-foreground/30",
+        )}
+      />
+      <CardHeader
+        className={cn(
+          "flex flex-row items-center justify-between space-y-0 px-3",
+          collapsed ? "py-2.5" : "pt-2.5 pb-1",
+        )}
+      >
+        <div className="flex items-center gap-2 pl-1.5">
           <button
             {...attributes}
             {...listeners}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent mt-0.5 -ml-1 cursor-grab touch-none rounded p-1"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent cursor-grab touch-none rounded p-1"
           >
             <GripVertical className="h-4 w-4" />
           </button>
           <button
             type="button"
             onClick={() => setCollapsed(!collapsed)}
-            className="flex items-start gap-1.5 text-left"
+            className="flex items-center gap-1.5 text-left"
           >
             <ChevronDown
               className={cn(
-                "text-muted-foreground mt-0.5 h-4 w-4 shrink-0 transition-transform",
+                "text-muted-foreground h-4 w-4 shrink-0 transition-transform",
                 collapsed && "-rotate-90",
               )}
             />
             <div>
-              <CardTitle className="text-sm">{channel.name}</CardTitle>
+              <CardTitle className="text-sm font-semibold">{channel.name}</CardTitle>
               <div className="mt-1 flex items-center gap-1.5">
-                <Badge variant="secondary" className="text-xs">
+                <Badge
+                  variant="secondary"
+                  className="bg-secondary/60 text-muted-foreground rounded-full px-2 py-0 text-[10px] font-normal"
+                >
                   {t(`typeLabels.${channel.type}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {collapsed && modelNames.length > 0 && (
-                  <Badge variant="ghost" className="text-[10px]">
+                  <span className="bg-secondary/30 text-muted-foreground rounded-full px-2 py-0 text-[10px]">
                     {t("modelCount", { count: modelNames.length })}
-                  </Badge>
+                  </span>
                 )}
               </div>
             </div>
           </button>
         </div>
-        <div className="flex items-center gap-1">
-          <Switch checked={channel.enabled} onCheckedChange={onToggle} disabled={enablePending} />
+        <div className="flex items-center gap-1 pr-1">
+          <Switch
+            checked={channel.enabled}
+            onCheckedChange={onToggle}
+            disabled={enablePending}
+            className="scale-90"
+          />
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
+            className="text-muted-foreground h-8 w-8"
             aria-label="Edit channel"
             onClick={onEdit}
           >
-            <Pencil className="h-3 w-3" />
+            <Pencil className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
+            className="text-muted-foreground hover:text-destructive h-8 w-8"
             aria-label="Delete channel"
             onClick={onDelete}
           >
-            <Trash2 className="text-destructive h-3 w-3" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
@@ -1112,7 +1165,7 @@ function DraggableChannel({
         )}
       >
         <div className="overflow-hidden">
-          <CardContent className={cn("p-3 pt-1", !channel.enabled && "opacity-50")}>
+          <CardContent className={cn("px-3 pt-0 pb-2.5", !channel.enabled && "opacity-50")}>
             <div className="mt-1">
               {modelNames.length === 0 ? (
                 <span className="text-muted-foreground text-xs">{t("noModels")}</span>
@@ -1270,35 +1323,41 @@ function SortableGroup({
       }}
       style={style}
       className={cn(
-        "border-l-nb-lavender overflow-hidden border-l-4 transition-all",
-        (isOver || isHovered) && "ring-primary border-primary ring-2",
+        "relative mx-[1px] gap-0 overflow-hidden shadow-sm transition-shadow hover:shadow-md",
+        (isOver || isHovered) && "border-primary border-2",
         dragActive && !isOver && !isHovered && "border-dashed",
-        isDragging && "border-dashed opacity-30",
+        isDragging && "opacity-30",
       )}
     >
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 p-3 pb-1">
-        <div className="flex items-start gap-2">
+      <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-gradient-to-b from-purple-400 to-indigo-400" />
+      <CardHeader
+        className={cn(
+          "flex flex-row items-center justify-between space-y-0 px-3",
+          collapsed ? "py-2.5" : "pt-2.5 pb-1",
+        )}
+      >
+        <div className="flex items-center gap-2 pl-1.5">
           <button
             {...attributes}
             {...listeners}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent mt-0.5 -ml-1 cursor-grab touch-none rounded p-1"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent cursor-grab touch-none rounded p-1"
           >
             <GripVertical className="h-4 w-4" />
           </button>
           <button
             type="button"
             onClick={() => setCollapsed(!collapsed)}
-            className="flex items-start gap-1.5 text-left"
+            className="flex items-center gap-1.5 text-left"
           >
             <ChevronDown
               className={cn(
-                "text-muted-foreground mt-0.5 h-4 w-4 shrink-0 transition-transform",
+                "text-muted-foreground h-4 w-4 shrink-0 transition-transform",
                 collapsed && "-rotate-90",
               )}
             />
             <div>
-              <CardTitle className="text-sm">{group.name}</CardTitle>
-              <div className="mt-1 flex items-center gap-1">
+              <CardTitle className="text-sm font-semibold">{group.name}</CardTitle>
+              <div className="mt-1 flex items-center gap-1.5">
                 <Badge
                   variant={
                     group.mode === 1
@@ -1311,49 +1370,49 @@ function SortableGroup({
                             ? "pink"
                             : "secondary"
                   }
-                  className="text-xs"
+                  className="rounded-full px-2 py-0 text-[10px] font-normal"
                 >
                   {t(`modeLabels.${group.mode}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {collapsed && group.items.length > 0 && (
-                  <Badge variant="ghost" className="text-[10px]">
+                  <span className="bg-secondary/30 text-muted-foreground rounded-full px-2 py-0 text-[10px]">
                     {t("itemCount", { count: group.items.length })}
-                  </Badge>
+                  </span>
                 )}
               </div>
             </div>
           </button>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 pr-1">
           {group.items.length > 0 && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="text-muted-foreground h-8 w-8"
               onClick={onClear}
               title={t("clearAll")}
               aria-label={t("clearAll")}
             >
-              <X className="h-3 w-3" />
+              <X className="h-4 w-4" />
             </Button>
           )}
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
+            className="text-muted-foreground h-8 w-8"
             aria-label="Edit group"
             onClick={onEdit}
           >
-            <Pencil className="h-3 w-3" />
+            <Pencil className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
+            className="text-muted-foreground hover:text-destructive h-8 w-8"
             aria-label="Delete group"
             onClick={onDelete}
           >
-            <Trash2 className="text-destructive h-3 w-3" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
@@ -1364,7 +1423,7 @@ function SortableGroup({
         )}
       >
         <div className="overflow-hidden">
-          <CardContent className="p-3 pt-1">
+          <CardContent className="px-3 pt-0 pb-2.5">
             <div className="text-muted-foreground mb-1 text-xs">
               {t("timeout", { seconds: group.firstTokenTimeOut })}
             </div>
