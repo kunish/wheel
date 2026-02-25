@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/kunish/wheel/compare/v1.12.4...v1.13.0) (2026-02-25)
+
+
+### Features
+
+* **worker:** create default API key on first startup ([53e7b67](https://github.com/kunish/wheel/commit/53e7b67b99851ca84b81507f3eb07fbbdee4eb06))
+
 ## [1.12.4](https://github.com/kunish/wheel/compare/v1.12.3...v1.12.4) (2026-02-25)
 
 
