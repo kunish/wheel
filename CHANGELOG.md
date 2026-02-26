@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.15.0](https://github.com/kunish/wheel/compare/v1.14.1...v1.15.0) (2026-02-26)
+
+
+### Features
+
+* add CLI reset-password command and DB-backed auth ([ec86345](https://github.com/kunish/wheel/commit/ec863458d466ca4a5b276f6124bf2862b766401f))
+* add MCP gateway, routing rules and relay pipeline ([32348dd](https://github.com/kunish/wheel/commit/32348dd330a223619911f0f99b3ab92f5ebe8a6f))
+* expand providers, multimodal API, plugins, OTel and provider icons ([03ae5ed](https://github.com/kunish/wheel/commit/03ae5edd0dba30cbf525f6e73a70fb5ba1718f45))
+
+
+### Bug Fixes
+
+* correct .gitignore paths for worker binary and temp files ([2914d8d](https://github.com/kunish/wheel/commit/2914d8d8d732d1ded92518eb943fd5def601e0d8))
+
 ## [1.14.1](https://github.com/kunish/wheel/compare/v1.14.0...v1.14.1) (2026-02-25)
 
 
