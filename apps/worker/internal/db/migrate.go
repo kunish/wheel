@@ -92,6 +92,14 @@ var initSchema = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`,
+	`CREATE TABLE IF NOT EXISTS routing_rules (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		name VARCHAR(255) NOT NULL,
+		priority INT DEFAULT 0 NOT NULL,
+		enabled BOOLEAN DEFAULT true NOT NULL,
+		conditions TEXT NOT NULL,
+		action TEXT NOT NULL
+	)`,
 	`CREATE TABLE IF NOT EXISTS relay_logs (
 		id INT PRIMARY KEY AUTO_INCREMENT,
 		time BIGINT NOT NULL,
@@ -111,6 +119,21 @@ var initSchema = []string{
 		total_attempts INT DEFAULT 0 NOT NULL,
 		upstream_content MEDIUMTEXT
 	)`,
+	`CREATE TABLE IF NOT EXISTS mcp_clients (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		name VARCHAR(255) NOT NULL,
+		connection_type VARCHAR(32) NOT NULL DEFAULT 'sse',
+		connection_string TEXT NOT NULL,
+		stdio_config TEXT NOT NULL,
+		auth_type VARCHAR(32) NOT NULL DEFAULT 'none',
+		headers TEXT NOT NULL,
+		oauth_config_id VARCHAR(255),
+		tools_to_execute TEXT NOT NULL,
+		tools_to_auto_exec TEXT NOT NULL,
+		enabled BOOLEAN DEFAULT true NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+	)`,
 }
 
 // initIndexes contains indexes created after tables exist.
@@ -119,6 +142,7 @@ var initIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_channel_id ON relay_logs(channel_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_error ON relay_logs(error(255))`,
 	"CREATE INDEX IF NOT EXISTS idx_groups_profile_id ON `groups`(profile_id)",
+	`CREATE INDEX IF NOT EXISTS idx_routing_rules_priority ON routing_rules(priority)`,
 }
 
 // initAlters upgrades existing columns (idempotent).
@@ -131,6 +155,10 @@ var initAlters = []string{
 	`ALTER TABLE model_profiles ADD COLUMN IF NOT EXISTS models TEXT`,
 	`UPDATE model_profiles SET models = '[]' WHERE models IS NULL`,
 	"ALTER TABLE `groups` ADD COLUMN IF NOT EXISTS profile_id INT NOT NULL DEFAULT 0",
+	`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rpm_limit INT NOT NULL DEFAULT 0`,
+	`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS tpm_limit INT NOT NULL DEFAULT 0`,
+	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP`,
+	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
 }
 
 // Migrate ensures all tables exist, then applies any pending Drizzle migration files.

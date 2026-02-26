@@ -90,6 +90,8 @@ type APIKey struct {
 	MaxCost         float64 `bun:"max_cost"            json:"maxCost"`
 	SupportedModels string  `bun:"supported_models"    json:"supportedModels"`
 	TotalCost       float64 `bun:"total_cost"          json:"totalCost"`
+	RPMLimit        int     `bun:"rpm_limit"           json:"rpmLimit"`
+	TPMLimit        int     `bun:"tpm_limit"           json:"tpmLimit"`
 }
 
 // ChannelAttempt records a single relay attempt.
@@ -180,7 +182,93 @@ type ModelProfile struct {
 	GroupCount    int        `bun:"-"                   json:"groupCount"`
 }
 
+// RoutingRuleModel is the DB model for conditional routing rules.
+type RoutingRuleModel struct {
+	bun.BaseModel `bun:"table:routing_rules"`
+	ID            int           `bun:"id,pk,autoincrement" json:"id"`
+	Name          string        `bun:"name"                json:"name"`
+	Priority      int           `bun:"priority"            json:"priority"`
+	Enabled       bool          `bun:"enabled"             json:"enabled"`
+	Conditions    ConditionList `bun:"conditions"          json:"conditions"`
+	Action        ActionJSON    `bun:"action"              json:"action"`
+}
+
+// RoutingConditionItem is a single match condition for a routing rule.
+type RoutingConditionItem struct {
+	Field    string `json:"field"`
+	Operator string `json:"operator"`
+	Value    string `json:"value"`
+}
+
+// RoutingActionItem defines the action when a routing rule matches.
+type RoutingActionItem struct {
+	Type       string `json:"type"`
+	GroupName  string `json:"groupName,omitempty"`
+	ModelName  string `json:"modelName,omitempty"`
+	StatusCode int    `json:"statusCode,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
 // ──── JSON Scanner/Valuer types for SQLite TEXT columns ────
+
+// ConditionList is a []RoutingConditionItem that scans/values as JSON TEXT.
+type ConditionList []RoutingConditionItem
+
+func (c *ConditionList) Scan(src any) error {
+	if src == nil {
+		*c = []RoutingConditionItem{}
+		return nil
+	}
+	var data []byte
+	switch v := src.(type) {
+	case string:
+		data = []byte(v)
+	case []byte:
+		data = v
+	default:
+		return fmt.Errorf("ConditionList.Scan: unsupported type %T", src)
+	}
+	return json.Unmarshal(data, c)
+}
+
+func (c ConditionList) Value() (driver.Value, error) {
+	if c == nil {
+		return "[]", nil
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), nil
+}
+
+// ActionJSON is a RoutingActionItem that scans/values as JSON TEXT.
+type ActionJSON RoutingActionItem
+
+func (a *ActionJSON) Scan(src any) error {
+	if src == nil {
+		*a = ActionJSON{}
+		return nil
+	}
+	var data []byte
+	switch v := src.(type) {
+	case string:
+		data = []byte(v)
+	case []byte:
+		data = v
+	default:
+		return fmt.Errorf("ActionJSON.Scan: unsupported type %T", src)
+	}
+	return json.Unmarshal(data, a)
+}
+
+func (a ActionJSON) Value() (driver.Value, error) {
+	data, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), nil
+}
 
 // BaseUrlList is a []BaseUrl that scans/values as JSON TEXT.
 type BaseUrlList []BaseUrl

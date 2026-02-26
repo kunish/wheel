@@ -15,6 +15,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
+	mcpgw "github.com/kunish/wheel/apps/worker/internal/mcp"
 	"github.com/kunish/wheel/apps/worker/internal/middleware"
 	"github.com/kunish/wheel/apps/worker/internal/observe"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
@@ -98,6 +99,7 @@ type relayRequest struct {
 	Body               map[string]any
 	BodyBytes          []byte
 	Model              string
+	OriginalModel      string // preserved for logs/metrics after routing rules modify Model
 	Stream             bool
 	ApiKeyID           int
 }
@@ -363,6 +365,15 @@ type RelayHandler struct {
 	Balancer        *relay.BalancerState
 	HTTPClient      *http.Client // non-streaming (120s timeout)
 	StreamClient    *http.Client // streaming (30s connect timeout, no overall timeout)
+
+	// ── New: Plugin pipeline, routing engine, health checker ──
+	Plugins       *relay.PluginPipeline
+	RoutingEngine *relay.RoutingEngine
+	HealthChecker *relay.HealthChecker
+
+	// ── MCP Gateway ──
+	MCPManager *mcpgw.Manager
+	MCPServer  *mcpgw.Server
 }
 
 // RegisterRelayRoutes registers the /v1/* relay routes on a Gin engine.
@@ -371,6 +382,37 @@ func (h *RelayHandler) RegisterRelayRoutes(r *gin.Engine) {
 	v1.Use(middleware.ApiKeyAuth(h.DB))
 	v1.GET("/models", h.handleModels)
 	v1.POST("/*path", h.handleRelay)
+
+	// MCP Server endpoint (API Key auth)
+	if h.MCPServer != nil {
+		mcpHandler := h.MCPServer.ServeHTTP()
+		mcp := r.Group("/mcp")
+		mcp.Use(middleware.ApiKeyAuth(h.DB))
+		mcp.Any("/*path", gin.WrapH(mcpHandler))
+	}
+}
+
+// RegisterRelayAdminRoutes registers admin-level routes that need RelayHandler
+// (routing rules CRUD, channel health). Must be called after Handler.RegisterRoutes.
+func (h *RelayHandler) RegisterRelayAdminRoutes(r *gin.Engine) {
+	admin := r.Group("/api/v1")
+	admin.Use(middleware.JWTAuth(h.Config.JWTSecret))
+
+	// Routing rules
+	admin.GET("/routing-rule/list", h.ListRoutingRules)
+	admin.POST("/routing-rule/create", h.CreateRoutingRule)
+	admin.POST("/routing-rule/update", h.UpdateRoutingRule)
+	admin.DELETE("/routing-rule/delete/:id", h.DeleteRoutingRule)
+
+	// Channel health
+	admin.GET("/channel/health", h.GetChannelHealth)
+
+	// MCP clients
+	admin.GET("/mcp/client/list", h.ListMCPClients)
+	admin.POST("/mcp/client/create", h.CreateMCPClient)
+	admin.POST("/mcp/client/update", h.UpdateMCPClient)
+	admin.DELETE("/mcp/client/delete/:id", h.DeleteMCPClient)
+	admin.POST("/mcp/client/reconnect/:id", h.ReconnectMCPClient)
 }
 
 // ── GET /v1/models ──────────────────────────────────────────────
@@ -459,7 +501,10 @@ func (h *RelayHandler) executeWithRetry(
 	startTime time.Time,
 ) *retryOutcome {
 	body := req.Body
-	model := req.Model
+	model := req.OriginalModel // use original model for logs/metrics
+	if model == "" {
+		model = req.Model
+	}
 	isAnthropicInbound := req.IsAnthropicInbound
 	apiKeyId := req.ApiKeyID
 
@@ -498,6 +543,20 @@ func (h *RelayHandler) executeWithRetry(
 					AttemptNum:  attemptCount,
 					Status:      "skipped",
 					Msg:         msg,
+				})
+				continue
+			}
+
+			// Health check: skip channels marked DOWN
+			if h.HealthChecker != nil && !h.HealthChecker.IsHealthy(channel.ID) {
+				attemptCount++
+				attempts = append(attempts, attemptRecord{
+					ChannelID:   channel.ID,
+					ChannelName: channel.Name,
+					ModelName:   item.ModelName,
+					AttemptNum:  attemptCount,
+					Status:      "skipped",
+					Msg:         "channel unhealthy",
 				})
 				continue
 			}
@@ -680,6 +739,12 @@ func (h *RelayHandler) executeWithRetry(
 }
 
 func (h *RelayHandler) handleRelay(c *gin.Context) {
+	// Dispatch MCP tool execute before relay processing
+	if c.Param("path") == "/mcp/tool/execute" {
+		h.ExecuteMCPTool(c)
+		return
+	}
+
 	startTime := time.Now()
 
 	// Start relay span (no-op if tracing disabled)
@@ -692,6 +757,83 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 	if req == nil {
 		return
 	}
+
+	// ── Plugin PreHooks ─────────────────────────────────────
+	var preResult relay.PreHookResult
+	var pluginCtx *relay.RelayContext
+	if h.Plugins != nil {
+		pluginCtx = &relay.RelayContext{
+			GinCtx:             c,
+			RequestModel:       req.Model,
+			Body:               req.Body,
+			BodyBytes:          req.BodyBytes,
+			ApiKeyID:           req.ApiKeyID,
+			IsStream:           req.Stream,
+			IsAnthropicInbound: req.IsAnthropicInbound,
+			RequestType:        req.RequestType,
+		}
+		preResult = h.Plugins.RunPreHooks(pluginCtx)
+		if preResult.ShortCircuit != nil {
+			sc := preResult.ShortCircuit
+			c.JSON(sc.StatusCode, sc.Body)
+			// Run PostHooks for symmetry
+			h.Plugins.RunPostHooks(pluginCtx, &relay.RelayPluginResponse{
+				StatusCode: sc.StatusCode,
+				Error:      fmt.Errorf("short-circuited by plugin"),
+			}, preResult.ExecutedCount)
+			return
+		}
+	}
+
+	// ── Routing Rules ───────────────────────────────────────
+	originalModel := req.Model // preserve for logs/metrics
+	if h.RoutingEngine != nil {
+		headers := make(map[string]string)
+		for k := range c.Request.Header {
+			headers[strings.ToLower(k)] = c.Request.Header.Get(k)
+		}
+		ruleResult := h.RoutingEngine.Evaluate(&relay.RuleEvalContext{
+			Model:       originalModel,
+			Headers:     headers,
+			ApiKeyID:    req.ApiKeyID,
+			ApiKeyName:  c.GetString("apiKeyName"),
+			RequestType: req.RequestType,
+			Body:        req.Body,
+		})
+		if ruleResult.Matched {
+			switch ruleResult.Action.Type {
+			case "reject":
+				status := ruleResult.Action.StatusCode
+				if status == 0 {
+					status = 403
+				}
+				msg := ruleResult.Action.Message
+				if msg == "" {
+					msg = fmt.Sprintf("Blocked by routing rule: %s", ruleResult.RuleName)
+				}
+				apiError(c, status, "routing_rule_error", msg, req.IsAnthropicInbound)
+				return
+			case "route":
+				// Route to a different group; req.Model becomes the group name for selectChannels.
+				// The actual upstream model is determined by the group's channel ModelName.
+				if ruleResult.Action.GroupName != "" {
+					req.Model = ruleResult.Action.GroupName
+				}
+			case "rewrite":
+				// Rewrite the model name sent to upstream provider
+				if ruleResult.Action.ModelName != "" {
+					req.Model = ruleResult.Action.ModelName
+					// Sync body so upstream sees the rewritten model
+					if req.Body != nil {
+						req.Body["model"] = ruleResult.Action.ModelName
+					}
+				}
+			}
+		}
+	}
+
+	// Preserve original model for logs/metrics (req.Model may have been changed by routing rules)
+	req.OriginalModel = originalModel
 
 	// Select channels and groups
 	sel := h.selectChannels(c, req.Model, req.ApiKeyID, req.IsAnthropicInbound)
@@ -709,6 +851,16 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 
 	// Execute with retry
 	outcome := h.executeWithRetry(c, req, sel, strategy, startTime)
+
+	// ── Plugin PostHooks ────────────────────────────────────
+	if h.Plugins != nil && pluginCtx != nil {
+		resp := &relay.RelayPluginResponse{Success: outcome.Success}
+		if !outcome.Success {
+			resp.Error = fmt.Errorf("%s", outcome.LastError)
+		}
+		h.Plugins.RunPostHooks(pluginCtx, resp, preResult.ExecutedCount)
+	}
+
 	if outcome.Success {
 		return
 	}
@@ -719,7 +871,10 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 
 // handleExhaustion handles the case where all retry rounds are exhausted.
 func (h *RelayHandler) handleExhaustion(c *gin.Context, req *relayRequest, outcome *retryOutcome, startTime time.Time) {
-	model := req.Model
+	model := req.OriginalModel // use original model for logs/metrics
+	if model == "" {
+		model = req.Model
+	}
 	isAnthropicInbound := req.IsAnthropicInbound
 
 	exhaustedStatus := 502

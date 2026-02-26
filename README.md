@@ -62,6 +62,7 @@
 - **请求日志** — 完整请求/响应记录，重试时间线，高级过滤，一键重放
 - **数据管理** — JSON 导入/导出，图形化系统配置
 - **双语 & 主题** — 中文 / English，亮色 / 暗色 / 跟随系统
+- **MCP 网关** — 连接外部 MCP 服务器，聚合工具并统一暴露为 MCP Server 端点，支持 HTTP/SSE/STDIO 三种传输协议
 
 ---
 
@@ -117,6 +118,10 @@ services:
 ```caddyfile
 :3000 {
 	handle /v1/* {
+		reverse_proxy worker:8787
+	}
+
+	handle /mcp/* {
 		reverse_proxy worker:8787
 	}
 
@@ -183,6 +188,62 @@ curl http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+### MCP 网关
+
+Wheel 可以作为 MCP 网关，连接多个外部 MCP 服务器并将所有工具聚合为一个统一的 MCP Server 端点。
+
+#### 1. 添加 MCP 客户端
+
+在管理面板的 MCP 页面中添加 MCP 客户端，支持三种连接方式：
+
+| 连接类型  | 适用场景                                  | 配置                     |
+| --------- | ----------------------------------------- | ------------------------ |
+| **HTTP**  | 支持 Streamable HTTP 的远程 MCP 服务器    | 填写服务器 URL           |
+| **SSE**   | 支持 Server-Sent Events 的远程 MCP 服务器 | 填写服务器 URL           |
+| **STDIO** | 本地 MCP 服务器进程                       | 填写命令、参数、环境变量 |
+
+认证方式支持无认证和自定义请求头（用于 Bearer Token 等场景）。
+
+#### 2. 使用聚合 MCP Server
+
+添加并连接 MCP 客户端后，Wheel 会自动发现所有工具并聚合为统一的 MCP Server 端点：
+
+```
+MCP Server URL: http://localhost:3000/mcp/
+```
+
+在支持 MCP 的客户端中配置此地址即可使用所有聚合工具。需要在请求头中携带 API Key：
+
+```
+Authorization: Bearer your-api-key
+```
+
+**Claude Desktop 配置示例：**
+
+```json
+{
+  "mcpServers": {
+    "wheel": {
+      "url": "http://localhost:3000/mcp/",
+      "headers": {
+        "Authorization": "Bearer your-api-key"
+      }
+    }
+  }
+}
+```
+
+#### 3. REST 工具调用
+
+对于不支持 MCP 协议的客户端，可以通过 REST API 直接调用工具：
+
+```bash
+curl http://localhost:3000/v1/mcp/tool/execute \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"clientId": 1, "toolName": "tool_name", "arguments": {}}'
 ```
 
 ---

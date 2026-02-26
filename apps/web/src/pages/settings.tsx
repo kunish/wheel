@@ -52,6 +52,8 @@ interface ApiKeyFormData {
   expireAt: string
   maxCost: string
   supportedModels: string
+  rpmLimit: string
+  tpmLimit: string
 }
 
 const EMPTY_FORM: ApiKeyFormData = {
@@ -59,6 +61,8 @@ const EMPTY_FORM: ApiKeyFormData = {
   expireAt: "",
   maxCost: "",
   supportedModels: "",
+  rpmLimit: "",
+  tpmLimit: "",
 }
 
 // ───────────── Account Section ─────────────
@@ -195,6 +199,8 @@ function ApiKeysSection() {
         expireAt: form.expireAt ? Math.floor(new Date(form.expireAt).getTime() / 1000) : 0,
         maxCost: form.maxCost ? Number.parseFloat(form.maxCost) : 0,
         supportedModels: form.supportedModels,
+        rpmLimit: form.rpmLimit ? Number.parseInt(form.rpmLimit, 10) : 0,
+        tpmLimit: form.tpmLimit ? Number.parseInt(form.tpmLimit, 10) : 0,
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["apikeys"] })
@@ -213,6 +219,8 @@ function ApiKeysSection() {
         expireAt: form.expireAt ? Math.floor(new Date(form.expireAt).getTime() / 1000) : 0,
         maxCost: form.maxCost ? Number.parseFloat(form.maxCost) : 0,
         supportedModels: form.supportedModels,
+        rpmLimit: form.rpmLimit ? Number.parseInt(form.rpmLimit, 10) : 0,
+        tpmLimit: form.tpmLimit ? Number.parseInt(form.tpmLimit, 10) : 0,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apikeys"] })
@@ -254,6 +262,8 @@ function ApiKeysSection() {
       expireAt: timestampToDateInput(k.expireAt),
       maxCost: k.maxCost ? String(k.maxCost) : "",
       supportedModels: k.supportedModels ?? "",
+      rpmLimit: k.rpmLimit ? String(k.rpmLimit) : "",
+      tpmLimit: k.tpmLimit ? String(k.tpmLimit) : "",
     })
     setEditingKey(k)
   }
@@ -513,6 +523,30 @@ function ApiKeyForm({
           placeholder={t("apiKeys.form.modelWhitelistPlaceholder")}
         />
         <p className="text-muted-foreground text-xs">{t("apiKeys.form.modelWhitelistHint")}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label>{t("apiKeys.form.rpmLimit")}</Label>
+          <Input
+            type="number"
+            min="0"
+            value={form.rpmLimit}
+            onChange={(e) => onChange({ ...form, rpmLimit: e.target.value })}
+            placeholder={t("apiKeys.form.rpmLimitPlaceholder")}
+          />
+          <p className="text-muted-foreground text-xs">{t("apiKeys.form.rpmLimitHint")}</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>{t("apiKeys.form.tpmLimit")}</Label>
+          <Input
+            type="number"
+            min="0"
+            value={form.tpmLimit}
+            onChange={(e) => onChange({ ...form, tpmLimit: e.target.value })}
+            placeholder={t("apiKeys.form.tpmLimitPlaceholder")}
+          />
+          <p className="text-muted-foreground text-xs">{t("apiKeys.form.tpmLimitHint")}</p>
+        </div>
       </div>
       <Button type="submit" disabled={isPending}>
         {submitLabel}

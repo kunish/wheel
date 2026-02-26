@@ -7,6 +7,7 @@ import {
   LogOut,
   Monitor,
   Moon,
+  Plug,
   Settings,
   Sun,
 } from "lucide-react"
@@ -37,6 +38,7 @@ import { cn } from "@/lib/utils"
 const navItemDefs = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
   { href: "/model", labelKey: "nav.model", icon: Boxes },
+  { href: "/mcp", labelKey: "nav.mcp", icon: Plug },
   { href: "/logs", labelKey: "nav.logs", icon: FileText },
   { href: "/settings", labelKey: "nav.settings", icon: Settings },
 ] as const

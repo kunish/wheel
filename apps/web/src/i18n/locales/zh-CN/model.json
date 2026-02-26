@@ -195,5 +195,65 @@
       "editPrice": "编辑 {{name}} 的价格",
       "deletePrice": "删除 {{name}} 的价格"
     }
+  },
+
+  "routingRules": {
+    "title": "路由规则",
+    "description": "定义条件规则，在请求到达上游服务商之前进行路由、拒绝或重写。",
+    "createRule": "创建规则",
+    "editRule": "编辑规则",
+    "noRules": "尚未配置任何路由规则。",
+    "deleteTitle": "删除规则「{{name}}」？",
+    "deleteDescription": "此操作无法撤销。",
+    "ruleCreated": "路由规则已创建",
+    "ruleUpdated": "路由规则已更新",
+    "ruleDeleted": "路由规则已删除",
+    "toggleFailed": "切换路由规则状态失败",
+    "table": {
+      "name": "名称",
+      "priority": "优先级",
+      "conditions": "条件",
+      "action": "动作",
+      "status": "状态"
+    },
+    "form": {
+      "name": "规则名称",
+      "namePlaceholder": "例如：禁止免费密钥使用 GPT-4",
+      "priority": "优先级",
+      "priorityHint": "数字越小优先级越高",
+      "enabled": "启用",
+      "conditions": "条件",
+      "addCondition": "添加条件",
+      "action": "动作",
+      "actionType": "动作类型",
+      "groupName": "目标分组",
+      "groupNamePlaceholder": "选择要路由到的分组",
+      "modelName": "目标模型",
+      "modelNamePlaceholder": "选择要重写为的模型",
+      "statusCode": "状态码",
+      "message": "拒绝消息",
+      "messagePlaceholder": "访问被拒绝"
+    },
+    "fields": {
+      "model": "模型",
+      "apikey_name": "API 密钥名称",
+      "request_type": "请求类型",
+      "header": "请求头",
+      "body": "请求体路径"
+    },
+    "operators": {
+      "eq": "等于",
+      "neq": "不等于",
+      "contains": "包含",
+      "prefix": "前缀匹配",
+      "suffix": "后缀匹配",
+      "regex": "正则匹配",
+      "in": "在列表中"
+    },
+    "actions": {
+      "reject": "拒绝",
+      "route": "路由到分组",
+      "rewrite": "重写模型"
+    }
   }
 }

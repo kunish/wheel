@@ -51,7 +51,13 @@
       "costLimitHint": "0 or empty = unlimited",
       "modelWhitelist": "Model Whitelist",
       "modelWhitelistPlaceholder": "gpt-4o, claude-3.5-sonnet (comma-separated)",
-      "modelWhitelistHint": "Comma-separated model names. Empty = all models allowed."
+      "modelWhitelistHint": "Comma-separated model names. Empty = all models allowed.",
+      "rpmLimit": "RPM Limit",
+      "rpmLimitPlaceholder": "0 = unlimited",
+      "rpmLimitHint": "Requests per minute. 0 or empty = unlimited.",
+      "tpmLimit": "TPM Limit",
+      "tpmLimitPlaceholder": "0 = unlimited",
+      "tpmLimitHint": "Tokens per minute. 0 or empty = unlimited."
     }
   },
   "systemConfig": {

@@ -2,6 +2,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "model": "Model",
+    "mcp": "MCP",
     "logs": "Logs",
     "settings": "Settings"
   },

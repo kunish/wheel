@@ -42,13 +42,15 @@ func (h *Handler) CreateApiKey(c *gin.Context) {
 		ExpireAt        int64   `json:"expireAt"`
 		MaxCost         float64 `json:"maxCost"`
 		SupportedModels string  `json:"supportedModels"`
+		RPMLimit        int     `json:"rpmLimit"`
+		TPMLimit        int     `json:"tpmLimit"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		errorJSON(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	key, err := dal.CreateApiKey(c.Request.Context(), h.DB, body.Name, body.ExpireAt, body.MaxCost, body.SupportedModels)
+	key, err := dal.CreateApiKey(c.Request.Context(), h.DB, body.Name, body.ExpireAt, body.MaxCost, body.SupportedModels, body.RPMLimit, body.TPMLimit)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -74,6 +76,8 @@ func (h *Handler) UpdateApiKey(c *gin.Context) {
 		ExpireAt        *int64   `json:"expireAt,omitempty"`
 		MaxCost         *float64 `json:"maxCost,omitempty"`
 		SupportedModels *string  `json:"supportedModels,omitempty"`
+		RPMLimit        *int     `json:"rpmLimit,omitempty"`
+		TPMLimit        *int     `json:"tpmLimit,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		errorJSON(c, http.StatusBadRequest, "Invalid request body")
@@ -95,6 +99,12 @@ func (h *Handler) UpdateApiKey(c *gin.Context) {
 	}
 	if body.SupportedModels != nil {
 		data["supported_models"] = *body.SupportedModels
+	}
+	if body.RPMLimit != nil {
+		data["rpm_limit"] = *body.RPMLimit
+	}
+	if body.TPMLimit != nil {
+		data["tpm_limit"] = *body.TPMLimit
 	}
 
 	if err := dal.UpdateApiKey(c.Request.Context(), h.DB, body.ID, data); err != nil {

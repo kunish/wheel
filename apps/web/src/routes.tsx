@@ -29,6 +29,7 @@ const ModelPage = lazy(() => import("./pages/model"))
 const GroupsPage = lazy(() => import("./pages/groups"))
 const LogsPage = lazy(() => import("./pages/logs"))
 const SettingsPage = lazy(() => import("./pages/settings"))
+const MCPPage = lazy(() => import("./pages/mcp"))
 
 const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter
 
@@ -46,6 +47,7 @@ export function AppRouter() {
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/prices" element={<Navigate to="/model" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/mcp" element={<MCPPage />} />
           <Route path="/apikeys" element={<Navigate to="/settings" replace />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

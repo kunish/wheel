@@ -2,6 +2,7 @@
   "nav": {
     "dashboard": "仪表盘",
     "model": "模型",
+    "mcp": "MCP",
     "logs": "日志",
     "settings": "设置"
   },

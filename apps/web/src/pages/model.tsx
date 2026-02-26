@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
+  GitBranch,
   GripVertical,
   Layers,
   List,
@@ -58,6 +59,7 @@ import { Switch } from "@/components/ui/switch"
 import { fuzzyLookup, useModelMetadataQuery } from "@/hooks/use-model-meta"
 import { useProfilesQuery } from "@/hooks/use-profiles"
 import {
+  getChannelHealth,
   getLastPriceUpdateTime,
   getModelList,
   getSettings,
@@ -83,6 +85,8 @@ const GroupDialog = lazy(() => import("./model/group-dialog"))
 const PriceDialog = lazy(() => import("./model/price-dialog"))
 
 const ProfileManageDialog = lazy(() => import("./model/profile-manage-dialog"))
+
+const RoutingRulesSheet = lazy(() => import("./model/routing-rules-sheet"))
 
 // ─── Types ─────────────────────────────────────
 
@@ -183,6 +187,9 @@ export default function ModelPage() {
   // Profile state
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
 
+  // Routing rules state
+  const [routingRulesOpen, setRoutingRulesOpen] = useState(false)
+
   // Read active_profile_id from backend settings
   const { data: settingsData } = useQuery({
     queryKey: ["settings"],
@@ -224,6 +231,12 @@ export default function ModelPage() {
   const { data: updateTimeData } = useQuery({
     queryKey: ["price-update-time"],
     queryFn: getLastPriceUpdateTime,
+  })
+
+  const { data: healthData } = useQuery({
+    queryKey: ["channel-health"],
+    queryFn: getChannelHealth,
+    refetchInterval: 30_000,
   })
 
   // ─── Extracted mutation hooks ──────────────────
@@ -297,6 +310,11 @@ export default function ModelPage() {
     for (const p of priceList) map.set(p.name, p)
     return map
   }, [priceList])
+
+  const healthMap = useMemo<Record<string, number>>(
+    () => healthData?.data?.health ?? {},
+    [healthData],
+  )
 
   function formatDateTime(dateStr: string | undefined): string | null {
     if (!dateStr) return null
@@ -580,6 +598,9 @@ export default function ModelPage() {
             <Button variant="outline" size="sm" onClick={() => setProfileDialogOpen(true)}>
               <Layers className="mr-2 h-4 w-4" /> {t("profile.title")}
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setRoutingRulesOpen(true)}>
+              <GitBranch className="mr-2 h-4 w-4" /> {t("routingRules.title")}
+            </Button>
           </div>
         </div>
 
@@ -631,6 +652,7 @@ export default function ModelPage() {
                         enablePending={channelEnableMut.isPending}
                         forceCollapsed={channelsCollapsed}
                         priceMap={priceMap}
+                        healthStatus={healthMap[String(ch.id)]}
                       />
                     ))}
                   </div>
@@ -879,6 +901,16 @@ export default function ModelPage() {
       <Suspense fallback={null}>
         <ProfileManageDialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen} />
       </Suspense>
+
+      {/* ─── Routing Rules Sheet ────────────── */}
+      <Suspense fallback={null}>
+        <RoutingRulesSheet
+          open={routingRulesOpen}
+          onOpenChange={setRoutingRulesOpen}
+          groupNames={groups.map((g) => g.name).filter(Boolean)}
+          modelNames={[...new Set(channels.flatMap((ch) => parseModels(ch.model)))]}
+        />
+      </Suspense>
     </DndContext>
   )
 }
@@ -1027,6 +1059,7 @@ function DraggableChannel({
   enablePending,
   forceCollapsed,
   priceMap,
+  healthStatus,
 }: {
   channel: ChannelRecord
   highlighted?: boolean
@@ -1037,6 +1070,7 @@ function DraggableChannel({
   enablePending?: boolean
   forceCollapsed?: boolean
   priceMap: Map<string, ModelPrice>
+  healthStatus?: number
 }) {
   const { t } = useTranslation("model")
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1114,7 +1148,22 @@ function DraggableChannel({
               )}
             />
             <div>
-              <CardTitle className="text-sm font-semibold">{channel.name}</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-sm font-semibold">{channel.name}</CardTitle>
+                {healthStatus !== undefined && healthStatus > 0 && (
+                  <span
+                    className={cn(
+                      "inline-block h-2 w-2 shrink-0 rounded-full",
+                      healthStatus === 1 && "bg-green-500",
+                      healthStatus === 2 && "bg-yellow-500",
+                      healthStatus === 3 && "bg-red-500",
+                    )}
+                    title={
+                      healthStatus === 1 ? "Healthy" : healthStatus === 2 ? "Degraded" : "Down"
+                    }
+                  />
+                )}
+              </div>
               <div className="mt-1 flex items-center gap-1.5">
                 <Badge
                   variant="secondary"

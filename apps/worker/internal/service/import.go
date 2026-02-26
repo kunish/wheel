@@ -88,7 +88,7 @@ func ImportData(ctx context.Context, db *bun.DB, dump *types.DBDump) types.Impor
 				continue
 			}
 
-			if _, err := dal.CreateApiKey(ctx, db, ak.Name, ak.ExpireAt, ak.MaxCost, ak.SupportedModels); err != nil {
+			if _, err := dal.CreateApiKey(ctx, db, ak.Name, ak.ExpireAt, ak.MaxCost, ak.SupportedModels, ak.RPMLimit, ak.TPMLimit); err != nil {
 				continue
 			}
 			result.APIKeys.Added++

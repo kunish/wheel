@@ -96,6 +96,8 @@ type APIKeyCreateRequest struct {
 	ExpireAt        int64   `json:"expireAt,omitempty"`
 	MaxCost         float64 `json:"maxCost,omitempty"`
 	SupportedModels string  `json:"supportedModels,omitempty"`
+	RPMLimit        int     `json:"rpmLimit,omitempty"`
+	TPMLimit        int     `json:"tpmLimit,omitempty"`
 }
 
 type APIKeyUpdateRequest struct {
@@ -105,6 +107,27 @@ type APIKeyUpdateRequest struct {
 	ExpireAt        *int64   `json:"expireAt,omitempty"`
 	MaxCost         *float64 `json:"maxCost,omitempty"`
 	SupportedModels *string  `json:"supportedModels,omitempty"`
+	RPMLimit        *int     `json:"rpmLimit,omitempty"`
+	TPMLimit        *int     `json:"tpmLimit,omitempty"`
+}
+
+// ──── Routing Rule ────
+
+type RoutingRuleCreateRequest struct {
+	Name       string                 `json:"name" binding:"required"`
+	Priority   int                    `json:"priority"`
+	Enabled    bool                   `json:"enabled"`
+	Conditions []RoutingConditionItem `json:"conditions"`
+	Action     RoutingActionItem      `json:"action" binding:"required"`
+}
+
+type RoutingRuleUpdateRequest struct {
+	ID         int                    `json:"id"`
+	Name       *string                `json:"name,omitempty"`
+	Priority   *int                   `json:"priority,omitempty"`
+	Enabled    *bool                  `json:"enabled,omitempty"`
+	Conditions []RoutingConditionItem `json:"conditions,omitempty"`
+	Action     *RoutingActionItem     `json:"action,omitempty"`
 }
 
 // ──── Log ────

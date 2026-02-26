@@ -1,0 +1,107 @@
+{
+  "pageTitle": "MCP 网关",
+  "description": "管理 MCP 服务器连接和聚合工具",
+  "noClients": "暂无 MCP 客户端",
+  "addClient": "添加客户端",
+
+  "state": {
+    "connected": "已连接",
+    "disconnected": "未连接",
+    "error": "错误"
+  },
+
+  "connectionType": {
+    "http": "HTTP",
+    "sse": "SSE",
+    "stdio": "STDIO"
+  },
+
+  "authType": {
+    "none": "无",
+    "headers": "自定义头",
+    "oauth": "OAuth"
+  },
+
+  "table": {
+    "name": "名称",
+    "type": "类型",
+    "endpoint": "地址",
+    "status": "状态",
+    "tools": "工具",
+    "enabled": "启用",
+    "actions": "操作"
+  },
+
+  "form": {
+    "createTitle": "添加 MCP 客户端",
+    "editTitle": "编辑 MCP 客户端",
+    "name": "名称",
+    "namePlaceholder": "例如 my-mcp-server",
+    "connectionType": "连接类型",
+    "connectionString": "服务器地址",
+    "connectionStringPlaceholder": "https://mcp-server.example.com",
+    "authType": "认证方式",
+    "enabled": "启用",
+    "headers": "自定义请求头",
+    "headerKey": "键",
+    "headerValue": "值",
+    "addHeader": "添加请求头",
+    "stdioCommand": "命令",
+    "stdioCommandPlaceholder": "例如 npx",
+    "stdioArgs": "参数",
+    "stdioArgsPlaceholder": "每行一个参数",
+    "stdioEnvs": "环境变量",
+    "stdioEnvsPlaceholder": "KEY=VALUE，每行一个",
+    "toolsToExecute": "允许的工具",
+    "toolsToExecutePlaceholder": "留空表示允许所有工具",
+    "toolsToAutoExec": "自动执行工具",
+    "toolsToAutoExecPlaceholder": "无需确认即可执行的工具"
+  },
+
+  "actions": {
+    "reconnect": "重新连接",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+
+  "toast": {
+    "created": "MCP 客户端已创建",
+    "updated": "MCP 客户端已更新",
+    "deleted": "MCP 客户端已删除",
+    "reconnected": "MCP 客户端已重新连接",
+    "reconnectFailed": "重新连接失败",
+    "toggleFailed": "切换失败"
+  },
+
+  "deleteDialog": {
+    "title": "删除「{{name}}」？",
+    "description": "这将断开并移除此 MCP 客户端，此操作不可撤销。"
+  },
+
+  "tools": {
+    "title": "工具",
+    "noTools": "未发现工具",
+    "count_one": "{{count}} 个工具",
+    "count_other": "{{count}} 个工具"
+  },
+
+  "guide": {
+    "title": "快速开始",
+    "step1Title": "添加 MCP 客户端",
+    "step1Desc": "通过 HTTP、SSE 或 STDIO 连接外部 MCP 服务器，工具将被自动发现。",
+    "step2Title": "使用聚合 MCP Server",
+    "step2Desc": "所有已连接客户端的工具会聚合为统一的 MCP Server 端点：",
+    "step3Title": "REST 工具调用",
+    "step3Desc": "对于不支持 MCP 协议的客户端，可通过 REST API 直接调用工具：",
+    "httpDesc": "支持 Streamable HTTP 的远程 MCP 服务器",
+    "sseDesc": "支持 Server-Sent Events 的远程 MCP 服务器",
+    "stdioDesc": "本地 MCP 服务器进程"
+  },
+
+  "endpoint": {
+    "title": "MCP Server 端点",
+    "url": "服务器地址",
+    "auth": "在请求头中携带 API Key 进行认证",
+    "copied": "已复制"
+  }
+}

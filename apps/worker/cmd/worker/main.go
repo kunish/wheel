@@ -27,6 +27,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/handler"
+	mcpgw "github.com/kunish/wheel/apps/worker/internal/mcp"
 	"github.com/kunish/wheel/apps/worker/internal/observe"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/seed"
@@ -112,6 +113,30 @@ func main() {
 	sm := relay.NewSessionManager()
 	bal := relay.NewBalancerState()
 
+	// ── Routing Engine (load rules from DB) ──
+	routingEngine := relay.NewRoutingEngine()
+	if rules, err := dal.ListRoutingRules(context.Background(), database); err == nil {
+		routingEngine.LoadFromModels(rules)
+		log.Printf("[startup] Loaded %d routing rules", len(rules))
+	} else {
+		log.Printf("[startup] Failed to load routing rules: %v", err)
+	}
+
+	// ── Health Checker (probe channels every 60s) ──
+	healthChecker := relay.NewHealthChecker(60 * time.Second)
+
+	// ── Rate Limit Plugin ──
+	rateLimitPlugin := relay.NewRateLimitPlugin(func(ctx *relay.RelayContext) relay.RateLimitConfig {
+		rpm, _ := ctx.GinCtx.Get("rpmLimit")
+		tpm, _ := ctx.GinCtx.Get("tpmLimit")
+		rpmVal, _ := rpm.(int)
+		tpmVal, _ := tpm.(int)
+		return relay.RateLimitConfig{RPM: rpmVal, TPM: tpmVal}
+	})
+
+	// ── Plugin Pipeline ──
+	plugins := relay.NewPluginPipeline(rateLimitPlugin)
+
 	// ── HTTP Clients (with timeout) ──
 	nonStreamClient := &http.Client{Timeout: 120 * time.Second}
 	streamClient := &http.Client{
@@ -138,6 +163,57 @@ func main() {
 	db.StartLogCleanup(ctx, database)
 	cbm.StartCleanup(ctx)
 	sm.StartCleanup(ctx)
+	rateLimitPlugin.Limiter().StartCleanup(ctx.Done())
+
+	// ── Start Health Check Loop ──
+	healthChecker.Start(ctx, func() []relay.HealthCheckTarget {
+		channels, err := dal.ListChannels(context.Background(), database)
+		if err != nil {
+			log.Printf("[healthcheck] Failed to list channels: %v", err)
+			return nil
+		}
+		var targets []relay.HealthCheckTarget
+		for _, ch := range channels {
+			if !ch.Enabled || len(ch.BaseUrls) == 0 {
+				continue
+			}
+			url := ch.BaseUrls[0].URL
+			if url == "" {
+				continue
+			}
+			headers := make(map[string]string)
+			if len(ch.Keys) > 0 && ch.Keys[0].ChannelKey != "" {
+				headers["Authorization"] = "Bearer " + ch.Keys[0].ChannelKey
+			}
+			targets = append(targets, relay.HealthCheckTarget{
+				ChannelID: ch.ID,
+				URL:       url + "/v1/models",
+				Headers:   headers,
+			})
+		}
+		return targets
+	})
+
+	// ── MCP Gateway Manager ──
+	mcpManager := mcpgw.NewManager()
+	if mcpClients, err := dal.ListMCPClients(context.Background(), database); err == nil {
+		for i := range mcpClients {
+			if !mcpClients[i].Enabled {
+				continue
+			}
+			if err := mcpManager.AddClient(context.Background(), &mcpClients[i]); err != nil {
+				log.Printf("[startup] MCP client %q connect failed: %v", mcpClients[i].Name, err)
+			}
+		}
+		log.Printf("[startup] Loaded %d MCP clients", len(mcpClients))
+	} else {
+		log.Printf("[startup] Failed to load MCP clients: %v", err)
+	}
+	mcpManager.StartToolSync(ctx)
+
+	// ── MCP Server (expose aggregated tools) ──
+	mcpSrv := mcpgw.NewServer(mcpManager)
+	mcpSrv.SyncTools()
 
 	// ── Handlers ──
 	h := &handler.Handler{
@@ -149,9 +225,10 @@ func main() {
 
 	rh := &handler.RelayHandler{
 		Handler: handler.Handler{
-			DB:     database,
-			Cache:  kv,
-			Config: cfg,
+			DB:              database,
+			Cache:           kv,
+			Config:          cfg,
+			CircuitBreakers: cbm,
 		},
 		Broadcast:       hub.Broadcast,
 		StreamTracker:   hub,
@@ -162,12 +239,18 @@ func main() {
 		Balancer:        bal,
 		HTTPClient:      nonStreamClient,
 		StreamClient:    streamClient,
+		Plugins:         plugins,
+		RoutingEngine:   routingEngine,
+		HealthChecker:   healthChecker,
+		MCPManager:      mcpManager,
+		MCPServer:       mcpSrv,
 	}
 
 	// ── Router ──
 	r := gin.Default()
 	h.RegisterRoutes(r)
 	rh.RegisterRelayRoutes(r)
+	rh.RegisterRelayAdminRoutes(r)
 
 	// Prometheus metrics endpoint
 	if metricsHandler := obs.MetricsHandler(); metricsHandler != nil {
@@ -229,6 +312,9 @@ func main() {
 	if err := srv.Shutdown(context.Background()); err != nil {
 		log.Printf("[shutdown] HTTP server shutdown error: %v", err)
 	}
+
+	// Stop MCP Manager
+	mcpManager.Stop()
 
 	// Wait for LogWriter to flush remaining buffered logs
 	<-logWriterDone

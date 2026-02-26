@@ -51,7 +51,13 @@
       "costLimitHint": "0 或留空 = 不限制",
       "modelWhitelist": "模型白名单",
       "modelWhitelistPlaceholder": "gpt-4o, claude-3.5-sonnet（逗号分隔）",
-      "modelWhitelistHint": "逗号分隔的模型名称。留空 = 允许所有模型。"
+      "modelWhitelistHint": "逗号分隔的模型名称。留空 = 允许所有模型。",
+      "rpmLimit": "RPM 限制",
+      "rpmLimitPlaceholder": "0 = 不限制",
+      "rpmLimitHint": "每分钟请求数。0 或留空 = 不限制。",
+      "tpmLimit": "TPM 限制",
+      "tpmLimitPlaceholder": "0 = 不限制",
+      "tpmLimitHint": "每分钟 Token 数。0 或留空 = 不限制。"
     }
   },
   "systemConfig": {

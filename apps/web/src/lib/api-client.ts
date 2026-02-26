@@ -274,6 +274,8 @@ export interface ApiKeyRecord {
   maxCost: number
   totalCost: number
   supportedModels: string
+  rpmLimit: number
+  tpmLimit: number
 }
 
 export interface ApiKeyInput {
@@ -282,6 +284,8 @@ export interface ApiKeyInput {
   expireAt: number
   maxCost: number
   supportedModels: string
+  rpmLimit: number
+  tpmLimit: number
 }
 
 export function listApiKeys() {
@@ -569,6 +573,154 @@ export function materializeProfileGroups(profileId: number, data?: { models?: st
       body: data ?? {},
     },
   )
+}
+
+// ── Routing Rules ──
+
+export interface RoutingConditionItem {
+  field: string
+  operator: string
+  value: string
+}
+
+export interface RoutingActionItem {
+  type: "reject" | "route" | "rewrite"
+  groupName?: string
+  modelName?: string
+  statusCode?: number
+  message?: string
+}
+
+export interface RoutingRule {
+  id: number
+  name: string
+  priority: number
+  enabled: boolean
+  conditions: RoutingConditionItem[]
+  action: RoutingActionItem
+}
+
+export interface RoutingRuleInput {
+  id?: number
+  name: string
+  priority: number
+  enabled: boolean
+  conditions: RoutingConditionItem[]
+  action: RoutingActionItem
+}
+
+export function listRoutingRules() {
+  return apiFetch<{ success: boolean; data: { rules: RoutingRule[] } }>("/api/v1/routing-rule/list")
+}
+
+export function createRoutingRule(data: Omit<RoutingRuleInput, "id">) {
+  return apiFetch<{ success: boolean; data: RoutingRule }>("/api/v1/routing-rule/create", {
+    method: "POST",
+    body: data,
+  })
+}
+
+export function updateRoutingRule(data: Partial<RoutingRuleInput> & { id: number }) {
+  return apiFetch<{ success: boolean }>("/api/v1/routing-rule/update", {
+    method: "POST",
+    body: data,
+  })
+}
+
+export function deleteRoutingRule(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/v1/routing-rule/delete/${id}`, {
+    method: "DELETE",
+  })
+}
+
+// ── Channel Health ──
+
+export function getChannelHealth() {
+  return apiFetch<{ success: boolean; data: { health: Record<string, number> } }>(
+    "/api/v1/channel/health",
+  )
+}
+
+// ── MCP Clients ──
+
+export interface MCPStdioConfig {
+  command: string
+  args: string[]
+  envs: string[]
+}
+
+export interface MCPHeaderEntry {
+  key: string
+  value: string
+}
+
+export interface MCPToolInfo {
+  name: string
+  description?: string
+}
+
+export interface MCPClientRecord {
+  id: number
+  name: string
+  connectionType: "http" | "sse" | "stdio"
+  connectionString: string
+  stdioConfig?: MCPStdioConfig
+  authType: "none" | "headers" | "oauth"
+  headers?: MCPHeaderEntry[]
+  oauthConfigId?: string
+  toolsToExecute: string[]
+  toolsToAutoExec: string[]
+  enabled: boolean
+  state: "connected" | "disconnected" | "error"
+  errorMsg?: string
+  tools: MCPToolInfo[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface MCPClientInput {
+  id?: number
+  name: string
+  connectionType: "http" | "sse" | "stdio"
+  connectionString?: string
+  stdioConfig?: MCPStdioConfig
+  authType: "none" | "headers" | "oauth"
+  headers?: MCPHeaderEntry[]
+  toolsToExecute?: string[]
+  toolsToAutoExec?: string[]
+  enabled: boolean
+}
+
+export function listMCPClients() {
+  return apiFetch<{ success: boolean; data: { clients: MCPClientRecord[] } }>(
+    "/api/v1/mcp/client/list",
+  )
+}
+
+export function createMCPClient(data: Omit<MCPClientInput, "id">) {
+  return apiFetch<{ success: boolean; data: MCPClientRecord }>("/api/v1/mcp/client/create", {
+    method: "POST",
+    body: data,
+  })
+}
+
+export function updateMCPClient(data: Partial<MCPClientInput> & { id: number }) {
+  return apiFetch<{ success: boolean }>("/api/v1/mcp/client/update", {
+    method: "POST",
+    body: data,
+  })
+}
+
+export function deleteMCPClient(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/v1/mcp/client/delete/${id}`, {
+    method: "DELETE",
+  })
+}
+
+export function reconnectMCPClient(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/v1/mcp/client/reconnect/${id}`, {
+    method: "POST",
+  })
 }
 
 // ── Data Export/Import ──

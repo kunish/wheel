@@ -195,5 +195,65 @@
       "editPrice": "Edit price for {{name}}",
       "deletePrice": "Delete price for {{name}}"
     }
+  },
+
+  "routingRules": {
+    "title": "Routing Rules",
+    "description": "Define conditional rules to route, reject, or rewrite requests before they reach upstream providers.",
+    "createRule": "Create Rule",
+    "editRule": "Edit Rule",
+    "noRules": "No routing rules configured yet.",
+    "deleteTitle": "Delete Rule \"{{name}}\"?",
+    "deleteDescription": "This action cannot be undone.",
+    "ruleCreated": "Routing rule created",
+    "ruleUpdated": "Routing rule updated",
+    "ruleDeleted": "Routing rule deleted",
+    "toggleFailed": "Failed to toggle routing rule",
+    "table": {
+      "name": "Name",
+      "priority": "Priority",
+      "conditions": "Conditions",
+      "action": "Action",
+      "status": "Status"
+    },
+    "form": {
+      "name": "Rule Name",
+      "namePlaceholder": "e.g. Block GPT-4 for free keys",
+      "priority": "Priority",
+      "priorityHint": "Lower number = higher priority",
+      "enabled": "Enabled",
+      "conditions": "Conditions",
+      "addCondition": "Add Condition",
+      "action": "Action",
+      "actionType": "Action Type",
+      "groupName": "Target Group",
+      "groupNamePlaceholder": "Select group to route to",
+      "modelName": "Target Model",
+      "modelNamePlaceholder": "Select model to rewrite to",
+      "statusCode": "Status Code",
+      "message": "Reject Message",
+      "messagePlaceholder": "Access denied"
+    },
+    "fields": {
+      "model": "Model",
+      "apikey_name": "API Key Name",
+      "request_type": "Request Type",
+      "header": "Header",
+      "body": "Body Path"
+    },
+    "operators": {
+      "eq": "equals",
+      "neq": "not equals",
+      "contains": "contains",
+      "prefix": "starts with",
+      "suffix": "ends with",
+      "regex": "matches regex",
+      "in": "in list"
+    },
+    "actions": {
+      "reject": "Reject",
+      "route": "Route to Group",
+      "rewrite": "Rewrite Model"
+    }
   }
 }

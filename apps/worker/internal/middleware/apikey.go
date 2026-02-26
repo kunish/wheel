@@ -61,7 +61,10 @@ func ApiKeyAuth(db *bun.DB) gin.HandlerFunc {
 		}
 
 		c.Set("apiKeyId", apiKey.ID)
+		c.Set("apiKeyName", apiKey.Name)
 		c.Set("supportedModels", apiKey.SupportedModels)
+		c.Set("rpmLimit", apiKey.RPMLimit)
+		c.Set("tpmLimit", apiKey.TPMLimit)
 
 		c.Next()
 	}

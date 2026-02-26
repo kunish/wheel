@@ -1,0 +1,107 @@
+{
+  "pageTitle": "MCP Gateway",
+  "description": "Manage MCP server connections and aggregated tools",
+  "noClients": "No MCP clients configured",
+  "addClient": "Add Client",
+
+  "state": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "error": "Error"
+  },
+
+  "connectionType": {
+    "http": "HTTP",
+    "sse": "SSE",
+    "stdio": "STDIO"
+  },
+
+  "authType": {
+    "none": "None",
+    "headers": "Headers",
+    "oauth": "OAuth"
+  },
+
+  "table": {
+    "name": "Name",
+    "type": "Type",
+    "endpoint": "Endpoint",
+    "status": "Status",
+    "tools": "Tools",
+    "enabled": "Enabled",
+    "actions": "Actions"
+  },
+
+  "form": {
+    "createTitle": "Add MCP Client",
+    "editTitle": "Edit MCP Client",
+    "name": "Name",
+    "namePlaceholder": "e.g. my-mcp-server",
+    "connectionType": "Connection Type",
+    "connectionString": "Server URL",
+    "connectionStringPlaceholder": "https://mcp-server.example.com",
+    "authType": "Authentication",
+    "enabled": "Enabled",
+    "headers": "Custom Headers",
+    "headerKey": "Key",
+    "headerValue": "Value",
+    "addHeader": "Add Header",
+    "stdioCommand": "Command",
+    "stdioCommandPlaceholder": "e.g. npx",
+    "stdioArgs": "Arguments",
+    "stdioArgsPlaceholder": "One argument per line",
+    "stdioEnvs": "Environment Variables",
+    "stdioEnvsPlaceholder": "KEY=VALUE, one per line",
+    "toolsToExecute": "Allowed Tools",
+    "toolsToExecutePlaceholder": "Leave empty to allow all tools",
+    "toolsToAutoExec": "Auto-Execute Tools",
+    "toolsToAutoExecPlaceholder": "Tools that execute without confirmation"
+  },
+
+  "actions": {
+    "reconnect": "Reconnect",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+
+  "toast": {
+    "created": "MCP client created",
+    "updated": "MCP client updated",
+    "deleted": "MCP client deleted",
+    "reconnected": "MCP client reconnected",
+    "reconnectFailed": "Reconnect failed",
+    "toggleFailed": "Toggle failed"
+  },
+
+  "deleteDialog": {
+    "title": "Delete \"{{name}}\"?",
+    "description": "This will disconnect and remove this MCP client. This action cannot be undone."
+  },
+
+  "tools": {
+    "title": "Tools",
+    "noTools": "No tools discovered",
+    "count_one": "{{count}} tool",
+    "count_other": "{{count}} tools"
+  },
+
+  "guide": {
+    "title": "Getting Started",
+    "step1Title": "Add MCP Clients",
+    "step1Desc": "Connect to external MCP servers via HTTP, SSE, or STDIO. Tools will be discovered automatically.",
+    "step2Title": "Use Aggregated MCP Server",
+    "step2Desc": "All tools from connected clients are aggregated into a single MCP Server endpoint:",
+    "step3Title": "REST Tool Execution",
+    "step3Desc": "For non-MCP clients, call tools directly via REST API:",
+    "httpDesc": "Remote MCP servers supporting Streamable HTTP",
+    "sseDesc": "Remote MCP servers supporting Server-Sent Events",
+    "stdioDesc": "Local MCP server processes"
+  },
+
+  "endpoint": {
+    "title": "MCP Server Endpoint",
+    "url": "Server URL",
+    "auth": "Add Authorization header with your API Key",
+    "copied": "Copied"
+  }
+}

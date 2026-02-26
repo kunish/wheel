@@ -34,7 +34,7 @@ func ListApiKeys(ctx context.Context, db *bun.DB) ([]types.APIKey, error) {
 	return keys, nil
 }
 
-func CreateApiKey(ctx context.Context, db *bun.DB, name string, expireAt int64, maxCost float64, supportedModels string) (*types.APIKey, error) {
+func CreateApiKey(ctx context.Context, db *bun.DB, name string, expireAt int64, maxCost float64, supportedModels string, rpmLimit int, tpmLimit int) (*types.APIKey, error) {
 	key := generateAPIKey()
 	ak := &types.APIKey{
 		Name:            name,
@@ -43,6 +43,8 @@ func CreateApiKey(ctx context.Context, db *bun.DB, name string, expireAt int64, 
 		ExpireAt:        expireAt,
 		MaxCost:         maxCost,
 		SupportedModels: supportedModels,
+		RPMLimit:        rpmLimit,
+		TPMLimit:        tpmLimit,
 	}
 	_, err := db.NewInsert().Model(ak).Exec(ctx)
 	if err != nil {
@@ -54,6 +56,7 @@ func CreateApiKey(ctx context.Context, db *bun.DB, name string, expireAt int64, 
 var allowedApiKeyCols = map[string]bool{
 	"name": true, "enabled": true, "expire_at": true,
 	"max_cost": true, "supported_models": true,
+	"rpm_limit": true, "tpm_limit": true,
 }
 
 func UpdateApiKey(ctx context.Context, db *bun.DB, id int, data map[string]any) error {

@@ -6,6 +6,7 @@ import enCommon from "./locales/en/common.json"
 import enDashboard from "./locales/en/dashboard.json"
 import enLogin from "./locales/en/login.json"
 import enLogs from "./locales/en/logs.json"
+import enMcp from "./locales/en/mcp.json"
 import enModel from "./locales/en/model.json"
 import enSettings from "./locales/en/settings.json"
 
@@ -13,11 +14,12 @@ import zhCNCommon from "./locales/zh-CN/common.json"
 import zhCNDashboard from "./locales/zh-CN/dashboard.json"
 import zhCNLogin from "./locales/zh-CN/login.json"
 import zhCNLogs from "./locales/zh-CN/logs.json"
+import zhCNMcp from "./locales/zh-CN/mcp.json"
 import zhCNModel from "./locales/zh-CN/model.json"
 import zhCNSettings from "./locales/zh-CN/settings.json"
 
 export const defaultNS = "common"
-export const ns = ["common", "login", "dashboard", "model", "logs", "settings"] as const
+export const ns = ["common", "login", "dashboard", "model", "logs", "settings", "mcp"] as const
 
 export const resources = {
   en: {
@@ -27,6 +29,7 @@ export const resources = {
     model: enModel,
     logs: enLogs,
     settings: enSettings,
+    mcp: enMcp,
   },
   "zh-CN": {
     common: zhCNCommon,
@@ -35,6 +38,7 @@ export const resources = {
     model: zhCNModel,
     logs: zhCNLogs,
     settings: zhCNSettings,
+    mcp: zhCNMcp,
   },
 } as const
 
