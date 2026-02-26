@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/kunish/wheel/compare/v1.15.0...v1.16.0) (2026-02-26)
+
+
+### Features
+
+* add audit logs, MCP logs, model limits backend + UI enhancements ([cf88b7f](https://github.com/kunish/wheel/commit/cf88b7fa7f12d43ec445059f84781027653509f6))
+
 ## [1.15.0](https://github.com/kunish/wheel/compare/v1.14.1...v1.15.0) (2026-02-26)
 
 
