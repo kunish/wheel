@@ -8,15 +8,20 @@ func TestDetectRequestType(t *testing.T) {
 		path string
 		want string
 	}{
-		{"chat completions", "/v1/chat/completions", "openai-chat"},
-		{"anthropic messages", "/v1/messages", "anthropic-messages"},
-		{"embeddings", "/v1/embeddings", "openai-embeddings"},
-		{"responses", "/v1/responses", "openai-responses"},
-		{"nested chat path", "/api/v1/chat/completions", "openai-chat"},
-		{"nested embeddings", "/api/v1/embeddings", "openai-embeddings"},
-		{"unknown path", "/v1/images/generations", ""},
+		{"chat completions", "/v1/chat/completions", RequestTypeChat},
+		{"anthropic messages", "/v1/messages", RequestTypeAnthropicMsg},
+		{"embeddings", "/v1/embeddings", RequestTypeEmbeddings},
+		{"responses", "/v1/responses", RequestTypeResponses},
+		{"nested chat path", "/api/v1/chat/completions", RequestTypeChat},
+		{"nested embeddings", "/api/v1/embeddings", RequestTypeEmbeddings},
+		{"images generations", "/v1/images/generations", RequestTypeImageGeneration},
+		{"audio speech", "/v1/audio/speech", RequestTypeAudioSpeech},
+		{"audio transcriptions", "/v1/audio/transcriptions", RequestTypeAudioTranscribe},
+		{"audio translations", "/v1/audio/translations", RequestTypeAudioTranslate},
+		{"moderations", "/v1/moderations", RequestTypeModerations},
 		{"empty path", "", ""},
 		{"root", "/", ""},
+		{"unknown path", "/v1/unknown", ""},
 	}
 
 	for _, tt := range tests {

@@ -21,20 +21,26 @@ const MetadataTTL = 86400 // 24h
 
 // Canonical provider prefix mapping
 var canonicalProviders = map[string]string{
-	"gpt-":      "openai",
-	"chatgpt-":  "openai",
-	"o1-":       "openai",
-	"o3-":       "openai",
-	"o4-":       "openai",
-	"claude-":   "anthropic",
-	"gemini-":   "google",
-	"deepseek-": "deepseek",
-	"grok-":     "xai",
-	"qwen-":     "alibaba",
-	"qwen3-":    "alibaba",
-	"glm-":      "zhipuai",
-	"minimax-":  "minimax",
-	"kimi-":     "moonshotai",
+	"gpt-":       "openai",
+	"chatgpt-":   "openai",
+	"o1-":        "openai",
+	"o3-":        "openai",
+	"o4-":        "openai",
+	"claude-":    "anthropic",
+	"gemini-":    "google",
+	"deepseek-":  "deepseek",
+	"grok-":      "xai",
+	"qwen-":      "alibaba",
+	"qwen3-":     "alibaba",
+	"glm-":       "zhipuai",
+	"minimax-":   "minimax",
+	"kimi-":      "moonshotai",
+	"llama-":     "meta",
+	"mistral-":   "mistralai",
+	"mixtral-":   "mistralai",
+	"codestral-": "mistralai",
+	"command-":   "cohere",
+	"jamba-":     "ai21",
 }
 
 // ModelMeta holds metadata for a single model from models.dev.
@@ -127,6 +133,9 @@ func UpsertBuiltinProfilesFromMetadata(ctx context.Context, db *bun.DB, metadata
 var supportedProviders = []string{
 	"openai", "anthropic", "google", "deepseek", "xai",
 	"alibaba", "zhipuai", "minimax", "moonshotai",
+	"mistralai", "cohere", "ai21", "meta",
+	"groq", "perplexity", "together", "cerebras",
+	"novita", "siliconflow",
 }
 
 // SyncResult holds the outcome of a full models.dev sync operation.

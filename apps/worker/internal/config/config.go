@@ -9,30 +9,34 @@ import (
 var Version = "dev"
 
 type Config struct {
-	Port  string
-	DBDSN string
+	Port          string
+	DBDSN         string
 	JWTSecret     string
 	AdminUsername string
 	AdminPassword string
 
 	// Observability
-	MetricsEnabled  bool
-	OtelEnabled     bool
-	OtelEndpoint    string
-	OtelServiceName string
+	MetricsEnabled      bool
+	OtelEnabled         bool
+	OtelEndpoint        string
+	OtelServiceName     string
+	OtelMetricsPush     bool   // enable OTLP metrics push (in addition to Prometheus pull)
+	OtelMetricsEndpoint string // OTLP metrics endpoint (defaults to OtelEndpoint)
 }
 
 func Load() *Config {
 	return &Config{
-		Port:  getEnv("PORT", "8787"),
-		DBDSN:           getEnv("DB_DSN", "root:@tcp(127.0.0.1:4000)/wheel?parseTime=true&charset=utf8mb4"),
-		JWTSecret:       getEnv("JWT_SECRET", "change-me-in-production"),
-		AdminUsername:   getEnv("ADMIN_USERNAME", "admin"),
-		AdminPassword:   getEnv("ADMIN_PASSWORD", "admin"),
-		MetricsEnabled:  getEnv("METRICS_ENABLED", "") == "true",
-		OtelEnabled:     getEnv("OTEL_ENABLED", "") == "true",
-		OtelEndpoint:    getEnv("OTEL_EXPORTER_ENDPOINT", "localhost:4317"),
-		OtelServiceName: getEnv("OTEL_SERVICE_NAME", "wheel-gateway"),
+		Port:                getEnv("PORT", "8787"),
+		DBDSN:               getEnv("DB_DSN", "root:@tcp(127.0.0.1:4000)/wheel?parseTime=true&charset=utf8mb4"),
+		JWTSecret:           getEnv("JWT_SECRET", "change-me-in-production"),
+		AdminUsername:       getEnv("ADMIN_USERNAME", "admin"),
+		AdminPassword:       getEnv("ADMIN_PASSWORD", "admin"),
+		MetricsEnabled:      getEnv("METRICS_ENABLED", "") == "true",
+		OtelEnabled:         getEnv("OTEL_ENABLED", "") == "true",
+		OtelEndpoint:        getEnv("OTEL_EXPORTER_ENDPOINT", "localhost:4317"),
+		OtelServiceName:     getEnv("OTEL_SERVICE_NAME", "wheel-gateway"),
+		OtelMetricsPush:     getEnv("OTEL_METRICS_PUSH", "") == "true",
+		OtelMetricsEndpoint: getEnv("OTEL_METRICS_ENDPOINT", ""),
 	}
 }
 

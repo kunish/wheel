@@ -305,7 +305,7 @@ func (h *RelayHandler) parseRelayRequest(c *gin.Context) *relayRequest {
 	path := c.Request.URL.Path
 
 	requestType := relay.DetectRequestType(path)
-	isAnthropicInbound := requestType == "anthropic-messages"
+	isAnthropicInbound := requestType == relay.RequestTypeAnthropicMsg
 	if requestType == "" {
 		c.JSON(400, gin.H{"error": gin.H{"message": "Unsupported endpoint", "type": "invalid_request_error"}})
 		return nil
@@ -324,6 +324,12 @@ func (h *RelayHandler) parseRelayRequest(c *gin.Context) *relayRequest {
 	}
 
 	model, stream := relay.ExtractModel(body)
+
+	// For multimodal endpoints, fall back to default model if not specified
+	if model == "" && relay.IsMultimodalRequest(requestType) {
+		model = relay.ExtractMultimodalModel(body, requestType)
+	}
+
 	if model == "" {
 		apiError(c, 400, "invalid_request_error", "Model is required", isAnthropicInbound)
 		return nil

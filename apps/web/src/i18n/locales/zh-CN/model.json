@@ -5,14 +5,30 @@
   "models": "模型",
   "expandAll": "全部展开",
   "collapseAll": "全部收起",
-
   "typeLabels": {
     "0": "OpenAI Chat",
     "1": "OpenAI",
     "2": "Anthropic",
     "3": "Gemini",
     "4": "OpenAI Responses",
-    "5": "OpenAI Embedding"
+    "5": "OpenAI Embedding",
+    "10": "Azure OpenAI",
+    "11": "AWS Bedrock",
+    "12": "Google Vertex AI",
+    "13": "Cohere",
+    "20": "Groq",
+    "21": "Mistral",
+    "22": "DeepSeek",
+    "23": "xAI (Grok)",
+    "24": "Cerebras",
+    "25": "OpenRouter",
+    "26": "Perplexity",
+    "27": "Together AI",
+    "28": "Ollama",
+    "29": "vLLM",
+    "30": "Hugging Face",
+    "31": "Novita AI",
+    "32": "SiliconFlow"
   },
   "modeLabels": {
     "1": "轮询",
@@ -20,21 +36,18 @@
     "3": "故障转移",
     "4": "加权"
   },
-
   "modelCount_one": "{{count}} 个模型",
   "modelCount_other": "{{count}} 个模型",
   "itemCount_one": "{{count}} 个项目",
   "itemCount_other": "{{count}} 个项目",
   "noModels": "无模型",
   "unknown": "未知",
-
   "emptyChannels": "暂无渠道，创建一个开始使用。",
   "emptyGroups": "暂无分组，创建一个后将渠道或模型拖入其中。",
   "dropHere": "拖放到此处添加",
   "dragHint": "将渠道或模型拖到此处",
   "timeout": "超时：{{seconds}}s",
   "clearAll": "清空全部",
-
   "deleteChannelTitle": "删除渠道「{{name}}」？",
   "deleteChannelDesc": "此操作无法撤销。该渠道及其配置将被永久删除。",
   "deleteGroupTitle": "删除分组「{{name}}」？",
@@ -42,7 +55,6 @@
   "clearGroupTitle": "清空「{{name}}」中的所有项目？",
   "clearGroupDesc": "该分组中的所有渠道和模型将被移除，分组本身将保留。",
   "clearAllAction": "全部清空",
-
   "toast": {
     "channelDeleted": "渠道已删除",
     "channelCreated": "渠道已创建",
@@ -64,10 +76,8 @@
     "syncSuccess": "价格同步成功",
     "syncFailed": "同步价格失败"
   },
-
   "availableModels": "可用模型",
   "noModelsAvailable": "暂无可用模型。",
-
   "channelDialog": {
     "createTitle": "创建渠道",
     "editTitle": "编辑渠道",
@@ -92,7 +102,6 @@
     "fetchSuccess": "已获取 {{count}} 个模型",
     "fetchFallback": "API 不可达，已从 models.dev 加载 {{count}} 个模型"
   },
-
   "groupDialog": {
     "createTitle": "创建分组",
     "editTitle": "编辑分组",
@@ -109,7 +118,6 @@
     "weight": "权重",
     "emptyModel": "（空）"
   },
-
   "channelModelPicker": {
     "title": "选择模型",
     "searchPlaceholder": "搜索模型...",
@@ -120,13 +128,11 @@
     "modelsdev": "models.dev 已知",
     "manual": "手动"
   },
-
   "modelPicker": {
     "title": "从 models.dev 选择模型",
     "searchPlaceholder": "搜索模型...",
     "noModelsFound": "未找到模型"
   },
-
   "profile": {
     "title": "模型预设",
     "createProfile": "新建预设",
@@ -172,7 +178,6 @@
       "groupNotFound": "已落地分组不存在，请刷新后重试"
     }
   },
-
   "price": {
     "description": "管理模型定价，用于费用计算",
     "searchModels": "搜索模型",
@@ -188,7 +193,7 @@
       "outputPrice": "输出价格 ($ / M tokens)"
     },
     "deleteDialog": {
-      "title": "删除 \u201c{{name}}\u201d 的价格？",
+      "title": "删除 “{{name}}” 的价格？",
       "description": "这将删除该模型的定价数据。使用过此价格的历史费用计算不会受到影响。"
     },
     "aria": {
@@ -196,7 +201,6 @@
       "deletePrice": "删除 {{name}} 的价格"
     }
   },
-
   "routingRules": {
     "title": "路由规则",
     "description": "定义条件规则，在请求到达上游服务商之前进行路由、拒绝或重写。",

@@ -5,14 +5,30 @@
   "models": "Models",
   "expandAll": "Expand all",
   "collapseAll": "Collapse all",
-
   "typeLabels": {
     "0": "OpenAI Chat",
     "1": "OpenAI",
     "2": "Anthropic",
     "3": "Gemini",
     "4": "OpenAI Responses",
-    "5": "OpenAI Embedding"
+    "5": "OpenAI Embedding",
+    "10": "Azure OpenAI",
+    "11": "AWS Bedrock",
+    "12": "Google Vertex AI",
+    "13": "Cohere",
+    "20": "Groq",
+    "21": "Mistral",
+    "22": "DeepSeek",
+    "23": "xAI (Grok)",
+    "24": "Cerebras",
+    "25": "OpenRouter",
+    "26": "Perplexity",
+    "27": "Together AI",
+    "28": "Ollama",
+    "29": "vLLM",
+    "30": "Hugging Face",
+    "31": "Novita AI",
+    "32": "SiliconFlow"
   },
   "modeLabels": {
     "1": "RoundRobin",
@@ -20,21 +36,18 @@
     "3": "Failover",
     "4": "Weighted"
   },
-
   "modelCount_one": "{{count}} model",
   "modelCount_other": "{{count}} models",
   "itemCount_one": "{{count}} item",
   "itemCount_other": "{{count}} items",
   "noModels": "No models",
   "unknown": "Unknown",
-
   "emptyChannels": "No channels. Create one to get started.",
   "emptyGroups": "No groups. Create one, then drag channels or models into it.",
   "dropHere": "Drop here to add",
   "dragHint": "Drag channels or models here",
   "timeout": "Timeout: {{seconds}}s",
   "clearAll": "Clear all",
-
   "deleteChannelTitle": "Delete channel \"{{name}}\"?",
   "deleteChannelDesc": "This action cannot be undone. The channel and its configuration will be permanently removed.",
   "deleteGroupTitle": "Delete group \"{{name}}\"?",
@@ -42,7 +55,6 @@
   "clearGroupTitle": "Clear all items from \"{{name}}\"?",
   "clearGroupDesc": "All channels and models will be removed from this group. The group itself will remain.",
   "clearAllAction": "Clear All",
-
   "toast": {
     "channelDeleted": "Channel deleted",
     "channelCreated": "Channel created",
@@ -64,10 +76,8 @@
     "syncSuccess": "Prices synced successfully",
     "syncFailed": "Failed to sync prices"
   },
-
   "availableModels": "Available Models",
   "noModelsAvailable": "No models available.",
-
   "channelDialog": {
     "createTitle": "Create Channel",
     "editTitle": "Edit Channel",
@@ -92,7 +102,6 @@
     "fetchSuccess": "Fetched {{count}} models",
     "fetchFallback": "API unreachable, loaded {{count}} models from models.dev"
   },
-
   "groupDialog": {
     "createTitle": "Create Group",
     "editTitle": "Edit Group",
@@ -109,7 +118,6 @@
     "weight": "Weight",
     "emptyModel": "(empty)"
   },
-
   "channelModelPicker": {
     "title": "Select Model",
     "searchPlaceholder": "Search models...",
@@ -120,13 +128,11 @@
     "modelsdev": "Known on models.dev",
     "manual": "manual"
   },
-
   "modelPicker": {
     "title": "Select Model from models.dev",
     "searchPlaceholder": "Search models...",
     "noModelsFound": "No models found"
   },
-
   "profile": {
     "title": "Model Profiles",
     "createProfile": "New Profile",
@@ -172,7 +178,6 @@
       "groupNotFound": "Materialized group no longer exists, please refresh"
     }
   },
-
   "price": {
     "description": "Manage model pricing for cost calculation",
     "searchModels": "Search models",
@@ -188,7 +193,7 @@
       "outputPrice": "Output Price ($ / M tokens)"
     },
     "deleteDialog": {
-      "title": "Delete price for \u201c{{name}}\u201d?",
+      "title": "Delete price for “{{name}}”?",
       "description": "This will remove the pricing data for this model. Historical cost calculations that used this price will not be affected."
     },
     "aria": {
@@ -196,7 +201,6 @@
       "deletePrice": "Delete price for {{name}}"
     }
   },
-
   "routingRules": {
     "title": "Routing Rules",
     "description": "Define conditional rules to route, reject, or rewrite requests before they reach upstream providers.",

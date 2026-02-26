@@ -4,13 +4,141 @@ package types
 type OutboundType int
 
 const (
-	OutboundOpenAIChat     OutboundType = 0
-	OutboundOpenAI         OutboundType = 1
-	OutboundAnthropic      OutboundType = 2
-	OutboundGemini         OutboundType = 3
+	OutboundOpenAIChat      OutboundType = 0
+	OutboundOpenAI          OutboundType = 1
+	OutboundAnthropic       OutboundType = 2
+	OutboundGemini          OutboundType = 3
 	OutboundOpenAIResponses OutboundType = 4
 	OutboundOpenAIEmbedding OutboundType = 5
+
+	// ── Extended providers ──
+	OutboundAzureOpenAI OutboundType = 10 // Azure OpenAI Service
+	OutboundBedrock     OutboundType = 11 // AWS Bedrock (Anthropic/Meta models)
+	OutboundVertex      OutboundType = 12 // Google Vertex AI
+	OutboundCohere      OutboundType = 13 // Cohere (native API)
+
+	// OpenAI-compatible providers (use OpenAI protocol with custom base URL)
+	OutboundGroq        OutboundType = 20
+	OutboundMistral     OutboundType = 21
+	OutboundDeepSeek    OutboundType = 22
+	OutboundXAI         OutboundType = 23 // xAI (Grok)
+	OutboundCerebras    OutboundType = 24
+	OutboundOpenRouter  OutboundType = 25
+	OutboundPerplexity  OutboundType = 26
+	OutboundTogether    OutboundType = 27
+	OutboundOllama      OutboundType = 28
+	OutboundVLLM        OutboundType = 29
+	OutboundHuggingFace OutboundType = 30
+	OutboundNovita      OutboundType = 31
+	OutboundSiliconFlow OutboundType = 32
 )
+
+// OutboundTypeName returns a human-readable name for the provider type.
+func OutboundTypeName(t OutboundType) string {
+	switch t {
+	case OutboundOpenAIChat, OutboundOpenAI:
+		return "openai"
+	case OutboundAnthropic:
+		return "anthropic"
+	case OutboundGemini:
+		return "gemini"
+	case OutboundOpenAIResponses:
+		return "openai-responses"
+	case OutboundOpenAIEmbedding:
+		return "openai-embedding"
+	case OutboundAzureOpenAI:
+		return "azure-openai"
+	case OutboundBedrock:
+		return "bedrock"
+	case OutboundVertex:
+		return "vertex"
+	case OutboundCohere:
+		return "cohere"
+	case OutboundGroq:
+		return "groq"
+	case OutboundMistral:
+		return "mistral"
+	case OutboundDeepSeek:
+		return "deepseek"
+	case OutboundXAI:
+		return "xai"
+	case OutboundCerebras:
+		return "cerebras"
+	case OutboundOpenRouter:
+		return "openrouter"
+	case OutboundPerplexity:
+		return "perplexity"
+	case OutboundTogether:
+		return "together"
+	case OutboundOllama:
+		return "ollama"
+	case OutboundVLLM:
+		return "vllm"
+	case OutboundHuggingFace:
+		return "huggingface"
+	case OutboundNovita:
+		return "novita"
+	case OutboundSiliconFlow:
+		return "siliconflow"
+	default:
+		return "unknown"
+	}
+}
+
+// IsOpenAICompatible returns true if the provider uses the OpenAI-compatible protocol.
+func IsOpenAICompatible(t OutboundType) bool {
+	switch t {
+	case OutboundOpenAIChat, OutboundOpenAI, OutboundOpenAIResponses, OutboundOpenAIEmbedding,
+		OutboundGroq, OutboundMistral, OutboundDeepSeek, OutboundXAI,
+		OutboundCerebras, OutboundOpenRouter, OutboundPerplexity, OutboundTogether,
+		OutboundOllama, OutboundVLLM, OutboundHuggingFace, OutboundNovita, OutboundSiliconFlow:
+		return true
+	default:
+		return false
+	}
+}
+
+// DefaultBaseURL returns the default API base URL for a provider type.
+func DefaultBaseURL(t OutboundType) string {
+	switch t {
+	case OutboundOpenAIChat, OutboundOpenAI, OutboundOpenAIResponses, OutboundOpenAIEmbedding:
+		return "https://api.openai.com"
+	case OutboundAnthropic:
+		return "https://api.anthropic.com"
+	case OutboundGemini:
+		return "https://generativelanguage.googleapis.com"
+	case OutboundGroq:
+		return "https://api.groq.com/openai"
+	case OutboundMistral:
+		return "https://api.mistral.ai"
+	case OutboundDeepSeek:
+		return "https://api.deepseek.com"
+	case OutboundXAI:
+		return "https://api.x.ai"
+	case OutboundCerebras:
+		return "https://api.cerebras.ai"
+	case OutboundOpenRouter:
+		return "https://openrouter.ai/api"
+	case OutboundPerplexity:
+		return "https://api.perplexity.ai"
+	case OutboundTogether:
+		return "https://api.together.xyz"
+	case OutboundOllama:
+		return "http://localhost:11434"
+	case OutboundVLLM:
+		return "http://localhost:8000"
+	case OutboundHuggingFace:
+		return "https://api-inference.huggingface.co"
+	case OutboundCohere:
+		return "https://api.cohere.com"
+	case OutboundNovita:
+		return "https://api.novita.ai"
+	case OutboundSiliconFlow:
+		return "https://api.siliconflow.cn"
+	default:
+		return ""
+	}
+}
 
 // GroupMode controls how channels are selected within a group.
 type GroupMode int

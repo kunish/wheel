@@ -3,8 +3,10 @@ package observe
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -24,29 +26,57 @@ type Observer struct {
 	tracer         trace.Tracer
 
 	// Metric instruments
-	requestsTotal      otelmetric.Int64Counter
-	errorsTotal        otelmetric.Int64Counter
-	retriesTotal       otelmetric.Int64Counter
-	tokensTotal        otelmetric.Int64Counter
-	costTotal          otelmetric.Float64Counter
-	durationSeconds    otelmetric.Float64Histogram
-	ttfbSeconds        otelmetric.Float64Histogram
+	requestsTotal       otelmetric.Int64Counter
+	errorsTotal         otelmetric.Int64Counter
+	retriesTotal        otelmetric.Int64Counter
+	tokensTotal         otelmetric.Int64Counter
+	costTotal           otelmetric.Float64Counter
+	durationSeconds     otelmetric.Float64Histogram
+	ttfbSeconds         otelmetric.Float64Histogram
 	circuitBreakerState otelmetric.Int64UpDownCounter
-	activeStreams      otelmetric.Int64UpDownCounter
-	logDropsTotal     otelmetric.Int64Counter
+	activeStreams       otelmetric.Int64UpDownCounter
+	logDropsTotal       otelmetric.Int64Counter
+
+	// New: plugin & multimodal metrics
+	cacheHitsTotal     otelmetric.Int64Counter
+	cacheMissesTotal   otelmetric.Int64Counter
+	contentFilterTotal otelmetric.Int64Counter
+	rateLimitHitsTotal otelmetric.Int64Counter
+	multimodalTotal    otelmetric.Int64Counter
+	pluginDuration     otelmetric.Float64Histogram
+}
+
+// OtelConfig holds all observability configuration.
+type OtelConfig struct {
+	MetricsEnabled      bool
+	OtelEnabled         bool
+	OtelEndpoint        string
+	ServiceName         string
+	OtelMetricsPush     bool
+	OtelMetricsEndpoint string
 }
 
 // New creates an Observer based on config flags.
 // Returns (nil, nil) when both metrics and tracing are disabled.
 func New(metricsEnabled, otelEnabled bool, otelEndpoint, serviceName string) (*Observer, error) {
-	if !metricsEnabled && !otelEnabled {
+	return NewWithConfig(OtelConfig{
+		MetricsEnabled: metricsEnabled,
+		OtelEnabled:    otelEnabled,
+		OtelEndpoint:   otelEndpoint,
+		ServiceName:    serviceName,
+	})
+}
+
+// NewWithConfig creates an Observer with full configuration including OTLP metrics push.
+func NewWithConfig(cfg OtelConfig) (*Observer, error) {
+	if !cfg.MetricsEnabled && !cfg.OtelEnabled {
 		return nil, nil
 	}
 
 	obs := &Observer{}
 	res, err := resource.New(
 		context.Background(),
-		resource.WithAttributes(semconv.ServiceName(serviceName)),
+		resource.WithAttributes(semconv.ServiceName(cfg.ServiceName)),
 		resource.WithFromEnv(),
 		resource.WithHost(),
 	)
@@ -54,24 +84,46 @@ func New(metricsEnabled, otelEnabled bool, otelEndpoint, serviceName string) (*O
 		return nil, err
 	}
 
-	// Metrics via Prometheus exporter as OTel MeterProvider reader
-	if metricsEnabled {
-		exporter, err := promexporter.New()
+	// Metrics: collect readers (Prometheus pull + optional OTLP push)
+	var meterOpts []sdkmetric.Option
+	meterOpts = append(meterOpts, sdkmetric.WithResource(res))
+
+	if cfg.MetricsEnabled {
+		promExp, err := promexporter.New()
 		if err != nil {
 			return nil, err
 		}
-		obs.meterProvider = sdkmetric.NewMeterProvider(
-			sdkmetric.WithResource(res),
-			sdkmetric.WithReader(exporter),
-		)
+		meterOpts = append(meterOpts, sdkmetric.WithReader(promExp))
 		obs.promHandler = promhttp.Handler()
 	}
 
+	if cfg.OtelMetricsPush {
+		endpoint := cfg.OtelMetricsEndpoint
+		if endpoint == "" {
+			endpoint = cfg.OtelEndpoint
+		}
+		metricExp, err := otlpmetricgrpc.New(
+			context.Background(),
+			otlpmetricgrpc.WithEndpoint(endpoint),
+			otlpmetricgrpc.WithInsecure(),
+		)
+		if err != nil {
+			return nil, err
+		}
+		meterOpts = append(meterOpts, sdkmetric.WithReader(
+			sdkmetric.NewPeriodicReader(metricExp, sdkmetric.WithInterval(15*time.Second)),
+		))
+	}
+
+	if len(meterOpts) > 1 { // more than just WithResource
+		obs.meterProvider = sdkmetric.NewMeterProvider(meterOpts...)
+	}
+
 	// Tracing via OTLP gRPC
-	if otelEnabled {
+	if cfg.OtelEnabled {
 		traceExporter, err := otlptracegrpc.New(
 			context.Background(),
-			otlptracegrpc.WithEndpoint(otelEndpoint),
+			otlptracegrpc.WithEndpoint(cfg.OtelEndpoint),
 			otlptracegrpc.WithInsecure(),
 		)
 		if err != nil {
@@ -154,6 +206,43 @@ func (o *Observer) registerMetrics() error {
 
 	o.logDropsTotal, err = meter.Int64Counter("wheel_log_drops_total",
 		otelmetric.WithDescription("Total log entries dropped due to full buffer"))
+	if err != nil {
+		return err
+	}
+
+	// Plugin & multimodal metrics
+	o.cacheHitsTotal, err = meter.Int64Counter("wheel_cache_hits_total",
+		otelmetric.WithDescription("Total semantic cache hits"))
+	if err != nil {
+		return err
+	}
+
+	o.cacheMissesTotal, err = meter.Int64Counter("wheel_cache_misses_total",
+		otelmetric.WithDescription("Total semantic cache misses"))
+	if err != nil {
+		return err
+	}
+
+	o.contentFilterTotal, err = meter.Int64Counter("wheel_content_filter_total",
+		otelmetric.WithDescription("Total requests blocked by content filter"))
+	if err != nil {
+		return err
+	}
+
+	o.rateLimitHitsTotal, err = meter.Int64Counter("wheel_rate_limit_hits_total",
+		otelmetric.WithDescription("Total requests blocked by rate limiter"))
+	if err != nil {
+		return err
+	}
+
+	o.multimodalTotal, err = meter.Int64Counter("wheel_multimodal_requests_total",
+		otelmetric.WithDescription("Total multimodal API requests (images, audio)"))
+	if err != nil {
+		return err
+	}
+
+	o.pluginDuration, err = meter.Float64Histogram("wheel_plugin_duration_seconds",
+		otelmetric.WithDescription("Plugin execution duration in seconds"))
 	if err != nil {
 		return err
 	}

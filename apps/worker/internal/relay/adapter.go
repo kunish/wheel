@@ -18,8 +18,14 @@ type UpstreamRequest struct {
 const defaultThinkingBudget = 10000
 
 // SelectBaseUrl picks the base URL with the lowest delay.
-func SelectBaseUrl(baseUrls []types.BaseUrl) string {
+// Falls back to the provider's default base URL if none configured.
+func SelectBaseUrl(baseUrls []types.BaseUrl, channelType ...types.OutboundType) string {
 	if len(baseUrls) == 0 {
+		if len(channelType) > 0 {
+			if def := types.DefaultBaseURL(channelType[0]); def != "" {
+				return def
+			}
+		}
 		return "https://api.openai.com"
 	}
 	best := baseUrls[0]
@@ -106,7 +112,7 @@ func BuildUpstreamRequest(
 	model string,
 	anthropicPassthrough bool,
 ) UpstreamRequest {
-	baseUrl := SelectBaseUrl(channel.BaseUrls)
+	baseUrl := SelectBaseUrl(channel.BaseUrls, channel.Type)
 
 	switch channel.Type {
 	case types.OutboundAnthropic:
@@ -116,7 +122,16 @@ func BuildUpstreamRequest(
 		return buildAnthropicRequest(baseUrl, key, inboundBody, model, channel)
 	case types.OutboundGemini:
 		return buildGeminiRequest(baseUrl, key, inboundBody, model, channel)
+	case types.OutboundAzureOpenAI:
+		return buildAzureOpenAIRequest(baseUrl, key, inboundBody, inboundPath, model, channel)
+	case types.OutboundBedrock:
+		return buildBedrockRequest(baseUrl, key, inboundBody, model, channel)
+	case types.OutboundVertex:
+		return buildVertexRequest(baseUrl, key, inboundBody, model, channel)
+	case types.OutboundCohere:
+		return buildCohereRequest(baseUrl, key, inboundBody, model, channel)
 	default:
+		// All OpenAI-compatible providers (Groq, Mistral, DeepSeek, xAI, etc.)
 		return buildOpenAIRequest(baseUrl, key, inboundBody, inboundPath, model, channel)
 	}
 }
@@ -127,6 +142,16 @@ func buildOpenAIRequest(baseUrl, key string, body map[string]any, inboundPath, m
 		path = "/v1/embeddings"
 	} else if strings.Contains(inboundPath, "/responses") {
 		path = "/v1/responses"
+	} else if strings.Contains(inboundPath, "/images/generations") {
+		path = "/v1/images/generations"
+	} else if strings.Contains(inboundPath, "/audio/speech") {
+		path = "/v1/audio/speech"
+	} else if strings.Contains(inboundPath, "/audio/transcriptions") {
+		path = "/v1/audio/transcriptions"
+	} else if strings.Contains(inboundPath, "/audio/translations") {
+		path = "/v1/audio/translations"
+	} else if strings.Contains(inboundPath, "/moderations") {
+		path = "/v1/moderations"
 	}
 
 	headers := map[string]string{
@@ -458,9 +483,9 @@ func ConvertToAnthropicResponse(openaiResp map[string]any) map[string]any {
 	}
 
 	return map[string]any{
-		"id":   id,
-		"type": "message",
-		"role": "assistant",
+		"id":    id,
+		"type":  "message",
+		"role":  "assistant",
 		"model": openaiResp["model"],
 		"content": []any{
 			map[string]any{"type": "text", "text": content},

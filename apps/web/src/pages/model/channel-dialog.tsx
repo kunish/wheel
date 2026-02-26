@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
 import { ModelSourceBadge } from "@/components/model-source-badge"
+import { ProviderIcon } from "@/components/provider-icon"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -208,12 +209,28 @@ export default function ChannelDialog({
 
   const typeLabels = useMemo(
     () => ({
-      0: t("typeLabels.0"),
       1: t("typeLabels.1"),
       2: t("typeLabels.2"),
       3: t("typeLabels.3"),
       4: t("typeLabels.4"),
       5: t("typeLabels.5"),
+      10: t("typeLabels.10"),
+      11: t("typeLabels.11"),
+      12: t("typeLabels.12"),
+      13: t("typeLabels.13"),
+      20: t("typeLabels.20"),
+      21: t("typeLabels.21"),
+      22: t("typeLabels.22"),
+      23: t("typeLabels.23"),
+      24: t("typeLabels.24"),
+      25: t("typeLabels.25"),
+      26: t("typeLabels.26"),
+      27: t("typeLabels.27"),
+      28: t("typeLabels.28"),
+      29: t("typeLabels.29"),
+      30: t("typeLabels.30"),
+      31: t("typeLabels.31"),
+      32: t("typeLabels.32"),
     }),
     [t],
   )
@@ -244,7 +261,10 @@ export default function ChannelDialog({
               <SelectContent>
                 {Object.entries(typeLabels).map(([val, label]) => (
                   <SelectItem key={val} value={val}>
-                    {label}
+                    <span className="inline-flex items-center gap-1.5">
+                      <ProviderIcon channelType={Number(val)} size={14} />
+                      {label}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

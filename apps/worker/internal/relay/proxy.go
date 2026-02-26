@@ -52,13 +52,18 @@ type StreamCompleteInfo struct {
 // extractCacheTokens extracts cache token counts from a response usage object.
 func extractCacheTokens(data map[string]any, channelType types.OutboundType) (cacheRead, cacheCreation int) {
 	switch channelType {
-	case types.OutboundAnthropic:
+	case types.OutboundAnthropic, types.OutboundBedrock:
 		usage, _ := data["usage"].(map[string]any)
 		cacheRead = toInt(usage["cache_read_input_tokens"])
 		cacheCreation = toInt(usage["cache_creation_input_tokens"])
-	case types.OutboundGemini:
+	case types.OutboundGemini, types.OutboundVertex:
 		usage, _ := data["usageMetadata"].(map[string]any)
 		cacheRead = toInt(usage["cachedContentTokenCount"])
+	case types.OutboundCohere:
+		usage, _ := data["usage"].(map[string]any)
+		if tokens, ok := usage["tokens"].(map[string]any); ok {
+			cacheRead = toInt(tokens["cached_tokens"])
+		}
 	default:
 		usage, _ := data["usage"].(map[string]any)
 		if usage != nil {
@@ -156,10 +161,12 @@ func ProxyNonStreaming(
 	// Convert upstream response → OpenAI if needed
 	finalResponse := data
 	switch channelType {
-	case types.OutboundAnthropic:
+	case types.OutboundAnthropic, types.OutboundBedrock:
 		finalResponse = ConvertAnthropicResponse(data)
-	case types.OutboundGemini:
+	case types.OutboundGemini, types.OutboundVertex:
 		finalResponse = ConvertGeminiResponse(data)
+	case types.OutboundCohere:
+		finalResponse = ConvertCohereResponse(data)
 	}
 
 	usage, _ := finalResponse["usage"].(map[string]any)
@@ -309,19 +316,26 @@ func ProxyStreaming(
 
 	// Determine converter
 	var convertChunk func(string) *anthropicSSEResult
-	if !passthrough && channelType == types.OutboundAnthropic {
+	if !passthrough && (channelType == types.OutboundAnthropic || channelType == types.OutboundBedrock) {
 		convertChunk = createAnthropicSSEConverter()
 	}
 
-	// Gemini SSE → OpenAI SSE converter
+	// Gemini/Vertex SSE → OpenAI SSE converter
 	var convertGemini func(string) *anthropicSSEResult
-	if channelType == types.OutboundGemini {
+	if channelType == types.OutboundGemini || channelType == types.OutboundVertex {
 		convertGemini = createGeminiSSEConverter()
+	}
+
+	// Cohere SSE → OpenAI SSE converter
+	var convertCohere func(string) *anthropicSSEResult
+	if channelType == types.OutboundCohere {
+		convertCohere = createCohereSSEConverter()
 	}
 
 	// OpenAI SSE → Anthropic SSE converter for anthropic inbound + openai outbound
 	var convertToAnthropic func(string) []string
-	if anthropicInbound && channelType != types.OutboundAnthropic && channelType != types.OutboundGemini {
+	if anthropicInbound && channelType != types.OutboundAnthropic && channelType != types.OutboundGemini &&
+		channelType != types.OutboundBedrock && channelType != types.OutboundVertex && channelType != types.OutboundCohere {
 		convertToAnthropic = createOpenAIToAnthropicSSEConverter()
 	}
 
@@ -353,10 +367,12 @@ func ProxyStreaming(
 				return nil, &ProxyError{Message: "Client disconnected", StatusCode: 499}
 			}
 			flusher.Flush()
-		} else if channelType == types.OutboundAnthropic && convertChunk != nil {
+		} else if (channelType == types.OutboundAnthropic || channelType == types.OutboundBedrock) && convertChunk != nil {
 			processAnthropicConverted(line, convertChunk, state, markFirstToken, w, flusher)
-		} else if channelType == types.OutboundGemini && convertGemini != nil {
+		} else if (channelType == types.OutboundGemini || channelType == types.OutboundVertex) && convertGemini != nil {
 			processGeminiConverted(line, convertGemini, state, markFirstToken, w, flusher)
+		} else if channelType == types.OutboundCohere && convertCohere != nil {
+			processCohereConverted(line, convertCohere, state, markFirstToken, w, flusher)
 		} else if convertToAnthropic != nil {
 			processOpenAIToAnthropic(line, convertToAnthropic, state, markFirstToken, w, flusher)
 		} else {
@@ -596,7 +612,7 @@ func createAnthropicSSEConverter() func(string) *anthropicSSEResult {
 	msgModel := ""
 	toolCallIndex := 0
 	blockMap := make(map[int]struct {
-		blockType    string
+		blockType   string
 		toolCallIdx int
 	})
 
@@ -1126,6 +1142,49 @@ func processGeminiConverted(
 	}
 	if chunk.cacheReadTokens > 0 {
 		state.cacheReadTokens = chunk.cacheReadTokens
+	}
+
+	if chunk.data != nil {
+		if choices, ok := chunk.data["choices"].([]any); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]any); ok {
+				if delta, ok := choice["delta"].(map[string]any); ok {
+					if content, ok := delta["content"].(string); ok {
+						state.appendContent(content)
+					}
+				}
+			}
+		}
+		dataJSON, _ := json.Marshal(chunk.data)
+		fmt.Fprintf(w, "data: %s\n\n", dataJSON)
+		flusher.Flush()
+	}
+}
+
+// processCohereConverted handles SSE lines by converting Cohere → OpenAI format.
+func processCohereConverted(
+	line string,
+	convert func(string) *anthropicSSEResult,
+	state *streamingState,
+	markFirstToken func(),
+	w http.ResponseWriter,
+	flusher http.Flusher,
+) {
+	if !strings.HasPrefix(line, "data: ") {
+		return
+	}
+
+	chunk := convert(line[6:])
+	if chunk == nil {
+		return
+	}
+
+	markFirstToken()
+
+	if chunk.inputTokens > 0 {
+		state.inputTokens = chunk.inputTokens
+	}
+	if chunk.outputTokens > 0 {
+		state.outputTokens = chunk.outputTokens
 	}
 
 	if chunk.data != nil {

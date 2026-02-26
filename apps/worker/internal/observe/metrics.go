@@ -122,3 +122,65 @@ func (o *Observer) RecordLogDrop(ctx context.Context) {
 	}
 	o.logDropsTotal.Add(ctx, 1)
 }
+
+// RecordCacheHit increments the cache hit counter.
+func (o *Observer) RecordCacheHit(ctx context.Context, model string) {
+	if o == nil {
+		return
+	}
+	o.cacheHitsTotal.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("model", model),
+	))
+}
+
+// RecordCacheMiss increments the cache miss counter.
+func (o *Observer) RecordCacheMiss(ctx context.Context, model string) {
+	if o == nil {
+		return
+	}
+	o.cacheMissesTotal.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("model", model),
+	))
+}
+
+// RecordContentFilter increments the content filter block counter.
+func (o *Observer) RecordContentFilter(ctx context.Context, model string) {
+	if o == nil {
+		return
+	}
+	o.contentFilterTotal.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("model", model),
+	))
+}
+
+// RecordRateLimitHit increments the rate limit hit counter.
+func (o *Observer) RecordRateLimitHit(ctx context.Context, model string, apiKeyID int) {
+	if o == nil {
+		return
+	}
+	o.rateLimitHitsTotal.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("model", model),
+		attribute.Int("api_key_id", apiKeyID),
+	))
+}
+
+// RecordMultimodal increments the multimodal request counter.
+func (o *Observer) RecordMultimodal(ctx context.Context, requestType, model string) {
+	if o == nil {
+		return
+	}
+	o.multimodalTotal.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("request_type", requestType),
+		attribute.String("model", model),
+	))
+}
+
+// RecordPluginDuration records plugin execution duration.
+func (o *Observer) RecordPluginDuration(ctx context.Context, pluginName string, d time.Duration) {
+	if o == nil {
+		return
+	}
+	o.pluginDuration.Record(ctx, d.Seconds(), otelmetric.WithAttributes(
+		attribute.String("plugin", pluginName),
+	))
+}

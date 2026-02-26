@@ -43,6 +43,7 @@ import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { GroupedModelList } from "@/components/grouped-model-list"
 import { ModelCard } from "@/components/model-card"
 import { ModelSourceBadge } from "@/components/model-source-badge"
+import { ProviderIcon } from "@/components/provider-icon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -950,8 +951,9 @@ function ChannelOverlay({ channel }: { channel: ChannelRecord }) {
               <div className="mt-1 flex items-center gap-1.5">
                 <Badge
                   variant="secondary"
-                  className="bg-secondary/60 text-muted-foreground rounded-full px-2 py-0 text-[10px] font-normal"
+                  className="bg-secondary/60 text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0 text-[10px] font-normal"
                 >
+                  <ProviderIcon channelType={channel.type} size={12} />
                   {t(`typeLabels.${channel.type}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {modelNames.length > 0 && (
@@ -1167,8 +1169,9 @@ function DraggableChannel({
               <div className="mt-1 flex items-center gap-1.5">
                 <Badge
                   variant="secondary"
-                  className="bg-secondary/60 text-muted-foreground rounded-full px-2 py-0 text-[10px] font-normal"
+                  className="bg-secondary/60 text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0 text-[10px] font-normal"
                 >
+                  <ProviderIcon channelType={channel.type} size={12} />
                   {t(`typeLabels.${channel.type}`, { defaultValue: t("unknown") })}
                 </Badge>
                 {collapsed && modelNames.length > 0 && (
