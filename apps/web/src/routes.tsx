@@ -11,6 +11,7 @@ import {
 } from "./lib/api-client"
 
 const LoginPage = lazy(() => import("./pages/login"))
+const KeysPage = lazy(() => import("./pages/keys"))
 const DashboardPage = lazy(() => {
   // Prefetch all dashboard data in parallel with chunk loading
   const opts = { staleTime: 30 * 1000 }
@@ -30,6 +31,7 @@ const GroupsPage = lazy(() => import("./pages/groups"))
 const LogsPage = lazy(() => import("./pages/logs"))
 const SettingsPage = lazy(() => import("./pages/settings"))
 const MCPPage = lazy(() => import("./pages/mcp"))
+const ModelLimitsPage = lazy(() => import("./pages/model-limits"))
 
 const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter
 
@@ -44,11 +46,13 @@ export function AppRouter() {
           <Route path="/model" element={<ModelPage />} />
           <Route path="/channels" element={<Navigate to="/model" replace />} />
           <Route path="/groups" element={<GroupsPage />} />
+          <Route path="/keys" element={<KeysPage />} />
           <Route path="/logs" element={<LogsPage />} />
+          <Route path="/model-limits" element={<ModelLimitsPage />} />
           <Route path="/prices" element={<Navigate to="/model" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/mcp" element={<MCPPage />} />
-          <Route path="/apikeys" element={<Navigate to="/settings" replace />} />
+          <Route path="/apikeys" element={<Navigate to="/keys" replace />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

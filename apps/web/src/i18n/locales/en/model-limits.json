@@ -1,0 +1,33 @@
+{
+  "title": "Model Limits",
+  "description": "Configure rate limits and usage restrictions per model.",
+  "addLimit": "Add Limit",
+  "editLimit": "Edit Limit",
+  "noLimits": "No model limits configured yet.",
+  "noLimitsHint": "Add rate limits to control per-model usage.",
+  "limitSaved": "Model limit saved",
+  "limitDeleted": "Model limit deleted",
+  "deleteTitle": "Delete limit for \u201c{{name}}\u201d?",
+  "deleteDescription": "This will remove all rate limits for this model.",
+  "table": {
+    "model": "Model",
+    "rpm": "RPM",
+    "tpm": "TPM",
+    "dailyLimit": "Daily Limit",
+    "status": "Status"
+  },
+  "form": {
+    "model": "Model Name",
+    "modelPlaceholder": "e.g. gpt-4o",
+    "rpm": "Requests per Minute",
+    "rpmHint": "0 = unlimited",
+    "tpm": "Tokens per Minute",
+    "tpmHint": "0 = unlimited",
+    "dailyRequests": "Daily Request Limit",
+    "dailyRequestsHint": "0 = unlimited",
+    "dailyTokens": "Daily Token Limit",
+    "dailyTokensHint": "0 = unlimited",
+    "enabled": "Enabled"
+  },
+  "unlimited": "Unlimited"
+}

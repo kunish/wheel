@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	mcpmcp "github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	mcpgw "github.com/kunish/wheel/apps/worker/internal/mcp"
+	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
 // ──── List MCP Clients ────
@@ -252,13 +254,40 @@ func (h *RelayHandler) ExecuteMCPTool(c *gin.Context) {
 		return
 	}
 
+	// Resolve client name for logging
+	clientName := ""
+	if cfg, err := dal.GetMCPClient(c.Request.Context(), h.DB, req.ClientID); err == nil && cfg != nil {
+		clientName = cfg.Name
+	}
+
+	start := time.Now()
 	result, err := h.MCPManager.ExecuteTool(
 		c.Request.Context(), req.ClientID, req.ToolName, req.Arguments,
 	)
+	duration := int(time.Since(start).Milliseconds())
+
+	// Log the MCP tool call
+	mcpLog := &types.MCPLog{
+		Time:       time.Now().Unix(),
+		ClientID:   req.ClientID,
+		ClientName: clientName,
+		ToolName:   req.ToolName,
+		Duration:   duration,
+	}
 	if err != nil {
+		mcpLog.Status = "error"
+		mcpLog.Error = err.Error()
+		// Fire-and-forget log write
+		go dal.CreateMCPLog(c.Request.Context(), h.DB, mcpLog)
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if result.IsError {
+		mcpLog.Status = "error"
+	} else {
+		mcpLog.Status = "ok"
+	}
+	go dal.CreateMCPLog(c.Request.Context(), h.DB, mcpLog)
 
 	resp := mcpgw.ToolExecuteResponse{IsError: result.IsError}
 	for _, content := range result.Content {

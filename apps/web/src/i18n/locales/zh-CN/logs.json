@@ -1,5 +1,45 @@
 {
   "title": "日志",
+  "tabs": {
+    "requests": "请求日志",
+    "audit": "审计日志",
+    "mcp": "MCP 日志"
+  },
+  "audit": {
+    "title": "审计日志",
+    "description": "追踪管理操作和配置变更。",
+    "empty": "暂无审计日志。",
+    "emptyHint": "当执行管理操作时，审计日志将显示在此处。",
+    "columns": {
+      "time": "时间",
+      "user": "用户",
+      "action": "操作",
+      "target": "目标",
+      "detail": "详情"
+    },
+    "actions": {
+      "create": "创建",
+      "update": "更新",
+      "delete": "删除",
+      "login": "登录",
+      "logout": "登出",
+      "enable": "启用",
+      "disable": "禁用"
+    }
+  },
+  "mcp": {
+    "title": "MCP 日志",
+    "description": "查看 MCP 客户端的工具调用日志。",
+    "empty": "暂无 MCP 日志。",
+    "emptyHint": "当使用 MCP 客户端时，工具调用日志将显示在此处。",
+    "columns": {
+      "time": "时间",
+      "client": "客户端",
+      "tool": "工具",
+      "status": "状态",
+      "duration": "耗时"
+    }
+  },
   "totalCount": "共 {{count}} 条",
   "newLogs": "{{count}} 条新日志",
   "searchPlaceholder": "搜索日志...",

@@ -132,6 +132,50 @@ type RoutingRuleUpdateRequest struct {
 
 // ──── Log ────
 
+// ──── Audit Log ────
+
+type AuditLogListOpts struct {
+	Page      int    `json:"page"`
+	PageSize  int    `json:"pageSize"`
+	User      string `json:"user"`
+	Action    string `json:"action"`
+	StartTime int64  `json:"startTime"`
+	EndTime   int64  `json:"endTime"`
+}
+
+// ──── MCP Log ────
+
+type MCPLogListOpts struct {
+	Page      int    `json:"page"`
+	PageSize  int    `json:"pageSize"`
+	ClientID  int    `json:"clientId"`
+	ToolName  string `json:"toolName"`
+	Status    string `json:"status"`
+	StartTime int64  `json:"startTime"`
+	EndTime   int64  `json:"endTime"`
+}
+
+// ──── Model Limit ────
+
+type ModelLimitCreateRequest struct {
+	Model         string `json:"model" binding:"required"`
+	RPM           int    `json:"rpm"`
+	TPM           int    `json:"tpm"`
+	DailyRequests int    `json:"dailyRequests"`
+	DailyTokens   int    `json:"dailyTokens"`
+	Enabled       bool   `json:"enabled"`
+}
+
+type ModelLimitUpdateRequest struct {
+	ID            int     `json:"id"`
+	Model         *string `json:"model,omitempty"`
+	RPM           *int    `json:"rpm,omitempty"`
+	TPM           *int    `json:"tpm,omitempty"`
+	DailyRequests *int    `json:"dailyRequests,omitempty"`
+	DailyTokens   *int    `json:"dailyTokens,omitempty"`
+	Enabled       *bool   `json:"enabled,omitempty"`
+}
+
 // ──── Stats ────
 
 type GlobalStatsResponse struct {

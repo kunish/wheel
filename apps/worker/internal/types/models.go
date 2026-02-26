@@ -363,6 +363,42 @@ func (c CustomHeaderList) Value() (driver.Value, error) {
 	return string(data), nil
 }
 
+// AuditLog records an administrative action for audit trail.
+type AuditLog struct {
+	bun.BaseModel `bun:"table:audit_logs"`
+	ID            int    `bun:"id,pk,autoincrement" json:"id"`
+	Time          int64  `bun:"time"                json:"time"`
+	User          string `bun:"user"                json:"user"`
+	Action        string `bun:"action"              json:"action"`
+	Target        string `bun:"target"              json:"target"`
+	Detail        string `bun:"detail"              json:"detail"`
+}
+
+// MCPLog records a single MCP tool call.
+type MCPLog struct {
+	bun.BaseModel `bun:"table:mcp_logs"`
+	ID            int    `bun:"id,pk,autoincrement" json:"id"`
+	Time          int64  `bun:"time"                json:"time"`
+	ClientID      int    `bun:"client_id"           json:"clientId"`
+	ClientName    string `bun:"client_name"         json:"clientName"`
+	ToolName      string `bun:"tool_name"           json:"toolName"`
+	Status        string `bun:"status"              json:"status"`
+	Duration      int    `bun:"duration"            json:"duration"`
+	Error         string `bun:"error"               json:"error"`
+}
+
+// ModelLimit defines per-model rate limits.
+type ModelLimit struct {
+	bun.BaseModel `bun:"table:model_limits"`
+	ID            int    `bun:"id,pk,autoincrement" json:"id"`
+	Model         string `bun:"model"               json:"model"`
+	RPM           int    `bun:"rpm"                 json:"rpm"`
+	TPM           int    `bun:"tpm"                 json:"tpm"`
+	DailyRequests int    `bun:"daily_requests"      json:"dailyRequests"`
+	DailyTokens   int    `bun:"daily_tokens"        json:"dailyTokens"`
+	Enabled       bool   `bun:"enabled"             json:"enabled"`
+}
+
 // AttemptList is a []ChannelAttempt that scans/values as JSON TEXT.
 type AttemptList []ChannelAttempt
 

@@ -2,8 +2,10 @@
   "nav": {
     "dashboard": "仪表盘",
     "model": "模型",
+    "keys": "API 密钥",
     "mcp": "MCP",
     "logs": "日志",
+    "modelLimits": "模型限制",
     "settings": "设置"
   },
   "actions": {

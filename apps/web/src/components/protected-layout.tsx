@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { useRef } from "react"
 import { Navigate, Outlet, useLocation } from "react-router"
 import { AppLayout } from "@/components/app-layout"
+import { CommandPalette } from "@/components/command-palette"
 import { useStatsWebSocket } from "@/hooks/use-stats-ws"
 import { useAuthStore } from "@/lib/store/auth"
 
@@ -21,7 +22,7 @@ export function ProtectedLayout() {
   const prevKeyRef = useRef(routeKey)
 
   // Determine scroll direction: entering route index vs previous
-  const navOrder = ["/dashboard", "/model", "/mcp", "/logs", "/settings"]
+  const navOrder = ["/dashboard", "/model", "/keys", "/mcp", "/logs", "/model-limits", "/settings"]
   const prevIdx = navOrder.indexOf(prevKeyRef.current)
   const currIdx = navOrder.indexOf(routeKey)
   const direction = currIdx >= prevIdx ? 1 : -1
@@ -37,6 +38,7 @@ export function ProtectedLayout() {
 
   return (
     <AppLayout>
+      <CommandPalette />
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
           key={routeKey}

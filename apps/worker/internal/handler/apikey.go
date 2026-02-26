@@ -55,6 +55,7 @@ func (h *Handler) CreateApiKey(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	go dal.CreateAuditLog(c.Request.Context(), h.DB, "admin", "create", "api_key", "Created API key: "+body.Name)
 	successJSON(c, key)
 }
 
@@ -134,6 +135,7 @@ func (h *Handler) DeleteApiKey(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	go dal.CreateAuditLog(c.Request.Context(), h.DB, "admin", "delete", "api_key", "Deleted API key ID "+strconv.Itoa(id))
 	successNoData(c)
 }
 

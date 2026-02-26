@@ -1,5 +1,45 @@
 {
   "title": "Logs",
+  "tabs": {
+    "requests": "Request Logs",
+    "audit": "Audit Logs",
+    "mcp": "MCP Logs"
+  },
+  "audit": {
+    "title": "Audit Logs",
+    "description": "Track administrative actions and configuration changes.",
+    "empty": "No audit logs yet.",
+    "emptyHint": "Audit logs will appear here when administrative actions are performed.",
+    "columns": {
+      "time": "Time",
+      "user": "User",
+      "action": "Action",
+      "target": "Target",
+      "detail": "Detail"
+    },
+    "actions": {
+      "create": "Create",
+      "update": "Update",
+      "delete": "Delete",
+      "login": "Login",
+      "logout": "Logout",
+      "enable": "Enable",
+      "disable": "Disable"
+    }
+  },
+  "mcp": {
+    "title": "MCP Logs",
+    "description": "View tool call logs from MCP clients.",
+    "empty": "No MCP logs yet.",
+    "emptyHint": "MCP tool call logs will appear here when MCP clients are used.",
+    "columns": {
+      "time": "Time",
+      "client": "Client",
+      "tool": "Tool",
+      "status": "Status",
+      "duration": "Duration"
+    }
+  },
   "totalCount": "{{count}} total",
   "newLogs": "{{count}} new",
   "searchPlaceholder": "Search logs...",

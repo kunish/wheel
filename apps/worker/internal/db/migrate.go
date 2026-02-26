@@ -119,6 +119,33 @@ var initSchema = []string{
 		total_attempts INT DEFAULT 0 NOT NULL,
 		upstream_content MEDIUMTEXT
 	)`,
+	`CREATE TABLE IF NOT EXISTS audit_logs (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		time BIGINT NOT NULL,
+		user VARCHAR(255) NOT NULL,
+		action VARCHAR(64) NOT NULL,
+		target VARCHAR(255) NOT NULL,
+		detail TEXT NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS mcp_logs (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		time BIGINT NOT NULL,
+		client_id INT NOT NULL,
+		client_name VARCHAR(255) NOT NULL,
+		tool_name VARCHAR(255) NOT NULL,
+		status VARCHAR(32) NOT NULL,
+		duration INT DEFAULT 0 NOT NULL,
+		error TEXT NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS model_limits (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		model VARCHAR(255) NOT NULL,
+		rpm INT DEFAULT 0 NOT NULL,
+		tpm INT DEFAULT 0 NOT NULL,
+		daily_requests INT DEFAULT 0 NOT NULL,
+		daily_tokens INT DEFAULT 0 NOT NULL,
+		enabled BOOLEAN DEFAULT true NOT NULL
+	)`,
 	`CREATE TABLE IF NOT EXISTS mcp_clients (
 		id INT PRIMARY KEY AUTO_INCREMENT,
 		name VARCHAR(255) NOT NULL,
@@ -143,6 +170,11 @@ var initIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_relay_logs_error ON relay_logs(error(255))`,
 	"CREATE INDEX IF NOT EXISTS idx_groups_profile_id ON `groups`(profile_id)",
 	`CREATE INDEX IF NOT EXISTS idx_routing_rules_priority ON routing_rules(priority)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(time)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user)`,
+	`CREATE INDEX IF NOT EXISTS idx_mcp_logs_time ON mcp_logs(time)`,
+	`CREATE INDEX IF NOT EXISTS idx_mcp_logs_client_id ON mcp_logs(client_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_model_limits_model ON model_limits(model)`,
 }
 
 // initAlters upgrades existing columns (idempotent).

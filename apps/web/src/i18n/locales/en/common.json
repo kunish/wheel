@@ -2,8 +2,10 @@
   "nav": {
     "dashboard": "Dashboard",
     "model": "Model",
+    "keys": "API Keys",
     "mcp": "MCP",
     "logs": "Logs",
+    "modelLimits": "Model Limits",
     "settings": "Settings"
   },
   "actions": {

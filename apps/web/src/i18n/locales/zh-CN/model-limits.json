@@ -1,0 +1,33 @@
+{
+  "title": "模型限制",
+  "description": "配置每个模型的速率限制和使用限制。",
+  "addLimit": "添加限制",
+  "editLimit": "编辑限制",
+  "noLimits": "尚未配置模型限制。",
+  "noLimitsHint": "添加速率限制以控制每个模型的使用量。",
+  "limitSaved": "模型限制已保存",
+  "limitDeleted": "模型限制已删除",
+  "deleteTitle": "\u5220\u9664 \u201c{{name}}\u201d \u7684\u9650\u5236\uff1f",
+  "deleteDescription": "这将移除该模型的所有速率限制。",
+  "table": {
+    "model": "模型",
+    "rpm": "RPM",
+    "tpm": "TPM",
+    "dailyLimit": "每日限制",
+    "status": "状态"
+  },
+  "form": {
+    "model": "模型名称",
+    "modelPlaceholder": "例如 gpt-4o",
+    "rpm": "每分钟请求数",
+    "rpmHint": "0 = 不限制",
+    "tpm": "每分钟 Token 数",
+    "tpmHint": "0 = 不限制",
+    "dailyRequests": "每日请求限制",
+    "dailyRequestsHint": "0 = 不限制",
+    "dailyTokens": "每日 Token 限制",
+    "dailyTokensHint": "0 = 不限制",
+    "enabled": "启用"
+  },
+  "unlimited": "不限制"
+}

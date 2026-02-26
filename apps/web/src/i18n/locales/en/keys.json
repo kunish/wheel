@@ -1,0 +1,52 @@
+{
+  "title": "API Keys",
+  "description": "Manage API keys for accessing the gateway.",
+  "createKey": "Create Key",
+  "createApiKey": "Create API Key",
+  "editApiKey": "Edit API Key",
+  "saveKeyWarning": "Save this key — it won't be shown again.",
+  "copied": "Copied!",
+  "done": "Done",
+  "copyKeyBeforeClosing": "Please copy the key before closing",
+  "apiKeyCreated": "API Key created",
+  "apiKeyUpdated": "API Key updated",
+  "apiKeyDeleted": "API Key deleted",
+  "deleteTitle": "Delete API Key \u201c{{name}}\u201d?",
+  "deleteDescription": "This action cannot be undone. Any applications using this key will lose access immediately.",
+  "table": {
+    "name": "Name",
+    "key": "Key",
+    "status": "Status",
+    "expires": "Expires",
+    "costLimit": "Cost / Limit",
+    "rateLimit": "Rate Limit",
+    "models": "Models"
+  },
+  "statusActive": "Active",
+  "statusDisabled": "Disabled",
+  "never": "Never",
+  "allModels": "All models",
+  "unlimited": "Unlimited",
+  "form": {
+    "name": "Name",
+    "namePlaceholder": "My API Key",
+    "expireDate": "Expire Date",
+    "expireDateHint": "Leave empty for no expiry",
+    "costLimit": "Cost Limit ($)",
+    "costLimitPlaceholder": "0 = unlimited",
+    "costLimitHint": "0 or empty = unlimited",
+    "modelWhitelist": "Model Whitelist",
+    "modelWhitelistPlaceholder": "gpt-4o, claude-3.5-sonnet (comma-separated)",
+    "modelWhitelistHint": "Comma-separated model names. Empty = all models allowed.",
+    "rpmLimit": "RPM Limit",
+    "rpmLimitPlaceholder": "0 = unlimited",
+    "rpmLimitHint": "Requests per minute. 0 or empty = unlimited.",
+    "tpmLimit": "TPM Limit",
+    "tpmLimitPlaceholder": "0 = unlimited",
+    "tpmLimitHint": "Tokens per minute. 0 or empty = unlimited."
+  },
+  "empty": {
+    "title": "No API Keys yet",
+    "description": "Create your first API key to start using the gateway."
+  }
+}

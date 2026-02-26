@@ -113,4 +113,18 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/model/profiles/activate", h.ActivateProfile)
 	admin.GET("/model/profiles/:id/groups-preview", h.ListProfileGroupsPreview)
 	admin.POST("/model/profiles/:id/groups-materialize", h.MaterializeProfileGroups)
+
+	// Audit log routes
+	admin.GET("/audit-log/list", h.ListAuditLogs)
+	admin.DELETE("/audit-log/clear", h.ClearAuditLogs)
+
+	// MCP log routes
+	admin.GET("/mcp-log/list", h.ListMCPLogs)
+	admin.DELETE("/mcp-log/clear", h.ClearMCPLogs)
+
+	// Model limit routes
+	admin.GET("/model-limit/list", h.ListModelLimits)
+	admin.POST("/model-limit/create", h.CreateModelLimit)
+	admin.POST("/model-limit/update", h.UpdateModelLimit)
+	admin.DELETE("/model-limit/delete/:id", h.DeleteModelLimit)
 }

@@ -749,3 +749,134 @@ export function importData(file: File): Promise<ImportDataResult> {
     body: formData,
   }).then((res) => res.json() as Promise<ImportDataResult>)
 }
+
+// ── Audit Logs ──
+
+export interface AuditLogRecord {
+  id: number
+  time: number
+  user: string
+  action: string
+  target: string
+  detail: string
+}
+
+export function listAuditLogs(params: {
+  page?: number
+  pageSize?: number
+  user?: string
+  action?: string
+  startTime?: number
+  endTime?: number
+}) {
+  const q = new URLSearchParams()
+  if (params.page) q.set("page", String(params.page))
+  if (params.pageSize) q.set("pageSize", String(params.pageSize))
+  if (params.user) q.set("user", params.user)
+  if (params.action) q.set("action", params.action)
+  if (params.startTime) q.set("startTime", String(params.startTime))
+  if (params.endTime) q.set("endTime", String(params.endTime))
+  return apiFetch<{
+    success: boolean
+    data: { logs: AuditLogRecord[]; total: number; page: number; pageSize: number }
+  }>(`/api/v1/audit-log/list?${q.toString()}`)
+}
+
+export function clearAuditLogs() {
+  return apiFetch<{ success: boolean }>("/api/v1/audit-log/clear", { method: "DELETE" })
+}
+
+// ── MCP Logs ──
+
+export interface MCPLogRecord {
+  id: number
+  time: number
+  clientId: number
+  clientName: string
+  toolName: string
+  status: string
+  duration: number
+  error: string
+}
+
+export function listMCPLogs(params: {
+  page?: number
+  pageSize?: number
+  clientId?: number
+  toolName?: string
+  status?: string
+  startTime?: number
+  endTime?: number
+}) {
+  const q = new URLSearchParams()
+  if (params.page) q.set("page", String(params.page))
+  if (params.pageSize) q.set("pageSize", String(params.pageSize))
+  if (params.clientId) q.set("clientId", String(params.clientId))
+  if (params.toolName) q.set("toolName", params.toolName)
+  if (params.status) q.set("status", params.status)
+  if (params.startTime) q.set("startTime", String(params.startTime))
+  if (params.endTime) q.set("endTime", String(params.endTime))
+  return apiFetch<{
+    success: boolean
+    data: { logs: MCPLogRecord[]; total: number; page: number; pageSize: number }
+  }>(`/api/v1/mcp-log/list?${q.toString()}`)
+}
+
+export function clearMCPLogs() {
+  return apiFetch<{ success: boolean }>("/api/v1/mcp-log/clear", { method: "DELETE" })
+}
+
+// ── Model Limits ──
+
+export interface ModelLimitRecord {
+  id: number
+  model: string
+  rpm: number
+  tpm: number
+  dailyRequests: number
+  dailyTokens: number
+  enabled: boolean
+}
+
+export function listModelLimits() {
+  return apiFetch<{ success: boolean; data: { limits: ModelLimitRecord[] } }>(
+    "/api/v1/model-limit/list",
+  )
+}
+
+export function createModelLimit(data: {
+  model: string
+  rpm: number
+  tpm: number
+  dailyRequests: number
+  dailyTokens: number
+  enabled: boolean
+}) {
+  return apiFetch<{ success: boolean; data: ModelLimitRecord }>("/api/v1/model-limit/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+}
+
+export function updateModelLimit(data: {
+  id: number
+  model?: string
+  rpm?: number
+  tpm?: number
+  dailyRequests?: number
+  dailyTokens?: number
+  enabled?: boolean
+}) {
+  return apiFetch<{ success: boolean }>("/api/v1/model-limit/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteModelLimit(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/v1/model-limit/delete/${id}`, {
+    method: "DELETE",
+  })
+}
