@@ -10,12 +10,13 @@ import (
 
 // Connect establishes a connection to an MCP server based on the client config.
 // Returns the mcp-go client and a cancel function (for SSE/STDIO cleanup).
-func Connect(ctx context.Context, cfg *MCPClient) (client.MCPClient, func(), error) {
+// oauthBearerToken is optional; if non-empty it will be added as Authorization header.
+func Connect(ctx context.Context, cfg *MCPClient, oauthBearerToken string) (client.MCPClient, func(), error) {
 	switch cfg.ConnectionType {
 	case ConnectionTypeHTTP:
-		return connectHTTP(cfg)
+		return connectHTTP(cfg, oauthBearerToken)
 	case ConnectionTypeSSE:
-		return connectSSE(ctx, cfg)
+		return connectSSE(ctx, cfg, oauthBearerToken)
 	case ConnectionTypeSTDIO:
 		return connectSTDIO(cfg)
 	default:
@@ -24,11 +25,11 @@ func Connect(ctx context.Context, cfg *MCPClient) (client.MCPClient, func(), err
 }
 
 // connectHTTP creates a Streamable HTTP MCP client.
-func connectHTTP(cfg *MCPClient) (client.MCPClient, func(), error) {
+func connectHTTP(cfg *MCPClient, oauthBearerToken string) (client.MCPClient, func(), error) {
 	if cfg.ConnectionString == "" {
 		return nil, nil, fmt.Errorf("connection string required for HTTP connection")
 	}
-	opts := buildHTTPHeaders(cfg)
+	opts := buildHTTPHeaders(cfg, oauthBearerToken)
 	c, err := client.NewStreamableHttpClient(cfg.ConnectionString, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("http connect failed: %w", err)
@@ -37,11 +38,11 @@ func connectHTTP(cfg *MCPClient) (client.MCPClient, func(), error) {
 }
 
 // connectSSE creates an SSE-based MCP client.
-func connectSSE(ctx context.Context, cfg *MCPClient) (client.MCPClient, func(), error) {
+func connectSSE(ctx context.Context, cfg *MCPClient, oauthBearerToken string) (client.MCPClient, func(), error) {
 	if cfg.ConnectionString == "" {
 		return nil, nil, fmt.Errorf("connection string required for SSE connection")
 	}
-	opts := buildSSEHeaders(cfg)
+	opts := buildSSEHeaders(cfg, oauthBearerToken)
 	c, err := client.NewSSEMCPClient(cfg.ConnectionString, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sse connect failed: %w", err)
@@ -68,20 +69,31 @@ func connectSTDIO(cfg *MCPClient) (client.MCPClient, func(), error) {
 }
 
 // buildHeaderMap converts MCPClient headers to a map[string]string.
-func buildHeaderMap(cfg *MCPClient) map[string]string {
-	if cfg.AuthType != AuthTypeHeaders || len(cfg.Headers) == 0 {
-		return nil
+// It also injects the OAuth Bearer token if provided.
+func buildHeaderMap(cfg *MCPClient, oauthBearerToken string) map[string]string {
+	headers := make(map[string]string)
+
+	// Add custom headers if auth type is "headers"
+	if cfg.AuthType == AuthTypeHeaders && len(cfg.Headers) > 0 {
+		for _, h := range cfg.Headers {
+			headers[h.Key] = h.Value
+		}
 	}
-	headers := make(map[string]string, len(cfg.Headers))
-	for _, h := range cfg.Headers {
-		headers[h.Key] = h.Value
+
+	// Add OAuth Bearer token if provided
+	if cfg.AuthType == AuthTypeOAuth && oauthBearerToken != "" {
+		headers["Authorization"] = oauthBearerToken
+	}
+
+	if len(headers) == 0 {
+		return nil
 	}
 	return headers
 }
 
 // buildHTTPHeaders returns StreamableHTTP options with auth headers.
-func buildHTTPHeaders(cfg *MCPClient) []transport.StreamableHTTPCOption {
-	headers := buildHeaderMap(cfg)
+func buildHTTPHeaders(cfg *MCPClient, oauthBearerToken string) []transport.StreamableHTTPCOption {
+	headers := buildHeaderMap(cfg, oauthBearerToken)
 	if headers == nil {
 		return nil
 	}
@@ -89,8 +101,8 @@ func buildHTTPHeaders(cfg *MCPClient) []transport.StreamableHTTPCOption {
 }
 
 // buildSSEHeaders returns SSE client options with auth headers.
-func buildSSEHeaders(cfg *MCPClient) []transport.ClientOption {
-	headers := buildHeaderMap(cfg)
+func buildSSEHeaders(cfg *MCPClient, oauthBearerToken string) []transport.ClientOption {
+	headers := buildHeaderMap(cfg, oauthBearerToken)
 	if headers == nil {
 		return nil
 	}

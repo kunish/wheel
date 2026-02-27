@@ -223,6 +223,9 @@ func (h *RelayHandler) RegisterRelayAdminRoutes(r *gin.Engine) {
 	admin.POST("/mcp/client/update", h.UpdateMCPClient)
 	admin.DELETE("/mcp/client/delete/:id", h.DeleteMCPClient)
 	admin.POST("/mcp/client/reconnect/:id", h.ReconnectMCPClient)
+
+	// MCP OAuth discovery
+	admin.POST("/mcp/oauth/discover", h.DiscoverOAuthMetadata)
 }
 
 // ── GET /v1/models ──────────────────────────────────────────────

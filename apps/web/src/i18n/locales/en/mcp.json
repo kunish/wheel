@@ -55,7 +55,19 @@
     "toolsToExecute": "Allowed Tools",
     "toolsToExecutePlaceholder": "Leave empty to allow all tools",
     "toolsToAutoExec": "Auto-Execute Tools",
-    "toolsToAutoExecPlaceholder": "Tools that execute without confirmation"
+    "toolsToAutoExecPlaceholder": "Tools that execute without confirmation",
+    "oauthClientId": "Client ID",
+    "oauthClientIdPlaceholder": "OAuth client ID",
+    "oauthClientSecret": "Client Secret",
+    "oauthClientSecretPlaceholder": "OAuth client secret (optional)",
+    "oauthTokenUrl": "Token URL",
+    "oauthTokenUrlPlaceholder": "https://auth.example.com/oauth/token",
+    "oauthScopes": "Scopes",
+    "oauthScopesPlaceholder": "Space-separated scopes (optional)",
+    "oauthAccessToken": "Access Token",
+    "oauthAccessTokenPlaceholder": "Pre-configured bearer token",
+    "oauthDiscoverButton": "Auto Discover",
+    "oauthOrDivider": "OR use pre-configured token"
   },
 
   "actions": {

@@ -57,6 +57,18 @@ type MCPHeaderEntry struct {
 	Value string `json:"value"`
 }
 
+// ──── OAuth Config ────
+
+// MCPOAuthConfig defines the OAuth 2.0 configuration for connecting to an OAuth-protected MCP server.
+type MCPOAuthConfig struct {
+	ClientID         string `json:"clientId"`
+	ClientSecret     string `json:"clientSecret,omitempty"`
+	TokenURL         string `json:"tokenUrl"`
+	AuthorizationURL string `json:"authorizationUrl,omitempty"` // For reference / UI display
+	Scopes           string `json:"scopes,omitempty"`           // Space-separated scopes
+	AccessToken      string `json:"accessToken,omitempty"`      // Pre-configured access token (skip client_credentials)
+}
+
 // ──── DB Model ────
 
 // MCPClient is the persistent DB model for an MCP client configuration.
@@ -70,7 +82,7 @@ type MCPClient struct {
 	StdioConfig      StdioConfigJSON   `bun:"stdio_config"         json:"stdioConfig"`
 	AuthType         MCPAuthType       `bun:"auth_type"            json:"authType"`
 	Headers          HeaderListJSON    `bun:"headers"              json:"headers"`
-	OAuthConfigID    *string           `bun:"oauth_config_id"      json:"oauthConfigId,omitempty"`
+	OAuthConfig      OAuthConfigJSON   `bun:"oauth_config"         json:"oauthConfig"`
 	ToolsToExecute   StringListJSON    `bun:"tools_to_execute"     json:"toolsToExecute"`
 	ToolsToAutoExec  StringListJSON    `bun:"tools_to_auto_exec"   json:"toolsToAutoExec"`
 	Enabled          bool              `bun:"enabled"              json:"enabled"`
@@ -102,6 +114,42 @@ func (s *StdioConfigJSON) Scan(src any) error {
 
 func (s StdioConfigJSON) Value() (driver.Value, error) {
 	data, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), nil
+}
+
+// OAuthConfigJSON stores MCPOAuthConfig as JSON TEXT in DB.
+type OAuthConfigJSON MCPOAuthConfig
+
+func (o *OAuthConfigJSON) Scan(src any) error {
+	if src == nil {
+		*o = OAuthConfigJSON{}
+		return nil
+	}
+	var data []byte
+	switch v := src.(type) {
+	case string:
+		if v == "" {
+			*o = OAuthConfigJSON{}
+			return nil
+		}
+		data = []byte(v)
+	case []byte:
+		if len(v) == 0 {
+			*o = OAuthConfigJSON{}
+			return nil
+		}
+		data = v
+	default:
+		return fmt.Errorf("OAuthConfigJSON.Scan: unsupported type %T", src)
+	}
+	return json.Unmarshal(data, o)
+}
+
+func (o OAuthConfigJSON) Value() (driver.Value, error) {
+	data, err := json.Marshal(o)
 	if err != nil {
 		return nil, err
 	}
@@ -182,6 +230,7 @@ type ClientState struct {
 	ToolNameMapping map[string]string      // sanitized_name -> original_mcp_name
 	CancelFunc      func()                 // Cancel function for SSE/STDIO connections
 	ErrorMsg        string                 // Last error message if State == StateError
+	OAuthToken      *OAuthToken            // Cached OAuth token (in-memory only)
 }
 
 // GetState returns the current connection state thread-safely.
@@ -220,7 +269,7 @@ type MCPClientCreateRequest struct {
 	StdioConfig      *MCPStdioConfig   `json:"stdioConfig,omitempty"`
 	AuthType         MCPAuthType       `json:"authType"`
 	Headers          []MCPHeaderEntry  `json:"headers,omitempty"`
-	OAuthConfigID    *string           `json:"oauthConfigId,omitempty"`
+	OAuthConfig      *MCPOAuthConfig   `json:"oauthConfig,omitempty"`
 	ToolsToExecute   []string          `json:"toolsToExecute,omitempty"`
 	ToolsToAutoExec  []string          `json:"toolsToAutoExec,omitempty"`
 	Enabled          bool              `json:"enabled"`
@@ -235,7 +284,7 @@ type MCPClientUpdateRequest struct {
 	StdioConfig      *MCPStdioConfig    `json:"stdioConfig,omitempty"`
 	AuthType         *MCPAuthType       `json:"authType,omitempty"`
 	Headers          []MCPHeaderEntry   `json:"headers,omitempty"`
-	OAuthConfigID    *string            `json:"oauthConfigId,omitempty"`
+	OAuthConfig      *MCPOAuthConfig    `json:"oauthConfig,omitempty"`
 	ToolsToExecute   []string           `json:"toolsToExecute,omitempty"`
 	ToolsToAutoExec  []string           `json:"toolsToAutoExec,omitempty"`
 	Enabled          *bool              `json:"enabled,omitempty"`
@@ -250,7 +299,7 @@ type MCPClientResponse struct {
 	StdioConfig      *MCPStdioConfig    `json:"stdioConfig,omitempty"`
 	AuthType         MCPAuthType        `json:"authType"`
 	Headers          []MCPHeaderEntry   `json:"headers,omitempty"`
-	OAuthConfigID    *string            `json:"oauthConfigId,omitempty"`
+	OAuthConfig      *MCPOAuthConfig    `json:"oauthConfig,omitempty"`
 	ToolsToExecute   []string           `json:"toolsToExecute"`
 	ToolsToAutoExec  []string           `json:"toolsToAutoExec"`
 	Enabled          bool               `json:"enabled"`

@@ -16,6 +16,7 @@ type Manager struct {
 	mu      sync.RWMutex
 	clients map[int]*ClientState
 
+	tokenManager     *TokenManager
 	toolSyncInterval time.Duration
 	stopSync         chan struct{}
 }
@@ -24,6 +25,7 @@ type Manager struct {
 func NewManager() *Manager {
 	return &Manager{
 		clients:          make(map[int]*ClientState),
+		tokenManager:     NewTokenManager(),
 		toolSyncInterval: 10 * time.Minute,
 		stopSync:         make(chan struct{}),
 	}
@@ -31,7 +33,18 @@ func NewManager() *Manager {
 
 // AddClient connects to an MCP server, discovers tools, and tracks the client.
 func (m *Manager) AddClient(ctx context.Context, cfg *MCPClient) error {
-	conn, cancel, err := Connect(ctx, cfg)
+	// Acquire OAuth token if needed
+	var oauthBearerToken string
+	if cfg.AuthType == AuthTypeOAuth {
+		oauthCfg := MCPOAuthConfig(cfg.OAuthConfig)
+		token, err := m.tokenManager.GetBearerToken(cfg.ID, &oauthCfg)
+		if err != nil {
+			return fmt.Errorf("OAuth token acquisition for %s failed: %w", cfg.Name, err)
+		}
+		oauthBearerToken = token
+	}
+
+	conn, cancel, err := Connect(ctx, cfg, oauthBearerToken)
 	if err != nil {
 		return fmt.Errorf("connect to %s failed: %w", cfg.Name, err)
 	}
@@ -136,6 +149,8 @@ func (m *Manager) RemoveClient(id int) {
 	if ok && state.CancelFunc != nil {
 		state.CancelFunc()
 	}
+	// Clean up cached OAuth token
+	m.tokenManager.InvalidateToken(id)
 	if ok {
 		log.Printf("[mcp] client id=%d removed", id)
 	}

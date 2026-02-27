@@ -55,7 +55,19 @@
     "toolsToExecute": "允许的工具",
     "toolsToExecutePlaceholder": "留空表示允许所有工具",
     "toolsToAutoExec": "自动执行工具",
-    "toolsToAutoExecPlaceholder": "无需确认即可执行的工具"
+    "toolsToAutoExecPlaceholder": "无需确认即可执行的工具",
+    "oauthClientId": "客户端 ID",
+    "oauthClientIdPlaceholder": "OAuth 客户端 ID",
+    "oauthClientSecret": "客户端密钥",
+    "oauthClientSecretPlaceholder": "OAuth 客户端密钥（可选）",
+    "oauthTokenUrl": "Token 地址",
+    "oauthTokenUrlPlaceholder": "https://auth.example.com/oauth/token",
+    "oauthScopes": "权限范围",
+    "oauthScopesPlaceholder": "空格分隔的权限范围（可选）",
+    "oauthAccessToken": "访问令牌",
+    "oauthAccessTokenPlaceholder": "预配置的 Bearer Token",
+    "oauthDiscoverButton": "自动发现",
+    "oauthOrDivider": "或使用预配置令牌"
   },
 
   "actions": {

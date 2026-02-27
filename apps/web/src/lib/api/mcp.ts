@@ -18,6 +18,22 @@ export interface MCPToolInfo {
   description?: string
 }
 
+export interface MCPOAuthConfig {
+  clientId: string
+  clientSecret?: string
+  tokenUrl: string
+  authorizationUrl?: string
+  scopes?: string
+  accessToken?: string
+}
+
+export interface OAuthDiscoveryResult {
+  tokenUrl: string
+  authorizationUrl: string
+  scopes: string[]
+  registrationUrl: string
+}
+
 export interface MCPClientRecord {
   id: number
   name: string
@@ -26,7 +42,7 @@ export interface MCPClientRecord {
   stdioConfig?: MCPStdioConfig
   authType: "none" | "headers" | "oauth"
   headers?: MCPHeaderEntry[]
-  oauthConfigId?: string
+  oauthConfig?: MCPOAuthConfig
   toolsToExecute: string[]
   toolsToAutoExec: string[]
   enabled: boolean
@@ -45,6 +61,7 @@ export interface MCPClientInput {
   stdioConfig?: MCPStdioConfig
   authType: "none" | "headers" | "oauth"
   headers?: MCPHeaderEntry[]
+  oauthConfig?: MCPOAuthConfig
   toolsToExecute?: string[]
   toolsToAutoExec?: string[]
   enabled: boolean
@@ -79,5 +96,12 @@ export function deleteMCPClient(id: number) {
 export function reconnectMCPClient(id: number) {
   return apiFetch<{ success: boolean }>(`/api/v1/mcp/client/reconnect/${id}`, {
     method: "POST",
+  })
+}
+
+export function discoverOAuthMetadata(serverUrl: string) {
+  return apiFetch<{ success: boolean; data: OAuthDiscoveryResult }>("/api/v1/mcp/oauth/discover", {
+    method: "POST",
+    body: { serverUrl },
   })
 }

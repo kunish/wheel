@@ -1,5 +1,6 @@
-import type { MCPClientInput, MCPHeaderEntry } from "@/lib/api-client"
-import { Plus, X } from "lucide-react"
+import type { MCPClientInput, MCPHeaderEntry, MCPOAuthConfig } from "@/lib/api-client"
+import { Loader2, Plus, Search, X } from "lucide-react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -13,9 +14,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { discoverOAuthMetadata } from "@/lib/api-client"
 
 const CONNECTION_TYPES = ["http", "sse", "stdio"] as const
-const AUTH_TYPES = ["none", "headers"] as const
+const AUTH_TYPES = ["none", "headers", "oauth"] as const
 
 export default function MCPClientDialog({
   open,
@@ -129,6 +131,11 @@ export default function MCPClientDialog({
               onChange={(headers) => setForm({ ...form, headers })}
               t={t}
             />
+          )}
+
+          {/* OAuth Config */}
+          {form.authType === "oauth" && form.connectionType !== "stdio" && (
+            <OAuthFields form={form} setForm={setForm} t={t} />
           )}
 
           {/* Tool Filters */}
@@ -277,6 +284,128 @@ function HeadersEditor({
         <Plus className="mr-1 h-3.5 w-3.5" />
         {t("form.addHeader")}
       </Button>
+    </div>
+  )
+}
+
+// ── OAuth Fields ──
+
+function OAuthFields({
+  form,
+  setForm,
+  t,
+}: {
+  form: MCPClientInput
+  setForm: (f: MCPClientInput) => void
+  t: (key: string) => string
+}) {
+  const [discovering, setDiscovering] = useState(false)
+  const cfg: MCPOAuthConfig = form.oauthConfig ?? {
+    clientId: "",
+    tokenUrl: "",
+  }
+
+  function update(patch: Partial<MCPOAuthConfig>) {
+    setForm({ ...form, oauthConfig: { ...cfg, ...patch } })
+  }
+
+  async function handleDiscover() {
+    const url = form.connectionString
+    if (!url) return
+    setDiscovering(true)
+    try {
+      const res = await discoverOAuthMetadata(url)
+      if (res.success && res.data) {
+        update({
+          tokenUrl: res.data.tokenUrl,
+          authorizationUrl: res.data.authorizationUrl,
+          scopes: res.data.scopes?.join(" ") || "",
+        })
+      }
+    } catch {
+      // discovery is best-effort, fields can be filled manually
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border p-3">
+      {/* Auto Discover */}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-fit"
+        disabled={discovering || !form.connectionString}
+        onClick={handleDiscover}
+      >
+        {discovering ? (
+          <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Search className="mr-1 h-3.5 w-3.5" />
+        )}
+        {t("form.oauthDiscoverButton")}
+      </Button>
+
+      {/* Client ID */}
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs">{t("form.oauthClientId")}</Label>
+        <Input
+          value={cfg.clientId}
+          onChange={(e) => update({ clientId: e.target.value })}
+          placeholder={t("form.oauthClientIdPlaceholder")}
+        />
+      </div>
+
+      {/* Client Secret */}
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs">{t("form.oauthClientSecret")}</Label>
+        <Input
+          type="password"
+          value={cfg.clientSecret ?? ""}
+          onChange={(e) => update({ clientSecret: e.target.value })}
+          placeholder={t("form.oauthClientSecretPlaceholder")}
+        />
+      </div>
+
+      {/* Token URL */}
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs">{t("form.oauthTokenUrl")}</Label>
+        <Input
+          value={cfg.tokenUrl}
+          onChange={(e) => update({ tokenUrl: e.target.value })}
+          placeholder={t("form.oauthTokenUrlPlaceholder")}
+        />
+      </div>
+
+      {/* Scopes */}
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs">{t("form.oauthScopes")}</Label>
+        <Input
+          value={cfg.scopes ?? ""}
+          onChange={(e) => update({ scopes: e.target.value })}
+          placeholder={t("form.oauthScopesPlaceholder")}
+        />
+      </div>
+
+      {/* Divider */}
+      <div className="text-muted-foreground flex items-center gap-2 text-xs">
+        <div className="bg-border h-px flex-1" />
+        {t("form.oauthOrDivider")}
+        <div className="bg-border h-px flex-1" />
+      </div>
+
+      {/* Pre-configured Access Token */}
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs">{t("form.oauthAccessToken")}</Label>
+        <Input
+          type="password"
+          value={cfg.accessToken ?? ""}
+          onChange={(e) => update({ accessToken: e.target.value })}
+          placeholder={t("form.oauthAccessTokenPlaceholder")}
+        />
+      </div>
     </div>
   )
 }

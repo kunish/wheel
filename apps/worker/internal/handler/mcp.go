@@ -44,7 +44,6 @@ func buildClientResponse(cfg *mcpgw.MCPClient, states map[int]*mcpgw.ClientState
 		ConnectionString: cfg.ConnectionString,
 		AuthType:         cfg.AuthType,
 		Headers:          []mcpgw.MCPHeaderEntry(cfg.Headers),
-		OAuthConfigID:    cfg.OAuthConfigID,
 		ToolsToExecute:   []string(cfg.ToolsToExecute),
 		ToolsToAutoExec:  []string(cfg.ToolsToAutoExec),
 		Enabled:          cfg.Enabled,
@@ -57,6 +56,18 @@ func buildClientResponse(cfg *mcpgw.MCPClient, states map[int]*mcpgw.ClientState
 	if cfg.ConnectionType == mcpgw.ConnectionTypeSTDIO {
 		stdio := mcpgw.MCPStdioConfig(cfg.StdioConfig)
 		r.StdioConfig = &stdio
+	}
+
+	if cfg.AuthType == mcpgw.AuthTypeOAuth {
+		oauthCfg := mcpgw.MCPOAuthConfig(cfg.OAuthConfig)
+		// Mask client secret in API responses
+		if oauthCfg.ClientSecret != "" {
+			oauthCfg.ClientSecret = "***"
+		}
+		if oauthCfg.AccessToken != "" {
+			oauthCfg.AccessToken = "***"
+		}
+		r.OAuthConfig = &oauthCfg
 	}
 
 	if state, ok := states[cfg.ID]; ok {
@@ -102,13 +113,15 @@ func (h *RelayHandler) CreateMCPClient(c *gin.Context) {
 		ConnectionString: req.ConnectionString,
 		AuthType:         req.AuthType,
 		Headers:          mcpgw.HeaderListJSON(req.Headers),
-		OAuthConfigID:    req.OAuthConfigID,
 		ToolsToExecute:   mcpgw.StringListJSON(req.ToolsToExecute),
 		ToolsToAutoExec:  mcpgw.StringListJSON(req.ToolsToAutoExec),
 		Enabled:          req.Enabled,
 	}
 	if req.StdioConfig != nil {
 		client.StdioConfig = mcpgw.StdioConfigJSON(*req.StdioConfig)
+	}
+	if req.OAuthConfig != nil {
+		client.OAuthConfig = mcpgw.OAuthConfigJSON(*req.OAuthConfig)
 	}
 
 	// Default: allow all tools
@@ -168,8 +181,8 @@ func (h *RelayHandler) UpdateMCPClient(c *gin.Context) {
 	if req.Headers != nil {
 		data["headers"] = mcpgw.HeaderListJSON(req.Headers)
 	}
-	if req.OAuthConfigID != nil {
-		data["oauth_config_id"] = *req.OAuthConfigID
+	if req.OAuthConfig != nil {
+		data["oauth_config"] = mcpgw.OAuthConfigJSON(*req.OAuthConfig)
 	}
 	if req.ToolsToExecute != nil {
 		data["tools_to_execute"] = mcpgw.StringListJSON(req.ToolsToExecute)
@@ -300,4 +313,27 @@ func (h *RelayHandler) ExecuteMCPTool(c *gin.Context) {
 	}
 
 	successJSON(c, resp)
+}
+
+// ──── Discover OAuth Metadata ────
+
+// DiscoverOAuthMetadataRequest is the request body for OAuth metadata discovery.
+type DiscoverOAuthMetadataRequest struct {
+	ServerURL string `json:"serverUrl" binding:"required"`
+}
+
+func (h *RelayHandler) DiscoverOAuthMetadata(c *gin.Context) {
+	var req DiscoverOAuthMetadataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "serverUrl is required")
+		return
+	}
+
+	result, err := mcpgw.DiscoverOAuthMetadata(req.ServerURL)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	successJSON(c, result)
 }
