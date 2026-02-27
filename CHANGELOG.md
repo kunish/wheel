@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/kunish/wheel/compare/v1.16.0...v1.17.0) (2026-02-27)
+
+
+### Features
+
+* add OAuth support for MCP gateway ([3467770](https://github.com/kunish/wheel/commit/3467770962ff75b00d76d3c9afe705290a31e64b))
+
 ## [1.16.0](https://github.com/kunish/wheel/compare/v1.15.0...v1.16.0) (2026-02-26)
 
 ### Features
