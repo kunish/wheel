@@ -1,5 +1,5 @@
 import type { DataPanelPopoverProps } from "./data-panel-popover"
-import type { DayData, HeatmapTooltip, PeriodTotals, StreamingDelta } from "./types"
+import type { HeatmapTooltip, PeriodTotals, StreamingDelta } from "./types"
 import type {
   ChannelStatsRow,
   ModelStatsItem,
@@ -20,13 +20,8 @@ import { InlineStats } from "./inline-stats"
 import { PeriodNavBar } from "./period-nav-bar"
 import { PowerPipeline } from "./power-pipeline"
 import { ReactorGrid } from "./reactor-grid"
-import {
-  computePeriodTotals,
-  getActivityLevel,
-  LEVEL_COLORS,
-  toDateStr,
-  useGearRotation,
-} from "./types"
+import { computePeriodTotals, toDateStr, useGearRotation } from "./types"
+import { YearGrid } from "./year-grid"
 
 /** Measures its container and renders children at min(width, height) square size */
 function GearClockFit({ children }: { children: React.ReactNode }) {
@@ -116,8 +111,8 @@ export function ActivitySection({
   // ── Gear clock center data ──
   const gearData = useMemo(() => {
     const sd = streamingDelta ?? { inputTokens: 0, outputTokens: 0, inputCost: 0, outputCost: 0 }
-    if (nav.view === "day") {
-      const dayMetrics = nav.selectedDayData
+    if (nav.view.current === "day") {
+      const dayMetrics = nav.day.data
       return {
         reqCount: dayMetrics
           ? (dayMetrics.request_success ?? 0) + (dayMetrics.request_failed ?? 0)
@@ -134,7 +129,7 @@ export function ActivitySection({
       totalCost:
         (totalData?.input_cost ?? 0) + (totalData?.output_cost ?? 0) + sd.inputCost + sd.outputCost,
     }
-  }, [nav.view, nav.selectedDayData, totalData, streamingDelta])
+  }, [nav.view.current, nav.day.data, totalData, streamingDelta])
 
   // ── Tooltip handlers ──
   const handleMouseEnter = useCallback(
@@ -158,16 +153,16 @@ export function ActivitySection({
 
   // ── Period totals ──
   const yearTotals = useMemo(
-    () => computePeriodTotals(nav.yearDays.map((d) => d.daily)),
-    [nav.yearDays],
+    () => computePeriodTotals(nav.year.days.map((d) => d.daily)),
+    [nav.year.days],
   )
   const monthTotals = useMemo(
-    () => computePeriodTotals(nav.monthDays.map((d) => d?.daily)),
-    [nav.monthDays],
+    () => computePeriodTotals(nav.month.days.map((d) => d?.daily)),
+    [nav.month.days],
   )
   const weekTotals = useMemo(
-    () => computePeriodTotals(nav.weekDays.map((d) => d.daily)),
-    [nav.weekDays],
+    () => computePeriodTotals(nav.week.days.map((d) => d.daily)),
+    [nav.week.days],
   )
 
   function buildStatsItems(totals: PeriodTotals) {
@@ -189,27 +184,6 @@ export function ActivitySection({
     ]
   }
 
-  // ── Heatmap cell renderer ──
-  function renderCell(day: DayData | null, key: string) {
-    if (!day) return <div key={key} />
-    if (day.isFuture)
-      return (
-        <div key={key} className="border-border/30 aspect-square rounded-sm border border-dashed" />
-      )
-    const count = (day.daily?.request_success ?? 0) + (day.daily?.request_failed ?? 0)
-    const level = getActivityLevel(count)
-    return (
-      <div
-        key={key}
-        className="aspect-square cursor-pointer rounded-sm transition-transform hover:scale-125"
-        style={{ backgroundColor: LEVEL_COLORS[level] }}
-        onClick={() => nav.drillIntoDay(day.dateStr)}
-        onMouseEnter={(e) => handleMouseEnter(e, { label: day.displayDate, metrics: day.daily })}
-        onMouseLeave={handleMouseLeave}
-      />
-    )
-  }
-
   const todayStr = toDateStr(nav.today)
 
   return (
@@ -221,32 +195,32 @@ export function ActivitySection({
           {(["day", "week", "month", "year"] as const).map((v) => (
             <button
               key={v}
-              onClick={() => nav.setView(v)}
+              onClick={() => nav.view.set(v)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                nav.view === v
+                nav.view.current === v
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
-              {nav.viewLabels[v]}
+              {nav.view.labels[v]}
             </button>
           ))}
         </div>
       </div>
 
       {/* ── Day view ── */}
-      {nav.view === "day" && (
+      {nav.view.current === "day" && (
         <div className="flex min-h-0 flex-1 flex-col">
           <GearClockFit>
             <HeroGearClock
-              dayHourlyMap={nav.dayHourlyMap}
-              isToday={nav.selectedDayDateStr === toDateStr(now)}
+              dayHourlyMap={nav.day.hourlyMap}
+              isToday={nav.day.dateStr === toDateStr(now)}
               nowHour={now.getHours()}
               now={now}
-              selectedDayDateStr={nav.selectedDayDateStr}
-              selectedDisplayDate={nav.selectedDisplayDate}
+              selectedDayDateStr={nav.day.dateStr}
+              selectedDisplayDate={nav.day.displayDate}
               gearAngle={gearAngle}
-              navigateToHour={nav.navigateToHour}
+              navigateToHour={nav.navigate.toHour}
               handleMouseEnter={handleMouseEnter}
               handleMouseLeave={handleMouseLeave}
             >
@@ -295,41 +269,41 @@ export function ActivitySection({
 
           <div className="shrink-0 px-2">
             {(() => {
-              const isToday = nav.selectedDayDateStr === todayStr
+              const isToday = nav.day.dateStr === todayStr
               const isFutureDate = (() => {
                 const d = new Date(
-                  Number.parseInt(nav.selectedDayDateStr.slice(0, 4)),
-                  Number.parseInt(nav.selectedDayDateStr.slice(4, 6)) - 1,
-                  Number.parseInt(nav.selectedDayDateStr.slice(6, 8)),
+                  Number.parseInt(nav.day.dateStr.slice(0, 4)),
+                  Number.parseInt(nav.day.dateStr.slice(4, 6)) - 1,
+                  Number.parseInt(nav.day.dateStr.slice(6, 8)),
                 )
                 return d > nav.today
               })()
 
               return (
                 <div className="relative flex items-center gap-2">
-                  <NavArrow direction="left" onClick={() => nav.shiftDay(-1)} />
+                  <NavArrow direction="left" onClick={() => nav.navigate.shiftDay(-1)} />
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-sm font-bold">{nav.selectedDisplayDate}</span>
+                    <span className="text-sm font-bold">{nav.day.displayDate}</span>
                     <span className="text-muted-foreground text-[11px] font-medium">
-                      {nav.selectedDayWeekday}
+                      {nav.day.weekday}
                     </span>
                   </div>
                   <NavArrow
                     direction="right"
-                    onClick={() => nav.shiftDay(1)}
+                    onClick={() => nav.navigate.shiftDay(1)}
                     disabled={isFutureDate || isToday}
                   />
                   <div className="ml-auto flex items-center gap-3">
                     {!isToday && (
                       <button
-                        onClick={() => nav.setSelectedDateStr(null)}
+                        onClick={() => nav.day.setDateStr(null)}
                         className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
                       >
                         {t("activity.today")}
                       </button>
                     )}
                     <button
-                      onClick={() => nav.navigateToDay(nav.selectedDayDateStr)}
+                      onClick={() => nav.navigate.toDay(nav.day.dateStr)}
                       className="text-muted-foreground hover:text-foreground text-xs font-medium underline-offset-2 hover:underline"
                     >
                       {t("activity.viewLogs")}
@@ -343,31 +317,25 @@ export function ActivitySection({
       )}
 
       {/* ── Year view ── */}
-      {nav.view === "year" && (
+      {nav.view.current === "year" && (
         <div className="flex min-h-0 flex-1 flex-col gap-2 px-2">
           <InlineStats items={buildStatsItems(yearTotals)} />
-          <div className="flex min-h-0 flex-1 items-center justify-center">
-            <div
-              className="grid w-full gap-[3px]"
-              style={{
-                gridTemplateColumns: "repeat(53, 1fr)",
-                gridTemplateRows: "repeat(7, 1fr)",
-                gridAutoFlow: "column",
-              }}
-            >
-              {nav.yearDays.map((day) => renderCell(day, day.dateStr))}
-            </div>
-          </div>
+          <YearGrid
+            yearDays={nav.year.days}
+            drillIntoDay={nav.navigate.drillIntoDay}
+            handleMouseEnter={handleMouseEnter}
+            handleMouseLeave={handleMouseLeave}
+          />
           <div className="mt-auto shrink-0">
             <PeriodNavBar
-              label={nav.yearLabel}
-              onPrev={() => nav.setYearOffset((o) => o - 1)}
-              onNext={() => nav.setYearOffset((o) => o + 1)}
-              nextDisabled={nav.yearOffset >= 0}
-              resetLabel={nav.yearOffset !== 0 ? t("activity.thisYear") : undefined}
-              onReset={() => nav.setYearOffset(0)}
+              label={nav.year.label}
+              onPrev={() => nav.year.setOffset((o) => o - 1)}
+              onNext={() => nav.year.setOffset((o) => o + 1)}
+              nextDisabled={nav.year.offset >= 0}
+              resetLabel={nav.year.offset !== 0 ? t("activity.thisYear") : undefined}
+              onReset={() => nav.year.setOffset(0)}
               viewLogsLabel={t("activity.viewLogs")}
-              onViewLogs={nav.navigateToYear}
+              onViewLogs={nav.navigate.toYear}
               dataPanelProps={dataPanelProps}
             />
           </div>
@@ -375,30 +343,30 @@ export function ActivitySection({
       )}
 
       {/* ── Month view ── */}
-      {nav.view === "month" && (
+      {nav.view.current === "month" && (
         <div className="flex min-h-0 flex-1 flex-col px-2">
           <InlineStats items={buildStatsItems(monthTotals)} />
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
             <ReactorGrid
-              monthDays={nav.monthDays}
-              weekdayLabels={nav.weekdayLabels}
+              monthDays={nav.month.days}
+              weekdayLabels={nav.week.dayLabels}
               todayStr={todayStr}
               gearAngle={gearAngle}
-              drillIntoDay={nav.drillIntoDay}
+              drillIntoDay={nav.navigate.drillIntoDay}
               handleMouseEnter={handleMouseEnter}
               handleMouseLeave={handleMouseLeave}
             />
           </div>
           <div className="shrink-0">
             <PeriodNavBar
-              label={nav.monthLabel}
-              onPrev={() => nav.setMonthOffset((o) => o - 1)}
-              onNext={() => nav.setMonthOffset((o) => o + 1)}
-              nextDisabled={nav.monthOffset >= 0}
-              resetLabel={nav.monthOffset !== 0 ? t("activity.thisMonth") : undefined}
-              onReset={() => nav.setMonthOffset(0)}
+              label={nav.month.label}
+              onPrev={() => nav.month.setOffset((o) => o - 1)}
+              onNext={() => nav.month.setOffset((o) => o + 1)}
+              nextDisabled={nav.month.offset >= 0}
+              resetLabel={nav.month.offset !== 0 ? t("activity.thisMonth") : undefined}
+              onReset={() => nav.month.setOffset(0)}
               viewLogsLabel={t("activity.viewLogs")}
-              onViewLogs={nav.navigateToMonth}
+              onViewLogs={nav.navigate.toMonth}
               dataPanelProps={dataPanelProps}
             />
           </div>
@@ -406,30 +374,30 @@ export function ActivitySection({
       )}
 
       {/* ── Week view ── */}
-      {nav.view === "week" && (
+      {nav.view.current === "week" && (
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
           <InlineStats items={buildStatsItems(weekTotals)} />
           <div className="flex min-h-0 flex-1 items-center justify-center">
             <PowerPipeline
-              weekDays={nav.weekDays}
-              weekdayLabels={nav.weekdayLabelsRaw}
+              weekDays={nav.week.days}
+              weekdayLabels={nav.week.dayLabelsRaw}
               todayStr={todayStr}
               gearAngle={gearAngle}
-              drillIntoDay={nav.drillIntoDay}
+              drillIntoDay={nav.navigate.drillIntoDay}
               handleMouseEnter={handleMouseEnter}
               handleMouseLeave={handleMouseLeave}
             />
           </div>
           <div className="mt-auto shrink-0">
             <PeriodNavBar
-              label={nav.weekLabel}
-              onPrev={() => nav.setWeekOffset((o) => o - 1)}
-              onNext={() => nav.setWeekOffset((o) => o + 1)}
-              nextDisabled={nav.weekOffset >= 0}
-              resetLabel={nav.weekOffset !== 0 ? t("activity.thisWeek") : undefined}
-              onReset={() => nav.setWeekOffset(0)}
+              label={nav.week.label}
+              onPrev={() => nav.week.setOffset((o) => o - 1)}
+              onNext={() => nav.week.setOffset((o) => o + 1)}
+              nextDisabled={nav.week.offset >= 0}
+              resetLabel={nav.week.offset !== 0 ? t("activity.thisWeek") : undefined}
+              onReset={() => nav.week.setOffset(0)}
               viewLogsLabel={t("activity.viewLogs")}
-              onViewLogs={nav.navigateToWeek}
+              onViewLogs={nav.navigate.toWeek}
               dataPanelProps={dataPanelProps}
             />
           </div>

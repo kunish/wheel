@@ -12,41 +12,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useLogQueryContext } from "./log-query-context"
 
-interface LogFilterBarProps {
-  keyword: string
-  keywordInput: string
-  setKeywordInput: (v: string) => void
-  model: string
-  status: string
-  channelId: number | undefined
-  startTime: number | undefined
-  endTime: number | undefined
-  hasFilters: boolean
-  channels: Array<{ id: number; name: string }>
-  modelOptions: string[]
-  updateFilter: (updates: Record<string, string | number | undefined | null>) => void
-  debouncedUpdateFilter: (key: string, value: string) => void
-  onClearAll: () => void
-}
-
-export function LogFilterBar({
-  keyword,
-  keywordInput,
-  setKeywordInput,
-  model,
-  status,
-  channelId,
-  startTime,
-  endTime,
-  hasFilters,
-  channels,
-  modelOptions,
-  updateFilter,
-  debouncedUpdateFilter,
-  onClearAll,
-}: LogFilterBarProps) {
+export function LogFilterBar() {
   const { t } = useTranslation("logs")
+  const {
+    keyword,
+    keywordInput,
+    setKeywordInput,
+    model,
+    status,
+    channelId,
+    startTime,
+    endTime,
+    hasFilters,
+    channels,
+    modelOptions,
+    updateFilter,
+    debouncedUpdateFilter,
+    navigate,
+    pathname,
+  } = useLogQueryContext()
+
+  const handleClearAll = () => {
+    navigate(pathname, { replace: true })
+    setKeywordInput("")
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -178,7 +169,7 @@ export function LogFilterBar({
               </button>
             </Badge>
           )}
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onClearAll}>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={handleClearAll}>
             {t("chips.clearAll")}
           </Button>
         </div>

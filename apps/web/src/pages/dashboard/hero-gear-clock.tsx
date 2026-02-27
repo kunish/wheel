@@ -135,9 +135,13 @@ export function HeroGearClock({
         </defs>
 
         {/* ── Static gear teeth — 12 teeth aligned to hour segment boundaries ── */}
-        <g
+        <motion.g
+          initial={{ opacity: 0, scale: 0.9, rotate: -15 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          transition={{ duration: 0.8, type: "spring", bounce: 0.4 }}
           style={{
             filter: "drop-shadow(0 2px 4px rgb(0 0 0 / 0.1))",
+            transformOrigin: "200px 200px",
           }}
         >
           {Array.from({ length: 12 }, (_, i) => {
@@ -170,7 +174,7 @@ export function HeroGearClock({
             stroke="var(--border)"
             strokeWidth="2.5"
           />
-        </g>
+        </motion.g>
 
         {/* ── PM ring (outer): hours 12-23 ── */}
         {Array.from({ length: 12 }, (_, i) => {

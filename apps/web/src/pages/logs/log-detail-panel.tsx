@@ -1,7 +1,7 @@
 import type { LogEntry } from "./columns"
 import type { LogDetail, StreamingOverlay } from "./types"
 import { Check, ChevronDown, ChevronUp, Copy, Loader2, Play } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router"
 import { toast } from "sonner"
@@ -15,6 +15,7 @@ import { useModelMeta } from "@/hooks/use-model-meta"
 import { formatCost, formatDuration } from "./columns"
 import { CodeBlock } from "./detail/code-block"
 import { MessagesTabContent } from "./detail/messages-tab"
+import { useLogQueryContext } from "./log-query-context"
 import { useLogReplay } from "./log-replay"
 
 // Hoisted constant array to avoid re-creation on every render
@@ -22,32 +23,38 @@ const DETAIL_SKELETON_ITEMS = Array.from({ length: 9 })
 
 // ── Public component: LogDetailSheet ──
 
-interface LogDetailSheetProps {
-  detailId: number | null
-  detailStreamId: string | null
-  detailTab: string
-  detail: LogDetail | null
-  pendingStreams: Map<string, LogEntry>
-  streamingOverlay: StreamingOverlay | null
-  logs: LogEntry[]
-  onClose: () => void
-  onNavigate: (log: LogEntry) => void
-  onTabChange: (tab: string) => void
-}
-
-export function LogDetailSheet({
-  detailId,
-  detailStreamId,
-  detailTab,
-  detail,
-  pendingStreams,
-  streamingOverlay,
-  logs,
-  onClose,
-  onNavigate,
-  onTabChange,
-}: LogDetailSheetProps) {
+export function LogDetailSheet() {
   const { t } = useTranslation("logs")
+  const {
+    detailId,
+    detailStreamId,
+    detailTab,
+    detail,
+    pendingStreams,
+    streamingOverlay,
+    logs,
+    setDetailId,
+    setDetailStreamId,
+    setDetailTab,
+  } = useLogQueryContext()
+
+  const onClose = useCallback(() => {
+    setDetailId(null)
+    setDetailStreamId(null)
+  }, [setDetailId, setDetailStreamId])
+
+  const onNavigate = useCallback(
+    (log: LogEntry) => {
+      if (log._streaming && log._streamId) {
+        setDetailId(null)
+        setDetailStreamId(log._streamId)
+      } else {
+        setDetailStreamId(null)
+        setDetailId(log.id)
+      }
+    },
+    [setDetailId, setDetailStreamId],
+  )
 
   // Find current index in logs for prev/next navigation
   const currentIdx = useMemo(() => {
@@ -143,7 +150,7 @@ export function LogDetailSheet({
               <DetailPanel
                 detail={streamingDetail}
                 activeTab={detailTab}
-                onTabChange={onTabChange}
+                onTabChange={setDetailTab}
                 streamingOverlay={streamingOverlay}
               />
             )
@@ -152,7 +159,7 @@ export function LogDetailSheet({
           <DetailPanel
             detail={detail}
             activeTab={detailTab}
-            onTabChange={onTabChange}
+            onTabChange={setDetailTab}
             streamingOverlay={streamingOverlay}
           />
         ) : (

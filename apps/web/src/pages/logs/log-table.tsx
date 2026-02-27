@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-table"
 import { AlertCircle, ChevronLeft, ChevronRight, FileText, RefreshCw } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { createLogColumns } from "./columns"
+import { useLogQueryContext } from "./log-query-context"
 
 // Hoist row model factories outside the component to maintain stable references
 const coreRowModel = getCoreRowModel<LogEntry>()
@@ -44,35 +45,44 @@ const expandedRowModel = getExpandedRowModel<LogEntry>()
 const SKELETON_ROWS_8 = Array.from({ length: 8 })
 const SKELETON_ROWS_10 = Array.from({ length: 10 })
 
-interface LogTableProps {
-  logs: LogEntry[]
-  pageSize: number
-  isLoading: boolean
-  isFetching: boolean
-  isError: boolean
-  hasFilters: boolean
-  refetch: () => void
-  onViewDetail: (id: number) => void
-  onRowClick: (log: LogEntry) => void
-  onClearFilters: () => void
-}
-
-export function LogTable({
-  logs,
-  pageSize,
-  isLoading,
-  isFetching,
-  isError,
-  hasFilters,
-  refetch,
-  onViewDetail,
-  onRowClick,
-  onClearFilters,
-}: LogTableProps) {
+export function LogTable() {
   const { t } = useTranslation("logs")
+  const {
+    logs,
+    pageSize,
+    isLoading,
+    isFetching,
+    isError,
+    hasFilters,
+    refetch,
+    setDetailId,
+    setDetailStreamId,
+    navigate,
+    pathname,
+    setKeywordInput,
+  } = useLogQueryContext()
   const [sorting, setSorting] = useState<SortingState>([])
   const [grouping, setGrouping] = useState<GroupingState>([])
   const [expanded, setExpanded] = useState<ExpandedState>(true)
+
+  const onRowClick = useCallback(
+    (log: LogEntry) => {
+      if (log._streaming && log._streamId) {
+        setDetailStreamId(log._streamId)
+      } else {
+        setDetailStreamId(null)
+        setDetailId(log.id)
+      }
+    },
+    [setDetailId, setDetailStreamId],
+  )
+
+  const onClearFilters = useCallback(() => {
+    navigate(pathname, { replace: true })
+    setKeywordInput("")
+  }, [navigate, pathname, setKeywordInput])
+
+  const onViewDetail = setDetailId
 
   const columns = useMemo(() => createLogColumns(onViewDetail, t), [t, onViewDetail])
 

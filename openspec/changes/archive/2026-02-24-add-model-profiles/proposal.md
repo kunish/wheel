@@ -13,9 +13,11 @@
 ## Capabilities
 
 ### New Capabilities
+
 - `model-profiles`: 模型预设（Profile）的 CRUD、内置预设生成、以及在 Channel 编辑中的快速应用
 
 ### Modified Capabilities
+
 - `unified-model-page`: Channel 编辑对话框中新增 Profile 选择器入口
 
 ## Impact

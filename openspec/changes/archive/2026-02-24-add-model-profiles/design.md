@@ -7,12 +7,14 @@
 ## Goals / Non-Goals
 
 **Goals:**
+
 - 提供 Profile 机制，让用户一键加载预定义的模型列表到 Channel
 - 从 models.dev 数据生成 Anthropic、OpenAI、Google 三家内置 Profile
 - 支持用户自定义 Profile 的 CRUD
 - Profile 应用到 Channel 时为"复制"语义（应用后修改 Profile 不影响已配置的 Channel）
 
 **Non-Goals:**
+
 - 不做 Profile 与 Channel 的实时绑定/同步
 - 不做 Profile 的导入/导出功能
 - 不做 Profile 的权限控制（所有管理员共享）

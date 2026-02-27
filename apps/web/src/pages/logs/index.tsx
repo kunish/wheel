@@ -1,50 +1,28 @@
-import type { LogEntry } from "./columns"
 import { ArrowUp } from "lucide-react"
-import { useCallback, useState } from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useLogQuery } from "@/hooks/use-log-query"
 import { AuditLogTab } from "./audit-log-tab"
 import { LogDetailSheet } from "./log-detail-panel"
 import { LogFilterBar } from "./log-filter-bar"
+import { LogQueryProvider, useLogQueryContext } from "./log-query-context"
 import { LogTable, PaginationControls } from "./log-table"
 import { McpLogTab } from "./mcp-log-tab"
 
 export default function LogsPage() {
+  return (
+    <LogQueryProvider>
+      <LogsPageContent />
+    </LogQueryProvider>
+  )
+}
+
+function LogsPageContent() {
   const { t } = useTranslation("logs")
-  const q = useLogQuery()
+  const { total, pendingCount, handleShowNew, totalPages, page, pageSize, updateFilter } =
+    useLogQueryContext()
   const [activeTab, setActiveTab] = useState("requests")
-
-  const handleRowClick = useCallback(
-    (log: LogEntry) => {
-      if (log._streaming && log._streamId) {
-        q.setDetailStreamId(log._streamId)
-      } else {
-        q.setDetailStreamId(null)
-        q.setDetailId(log.id)
-      }
-    },
-    [q],
-  )
-
-  const handleNavigate = useCallback(
-    (log: LogEntry) => {
-      if (log._streaming && log._streamId) {
-        q.setDetailId(null)
-        q.setDetailStreamId(log._streamId)
-      } else {
-        q.setDetailStreamId(null)
-        q.setDetailId(log.id)
-      }
-    },
-    [q],
-  )
-
-  const handleClearAll = useCallback(() => {
-    q.navigate(q.pathname, { replace: true })
-    q.setKeywordInput("")
-  }, [q])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -67,76 +45,36 @@ export default function LogsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-baseline gap-3">
                 <span className="text-muted-foreground text-sm">
-                  {t("totalCount", { count: q.total })}
+                  {t("totalCount", { count: total })}
                 </span>
-                {q.pendingCount > 0 && (
+                {pendingCount > 0 && (
                   <Button
                     variant="outline"
                     size="xs"
                     className="animate-pulse gap-1"
-                    onClick={q.handleShowNew}
+                    onClick={handleShowNew}
                   >
                     <ArrowUp className="h-3 w-3" />
-                    {t("newLogs", { count: q.pendingCount })}
+                    {t("newLogs", { count: pendingCount })}
                   </Button>
                 )}
               </div>
-              {q.totalPages > 0 && (
+              {totalPages > 0 && (
                 <PaginationControls
-                  page={q.page}
-                  pageSize={q.pageSize}
-                  totalPages={q.totalPages}
-                  updateFilter={q.updateFilter}
+                  page={page}
+                  pageSize={pageSize}
+                  totalPages={totalPages}
+                  updateFilter={updateFilter}
                 />
               )}
             </div>
 
-            <LogFilterBar
-              keyword={q.keyword}
-              keywordInput={q.keywordInput}
-              setKeywordInput={q.setKeywordInput}
-              model={q.model}
-              status={q.status}
-              channelId={q.channelId}
-              startTime={q.startTime}
-              endTime={q.endTime}
-              hasFilters={q.hasFilters}
-              channels={q.channels}
-              modelOptions={q.modelOptions}
-              updateFilter={q.updateFilter}
-              debouncedUpdateFilter={q.debouncedUpdateFilter}
-              onClearAll={handleClearAll}
-            />
+            <LogFilterBar />
           </div>
 
-          <LogTable
-            logs={q.logs}
-            pageSize={q.pageSize}
-            isLoading={q.isLoading}
-            isFetching={q.isFetching}
-            isError={q.isError}
-            hasFilters={q.hasFilters}
-            refetch={q.refetch}
-            onViewDetail={q.setDetailId}
-            onRowClick={handleRowClick}
-            onClearFilters={handleClearAll}
-          />
+          <LogTable />
 
-          <LogDetailSheet
-            detailId={q.detailId}
-            detailStreamId={q.detailStreamId}
-            detailTab={q.detailTab}
-            detail={q.detail}
-            pendingStreams={q.pendingStreams}
-            streamingOverlay={q.streamingOverlay}
-            logs={q.logs}
-            onClose={() => {
-              q.setDetailId(null)
-              q.setDetailStreamId(null)
-            }}
-            onNavigate={handleNavigate}
-            onTabChange={q.setDetailTab}
-          />
+          <LogDetailSheet />
         </TabsContent>
 
         <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col pt-4">

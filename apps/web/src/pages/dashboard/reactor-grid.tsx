@@ -219,8 +219,11 @@ export function ReactorGrid({
 
           if (day.isFuture) {
             return (
-              <div
+              <motion.div
                 key={day.dateStr}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, delay: i * 0.015, ease: "easeOut" }}
                 className="border-border/20 aspect-square rounded-lg border border-dashed opacity-30"
               >
                 <svg viewBox="0 0 80 80" className="w-full">
@@ -248,22 +251,34 @@ export function ReactorGrid({
                     {Number.parseInt(day.dateStr.slice(6, 8))}
                   </text>
                 </svg>
-              </div>
+              </motion.div>
             )
           }
 
           const isToday = day.dateStr === todayStr
 
           return (
-            <MiniReactor
+            <motion.div
               key={day.dateStr}
-              day={day}
-              isToday={isToday}
-              gearAngle={gearAngle}
-              drillIntoDay={drillIntoDay}
-              handleMouseEnter={handleMouseEnter}
-              handleMouseLeave={handleMouseLeave}
-            />
+              initial={{ opacity: 0, scale: 0.5, rotate: -10 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              transition={{
+                duration: 0.5,
+                delay: i * 0.015,
+                type: "spring",
+                stiffness: 200,
+                damping: 15,
+              }}
+            >
+              <MiniReactor
+                day={day}
+                isToday={isToday}
+                gearAngle={gearAngle}
+                drillIntoDay={drillIntoDay}
+                handleMouseEnter={handleMouseEnter}
+                handleMouseLeave={handleMouseLeave}
+              />
+            </motion.div>
           )
         })}
       </div>

@@ -44,7 +44,7 @@ export function PowerPipeline({
       className="relative w-full"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
     >
       <svg
         viewBox={`0 0 ${PIPE_SVG_W} ${PIPE_SVG_H + 40}`}
@@ -57,66 +57,81 @@ export function PowerPipeline({
             <stop offset="50%" stopColor="var(--nb-lime)" stopOpacity="0.05" />
             <stop offset="100%" stopColor="var(--nb-lime)" stopOpacity="0.15" />
           </linearGradient>
-          <filter id="pipe-glow">
-            <feGaussianBlur stdDeviation="4" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
+          <linearGradient id="pipe-glow-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--nb-lime)" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="var(--nb-lime)" stopOpacity="0.0" />
+          </linearGradient>
+          <filter id="pipe-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
         {/* ── Background circuit texture ── */}
-        {/* Horizontal grid lines */}
-        {[0.25, 0.5, 0.75].map((frac) => (
-          <line
-            key={`hline-${frac}`}
-            x1="0"
-            y1={PIPE_SVG_H * frac}
-            x2={PIPE_SVG_W}
-            y2={PIPE_SVG_H * frac}
-            stroke="var(--border)"
-            strokeWidth="0.3"
-            opacity={0.06}
-          />
-        ))}
-        {/* Vertical grid lines at segment boundaries */}
-        {segments.map((seg) => (
-          <line
-            key={`vline-${seg.i}`}
-            x1={seg.x}
-            y1="0"
-            x2={seg.x}
-            y2={PIPE_SVG_H}
-            stroke="var(--border)"
-            strokeWidth="0.3"
-            opacity={0.06}
-          />
-        ))}
-        {/* Grid intersection nodes */}
-        {segments.map((seg) =>
-          [0.25, 0.5, 0.75].map((frac) => (
-            <circle
-              key={`node-${seg.i}-${frac}`}
-              cx={seg.x}
-              cy={PIPE_SVG_H * frac}
-              r="1.5"
-              fill="var(--border)"
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+        >
+          {/* Horizontal grid lines */}
+          {[0.25, 0.5, 0.75].map((frac) => (
+            <line
+              key={`hline-${frac}`}
+              x1="0"
+              y1={PIPE_SVG_H * frac}
+              x2={PIPE_SVG_W}
+              y2={PIPE_SVG_H * frac}
+              stroke="var(--border)"
+              strokeWidth="0.3"
               opacity={0.08}
             />
-          )),
-        )}
+          ))}
+          {/* Vertical grid lines at segment boundaries */}
+          {segments.map((seg) => (
+            <line
+              key={`vline-${seg.i}`}
+              x1={seg.x}
+              y1="0"
+              x2={seg.x}
+              y2={PIPE_SVG_H}
+              stroke="var(--border)"
+              strokeWidth="0.3"
+              opacity={0.08}
+            />
+          ))}
+          {/* Grid intersection nodes */}
+          {segments.map((seg) =>
+            [0.25, 0.5, 0.75].map((frac) => (
+              <circle
+                key={`node-${seg.i}-${frac}`}
+                cx={seg.x}
+                cy={PIPE_SVG_H * frac}
+                r="1.5"
+                fill="var(--border)"
+                opacity={0.12}
+              />
+            )),
+          )}
+        </motion.g>
 
         {/* ── Pipeline backbone / spine ── */}
-        <line
-          x1="0"
-          y1={spineY}
-          x2={PIPE_SVG_W}
-          y2={spineY}
-          stroke="var(--border)"
-          strokeWidth="2"
-          opacity={0.12}
-        />
+        <motion.g
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 1, ease: "easeInOut" }}
+        >
+          <line
+            x1="0"
+            y1={spineY}
+            x2={PIPE_SVG_W}
+            y2={spineY}
+            stroke="var(--border)"
+            strokeWidth="3"
+            opacity={0.15}
+            strokeLinecap="round"
+          />
+        </motion.g>
+
         {/* Energy trace on spine */}
         <line
           x1="0"
@@ -124,11 +139,12 @@ export function PowerPipeline({
           x2={PIPE_SVG_W}
           y2={spineY}
           stroke="var(--nb-lime)"
-          strokeWidth="1"
-          opacity={0.08}
+          strokeWidth="1.5"
+          opacity={0.15}
           strokeDasharray="4 12"
+          strokeLinecap="round"
           style={{
-            animation: "pipeline-particle-flow 2s linear infinite",
+            animation: "pipeline-particle-flow 1.5s linear infinite",
           }}
         />
 
@@ -140,27 +156,34 @@ export function PowerPipeline({
 
           return (
             <g key={`seg-${seg.i}`}>
-              {/* Pipe shadow (neobrutalism offset shadow) */}
+              {/* Pipe drop shadow */}
               {!seg.day.isFuture && seg.level > 0 && (
-                <rect
-                  x={rx + 2}
-                  y={ry + 2}
+                <motion.rect
+                  initial={{ height: 0, y: midY }}
+                  animate={{ height: seg.h, y: ry + 4 }}
+                  transition={{
+                    duration: 0.5,
+                    delay: 0.1 + seg.i * 0.05,
+                    type: "spring",
+                    stiffness: 100,
+                  }}
+                  x={rx + 4}
                   width={pipeW}
-                  height={seg.h}
-                  rx={4}
-                  fill="rgb(0 0 0 / 0.1)"
-                  opacity={0.05}
+                  rx={6}
+                  fill="rgb(0 0 0 / 0.15)"
+                  opacity={0.1}
                   filter="url(#pipe-glow)"
                 />
               )}
 
               {/* Pipe body */}
-              <rect
+              <motion.rect
+                initial={{ height: PIPE_MIN_H * 0.6, y: midY - (PIPE_MIN_H * 0.6) / 2 }}
+                animate={{ height: seg.h, y: ry }}
+                transition={{ duration: 0.6, delay: seg.i * 0.05, type: "spring", bounce: 0.3 }}
                 x={rx}
-                y={ry}
                 width={pipeW}
-                height={seg.h}
-                rx={4}
+                rx={6}
                 fill={seg.day.isFuture ? "transparent" : LEVEL_COLORS[seg.level]}
                 stroke={
                   seg.isToday
@@ -169,11 +192,13 @@ export function PowerPipeline({
                       ? "var(--border)"
                       : "transparent"
                 }
-                strokeWidth={seg.isToday ? 1.5 : seg.day.isFuture ? 1 : 0}
-                strokeDasharray={seg.day.isFuture ? "4 3" : "none"}
-                opacity={seg.day.isFuture ? 0.3 : 0.85}
+                strokeWidth={seg.isToday ? 2 : seg.day.isFuture ? 1 : 0}
+                strokeDasharray={seg.day.isFuture ? "4 4" : "none"}
+                opacity={seg.day.isFuture ? 0.2 : 0.9}
                 className={
-                  seg.day.isFuture ? "" : "cursor-pointer transition-opacity hover:opacity-100"
+                  seg.day.isFuture
+                    ? ""
+                    : "cursor-pointer transition-all duration-300 hover:opacity-100 hover:brightness-110"
                 }
                 style={
                   seg.isToday
@@ -195,13 +220,32 @@ export function PowerPipeline({
 
               {/* Inner energy gradient overlay for active segments */}
               {!seg.day.isFuture && seg.level > 0 && (
-                <rect
+                <motion.rect
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.5, delay: 0.3 + seg.i * 0.05 }}
                   x={rx}
                   y={ry}
                   width={pipeW}
                   height={seg.h}
-                  rx={4}
+                  rx={6}
                   fill="url(#pipe-energy-grad)"
+                  pointerEvents="none"
+                />
+              )}
+
+              {/* Highlight on top of the pipe for 3D effect */}
+              {!seg.day.isFuture && seg.level > 0 && (
+                <motion.rect
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.5, delay: 0.4 + seg.i * 0.05 }}
+                  x={rx + 2}
+                  y={ry + 2}
+                  width={pipeW - 4}
+                  height={seg.h * 0.2}
+                  rx={4}
+                  fill="url(#pipe-glow-grad)"
                   pointerEvents="none"
                 />
               )}
@@ -215,18 +259,20 @@ export function PowerPipeline({
           if (seg.level <= 0 || next.level <= 0) return null
           const pipeW = segW * 0.55
           return (
-            <line
+            <motion.line
               key={`flow-${seg.i}`}
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 0.4 }}
+              transition={{ duration: 0.8, delay: 0.5 + seg.i * 0.1 }}
               x1={seg.cx + pipeW / 2}
               y1={spineY}
               x2={next.cx - pipeW / 2}
               y2={spineY}
               stroke="var(--nb-lime)"
-              strokeWidth="1.5"
-              opacity={0.25}
+              strokeWidth="2"
               strokeDasharray="4 4"
               style={{
-                animation: "energy-channel-flow 1.5s linear infinite",
+                animation: "energy-channel-flow 1.2s linear infinite",
               }}
             />
           )
@@ -236,14 +282,24 @@ export function PowerPipeline({
         {segments.slice(0, -1).map((seg) => {
           const nodeX = seg.x + segW
           return (
-            <g key={`conn-${seg.i}`}>
+            <motion.g
+              key={`conn-${seg.i}`}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{
+                duration: 0.4,
+                delay: 0.3 + seg.i * 0.05,
+                type: "spring",
+                stiffness: 200,
+              }}
+            >
               <circle
                 cx={nodeX}
                 cy={spineY}
-                r="5"
+                r="6"
                 fill="var(--card)"
                 stroke="var(--border)"
-                strokeWidth="1.5"
+                strokeWidth="2"
               />
               {/* Mini gear teeth (4 marks) */}
               {[0, 90, 180, 270].map((deg) => {
@@ -251,13 +307,13 @@ export function PowerPipeline({
                 return (
                   <line
                     key={`gear-mark-${seg.i}-${deg}`}
-                    x1={nodeX + 3.5 * Math.cos(rad)}
-                    y1={spineY + 3.5 * Math.sin(rad)}
-                    x2={nodeX + 6.5 * Math.cos(rad)}
-                    y2={spineY + 6.5 * Math.sin(rad)}
+                    x1={nodeX + 4 * Math.cos(rad)}
+                    y1={spineY + 4 * Math.sin(rad)}
+                    x2={nodeX + 8 * Math.cos(rad)}
+                    y2={spineY + 8 * Math.sin(rad)}
                     stroke="var(--border)"
-                    strokeWidth="1.2"
-                    opacity={0.3}
+                    strokeWidth="1.5"
+                    opacity={0.4}
                     style={{
                       transformOrigin: `${nodeX}px ${spineY}px`,
                       transition: "transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
@@ -265,53 +321,58 @@ export function PowerPipeline({
                   />
                 )
               })}
-              <circle cx={nodeX} cy={spineY} r="2" fill="var(--border)" opacity={0.15} />
-            </g>
+              <circle cx={nodeX} cy={spineY} r="2.5" fill="var(--nb-lime)" opacity={0.5} />
+            </motion.g>
           )
         })}
 
         {/* ── Labels row: weekday + date + count ── */}
         {segments.map((seg) => {
-          const labelY = midY + seg.h / 2 + 16
+          const labelY = midY + seg.h / 2 + 18
           return (
-            <g key={`label-${seg.i}`}>
+            <motion.g
+              key={`label-${seg.i}`}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 + seg.i * 0.05 }}
+            >
               <text
                 x={seg.cx}
                 y={labelY}
                 textAnchor="middle"
                 fill={seg.isToday ? "var(--foreground)" : "var(--muted-foreground)"}
-                fontSize="11"
-                fontWeight={seg.isToday ? "900" : "700"}
+                fontSize="12"
+                fontWeight={seg.isToday ? "800" : "600"}
                 fontFamily="inherit"
               >
                 {weekdayLabels[seg.dayOfWeek]}
               </text>
               <text
                 x={seg.cx}
-                y={labelY + 13}
+                y={labelY + 14}
                 textAnchor="middle"
                 fill="var(--muted-foreground)"
-                fontSize="9"
+                fontSize="10"
                 fontWeight="500"
                 fontFamily="inherit"
-                opacity={0.7}
+                opacity={0.8}
               >
                 {seg.day.dateStr.slice(4, 6)}/{seg.day.dateStr.slice(6, 8)}
               </text>
               {!seg.day.isFuture && seg.count > 0 && (
                 <text
                   x={seg.cx}
-                  y={midY - seg.h / 2 - 8}
+                  y={midY - seg.h / 2 - 10}
                   textAnchor="middle"
                   fill="var(--foreground)"
-                  fontSize="10"
+                  fontSize="11"
                   fontWeight="800"
                   fontFamily="inherit"
                 >
                   {formatCount(seg.count).value}
                 </text>
               )}
-            </g>
+            </motion.g>
           )
         })}
       </svg>

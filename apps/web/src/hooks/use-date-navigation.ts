@@ -254,48 +254,37 @@ export function useDateNavigation(dataMap: Map<string, StatsDaily>) {
   )
 
   return {
-    // View state
-    view,
-    setView,
-    viewLabels,
+    view: { current: view, set: setView, labels: viewLabels },
+    year: { days: yearDays, label: yearLabel, offset: yearOffset, setOffset: setYearOffset },
+    month: { days: monthDays, label: monthLabel, offset: monthOffset, setOffset: setMonthOffset },
+    week: {
+      days: weekDays,
+      start: weekStart,
+      label: weekLabel,
+      offset: weekOffset,
+      setOffset: setWeekOffset,
+      dayLabels: weekdayLabels,
+      dayLabelsRaw: weekdayLabelsRaw,
+    },
+    day: {
+      dateStr: selectedDayDateStr,
+      data: selectedDayData,
+      displayDate: selectedDisplayDate,
+      weekday: selectedDayWeekday,
+      hourlyMap: dayHourlyMap,
+      setDateStr: setSelectedDateStr,
+    },
+    navigate: {
+      drillIntoDay,
+      toDay: navigateToDay,
+      toHour: navigateToHour,
+      toWeek: navigateToWeek,
+      toMonth: navigateToMonth,
+      toYear: navigateToYear,
+      shiftDay,
+    },
     today,
-
-    // Year
-    yearDays,
-    yearLabel,
-    yearOffset,
-    setYearOffset,
-
-    // Month
-    monthDays,
-    monthLabel,
-    monthOffset,
-    setMonthOffset,
-
-    // Week
-    weekDays,
-    weekStart,
-    weekLabel,
-    weekOffset,
-    setWeekOffset,
-    weekdayLabels,
-    weekdayLabelsRaw,
-
-    // Day
-    selectedDayDateStr,
-    selectedDayData,
-    selectedDisplayDate,
-    selectedDayWeekday,
-    dayHourlyMap,
-    setSelectedDateStr,
-
-    // Navigation
-    drillIntoDay,
-    navigateToDay,
-    navigateToHour,
-    navigateToWeek,
-    navigateToMonth,
-    navigateToYear,
-    shiftDay,
   }
 }
+
+export type DateNavigation = ReturnType<typeof useDateNavigation>
