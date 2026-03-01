@@ -1,0 +1,10 @@
+{
+  "title": "API 文档",
+  "description": "Wheel 交互式 API 文档。",
+  "loading": "加载 API 文档中...",
+  "openInNewTab": "在新标签页打开",
+  "endpoints": "接口列表",
+  "baseUrl": "基础 URL",
+  "unavailable": "API 文档不可用",
+  "unavailableHint": "请确认后端服务已启动且 API 文档端点可访问。"
+}

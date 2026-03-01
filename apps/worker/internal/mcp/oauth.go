@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,12 +19,17 @@ type OAuthToken struct {
 	AccessToken string
 	TokenType   string
 	ExpiresAt   time.Time
+	IsStatic    bool // True for pre-configured access tokens that never expire
 }
 
 // IsExpired returns true if the token is expired or about to expire (within 30s buffer).
+// Static tokens (pre-configured access tokens) never expire.
 func (t *OAuthToken) IsExpired() bool {
 	if t == nil {
 		return true
+	}
+	if t.IsStatic {
+		return false
 	}
 	return time.Now().After(t.ExpiresAt.Add(-30 * time.Second))
 }
@@ -58,7 +64,56 @@ type OAuthDiscoveryResult struct {
 	Scopes           []string                   `json:"scopes,omitempty"`
 }
 
-var discoveryHTTPClient = &http.Client{Timeout: 10 * time.Second}
+var discoveryHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			return fmt.Errorf("too many redirects")
+		}
+		// Validate redirect target is not an internal address
+		if err := validateExternalURL(req.URL.String()); err != nil {
+			return err
+		}
+		return nil
+	},
+}
+
+// validateExternalURL checks that a URL does not point to internal/private network addresses.
+func validateExternalURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	// Only allow http and https schemes
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("unsupported scheme: %s", parsed.Scheme)
+	}
+
+	host := parsed.Hostname()
+
+	// Block localhost variants
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
+		return fmt.Errorf("internal addresses are not allowed: %s", host)
+	}
+
+	// Resolve and check for private IP ranges
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("DNS lookup failed for %s: %w", host, err)
+	}
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("internal addresses are not allowed: %s resolves to %s", host, ipStr)
+		}
+	}
+
+	return nil
+}
 
 // DiscoverOAuthMetadata discovers OAuth metadata for a given MCP server URL.
 // It first tries RFC 9728 (Protected Resource Metadata), then RFC 8414 (Authorization Server Metadata).
@@ -66,6 +121,11 @@ func DiscoverOAuthMetadata(serverURL string) (*OAuthDiscoveryResult, error) {
 	parsed, err := url.Parse(serverURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid server URL: %w", err)
+	}
+
+	// Validate the target URL is not an internal address (SSRF prevention)
+	if err := validateExternalURL(serverURL); err != nil {
+		return nil, fmt.Errorf("URL validation failed: %w", err)
 	}
 
 	result := &OAuthDiscoveryResult{}
@@ -173,7 +233,7 @@ func AcquireToken(cfg *MCPOAuthConfig) (*OAuthToken, error) {
 		return &OAuthToken{
 			AccessToken: cfg.AccessToken,
 			TokenType:   "Bearer",
-			ExpiresAt:   time.Now().Add(365 * 24 * time.Hour), // Treat as long-lived
+			IsStatic:    true,
 		}, nil
 	}
 
@@ -228,11 +288,15 @@ func AcquireToken(cfg *MCPOAuthConfig) (*OAuthToken, error) {
 	tokenType := tokenResp.TokenType
 	if tokenType == "" {
 		tokenType = "Bearer"
+	} else {
+		// Normalize: "bearer" -> "Bearer", "BEARER" -> "Bearer"
+		lower := strings.ToLower(tokenType)
+		tokenType = strings.ToUpper(lower[:1]) + lower[1:]
 	}
 
 	return &OAuthToken{
 		AccessToken: tokenResp.AccessToken,
-		TokenType:   strings.Title(strings.ToLower(tokenType)),
+		TokenType:   tokenType,
 		ExpiresAt:   time.Now().Add(time.Duration(expiresIn) * time.Second),
 	}, nil
 }

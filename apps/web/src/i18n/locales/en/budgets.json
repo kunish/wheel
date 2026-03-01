@@ -1,0 +1,39 @@
+{
+  "title": "Budgets",
+  "description": "Manage spending budgets for API keys with time-based resets.",
+  "table": {
+    "name": "Name",
+    "key": "API Key",
+    "maxCost": "Budget Limit",
+    "totalCost": "Spent",
+    "remaining": "Remaining",
+    "percentage": "Usage",
+    "period": "Reset Period",
+    "nextReset": "Next Reset",
+    "status": "Status"
+  },
+  "period": {
+    "none": "No Reset",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly"
+  },
+  "noBudgets": "No budgets configured.",
+  "noBudgetsHint": "Budget limits are configured per API key. Go to API Keys to set budget limits.",
+  "goToKeys": "Go to API Keys",
+  "overBudget": "Over Budget",
+  "nearLimit": "Near Limit",
+  "healthy": "Healthy",
+  "noLimit": "No Limit",
+  "unlimited": "Unlimited",
+  "summary": {
+    "totalBudget": "Total Budget",
+    "totalSpent": "Total Spent",
+    "keysOverBudget": "Keys Over Budget",
+    "keysNearLimit": "Keys Near Limit"
+  },
+  "alert": {
+    "threshold": "Alert Threshold",
+    "thresholdHint": "Get notified when usage reaches this percentage."
+  }
+}

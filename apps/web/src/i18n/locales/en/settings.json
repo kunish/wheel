@@ -1,5 +1,12 @@
 {
   "title": "Settings",
+  "tabs": {
+    "account": "Account",
+    "system": "System",
+    "connection": "Connection",
+    "backup": "Backup",
+    "version": "Version"
+  },
   "account": {
     "changeUsername": "Change Username",
     "newUsername": "New Username",

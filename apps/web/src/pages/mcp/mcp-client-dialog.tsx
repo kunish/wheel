@@ -19,6 +19,16 @@ import { discoverOAuthMetadata } from "@/lib/api-client"
 const CONNECTION_TYPES = ["http", "sse", "stdio"] as const
 const AUTH_TYPES = ["none", "headers", "oauth"] as const
 
+/** Returns true if OAuth config is valid (or authType is not oauth). */
+function isOAuthValid(form: MCPClientInput): boolean {
+  if (form.authType !== "oauth" || form.connectionType === "stdio") return true
+  const cfg = form.oauthConfig
+  if (!cfg) return false
+  // Either a pre-configured access token or (clientId + tokenUrl) must be set
+  if (cfg.accessToken) return true
+  return !!(cfg.clientId && cfg.tokenUrl)
+}
+
 export default function MCPClientDialog({
   open,
   onOpenChange,
@@ -108,7 +118,14 @@ export default function MCPClientDialog({
               <Label>{t("form.authType")}</Label>
               <Select
                 value={form.authType}
-                onValueChange={(v: MCPClientInput["authType"]) => setForm({ ...form, authType: v })}
+                onValueChange={(v: MCPClientInput["authType"]) =>
+                  setForm({
+                    ...form,
+                    authType: v,
+                    headers: v === "headers" ? (form.headers ?? []) : [],
+                    oauthConfig: v === "oauth" ? form.oauthConfig : undefined,
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -155,7 +172,11 @@ export default function MCPClientDialog({
             />
           </div>
 
-          <Button type="button" onClick={onSave} disabled={isPending || !form.name}>
+          <Button
+            type="button"
+            onClick={onSave}
+            disabled={isPending || !form.name || !isOAuthValid(form)}
+          >
             {isPending
               ? t("actions.loading", { ns: "common" })
               : t("actions.save", { ns: "common" })}

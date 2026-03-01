@@ -2,11 +2,24 @@
   "nav": {
     "dashboard": "Dashboard",
     "model": "Model",
+    "playground": "Playground",
     "keys": "API Keys",
     "mcp": "MCP",
+    "guardrails": "Guardrails",
+    "tags": "Tags",
+    "usage": "Usage",
     "logs": "Logs",
+    "budgets": "Budgets",
     "modelLimits": "Model Limits",
+    "apiReference": "API Reference",
     "settings": "Settings"
+  },
+  "navSection": {
+    "gateway": "AI Gateway",
+    "observability": "Observability",
+    "accessControl": "Access Control",
+    "developer": "Developer",
+    "system": "System"
   },
   "actions": {
     "cancel": "Cancel",

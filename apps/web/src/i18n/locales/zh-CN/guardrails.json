@@ -1,0 +1,55 @@
+{
+  "title": "安全护栏",
+  "description": "配置 API 请求和响应的内容安全规则。",
+  "addRule": "添加规则",
+  "editRule": "编辑规则",
+  "deleteTitle": "删除规则「{{name}}」？",
+  "deleteDescription": "此操作无法撤消。护栏规则将被永久删除。",
+  "noRules": "未配置护栏规则。",
+  "noRulesHint": "添加规则以过滤 API 请求和响应中的内容。",
+  "ruleSaved": "规则已保存。",
+  "ruleDeleted": "规则已删除。",
+  "table": {
+    "name": "名称",
+    "type": "类型",
+    "target": "目标",
+    "action": "动作",
+    "status": "状态",
+    "scope": "范围"
+  },
+  "type": {
+    "keyword": "关键词过滤",
+    "regex": "正则匹配",
+    "length": "长度限制",
+    "pii": "隐私信息检测"
+  },
+  "target": {
+    "input": "输入",
+    "output": "输出",
+    "both": "双向"
+  },
+  "action": {
+    "block": "拦截",
+    "warn": "警告",
+    "redact": "脱敏"
+  },
+  "scope": {
+    "all": "所有密钥",
+    "specific": "指定密钥"
+  },
+  "form": {
+    "name": "规则名称",
+    "namePlaceholder": "例如：拦截敏感内容",
+    "type": "规则类型",
+    "target": "应用到",
+    "action": "动作",
+    "pattern": "匹配模式",
+    "patternPlaceholder": "输入关键词或正则表达式...",
+    "patternHint": "关键词类型使用英文逗号分隔多个关键词。",
+    "maxLength": "最大长度",
+    "maxLengthHint": "允许的最大字符数。",
+    "enabled": "启用",
+    "scope": "范围",
+    "selectKeys": "选择 API 密钥"
+  }
+}

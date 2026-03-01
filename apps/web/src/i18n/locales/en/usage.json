@@ -1,0 +1,43 @@
+{
+  "title": "Usage",
+  "description": "Analyze API usage across keys, models, and channels.",
+  "tabs": {
+    "byKey": "By API Key",
+    "byModel": "By Model",
+    "byChannel": "By Channel"
+  },
+  "table": {
+    "name": "Name",
+    "requests": "Requests",
+    "tokens": "Tokens",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "cost": "Cost",
+    "quota": "Quota",
+    "used": "Used",
+    "remaining": "Remaining",
+    "percentage": "Usage %",
+    "lastUsed": "Last Used",
+    "channel": "Channel",
+    "model": "Model",
+    "key": "API Key"
+  },
+  "chart": {
+    "costTrend": "Cost Trend",
+    "requestsTrend": "Requests Trend",
+    "tokensTrend": "Tokens Trend",
+    "topModels": "Top Models by Cost",
+    "topKeys": "Top API Keys by Cost"
+  },
+  "summary": {
+    "totalCost": "Total Cost",
+    "totalRequests": "Total Requests",
+    "totalTokens": "Total Tokens",
+    "avgCostPerRequest": "Avg Cost/Request"
+  },
+  "export": "Export CSV",
+  "noData": "No usage data available.",
+  "noDataHint": "Usage data will appear here once API calls are made.",
+  "unlimited": "Unlimited",
+  "timeRange": "Time Range"
+}

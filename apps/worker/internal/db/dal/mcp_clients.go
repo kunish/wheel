@@ -38,7 +38,7 @@ func UpdateMCPClient(ctx context.Context, db *bun.DB, id int, data map[string]an
 	allowed := map[string]bool{
 		"name": true, "connection_type": true, "connection_string": true,
 		"stdio_config": true, "auth_type": true, "headers": true,
-		"oauth_config_id": true, "tools_to_execute": true,
+		"oauth_config": true, "tools_to_execute": true,
 		"tools_to_auto_exec": true, "enabled": true,
 	}
 	q := db.NewUpdate().Table("mcp_clients")

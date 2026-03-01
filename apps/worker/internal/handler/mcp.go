@@ -182,6 +182,19 @@ func (h *RelayHandler) UpdateMCPClient(c *gin.Context) {
 		data["headers"] = mcpgw.HeaderListJSON(req.Headers)
 	}
 	if req.OAuthConfig != nil {
+		// If secret fields contain the mask placeholder "***", preserve the original values from DB
+		if req.OAuthConfig.ClientSecret == "***" || req.OAuthConfig.AccessToken == "***" {
+			existing, err := dal.GetMCPClient(c.Request.Context(), h.DB, req.ID)
+			if err == nil {
+				origCfg := mcpgw.MCPOAuthConfig(existing.OAuthConfig)
+				if req.OAuthConfig.ClientSecret == "***" {
+					req.OAuthConfig.ClientSecret = origCfg.ClientSecret
+				}
+				if req.OAuthConfig.AccessToken == "***" {
+					req.OAuthConfig.AccessToken = origCfg.AccessToken
+				}
+			}
+		}
 		data["oauth_config"] = mcpgw.OAuthConfigJSON(*req.OAuthConfig)
 	}
 	if req.ToolsToExecute != nil {

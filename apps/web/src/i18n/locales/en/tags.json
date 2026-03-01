@@ -1,0 +1,36 @@
+{
+  "title": "Tag Management",
+  "description": "Organize channels and keys with tags for flexible routing.",
+  "addTag": "Add Tag",
+  "editTag": "Edit Tag",
+  "deleteTitle": "Delete tag \"{{name}}\"?",
+  "deleteDescription": "This tag will be removed from all associated channels and keys.",
+  "noTags": "No tags created.",
+  "noTagsHint": "Create tags to organize channels and keys for tag-based routing.",
+  "tagSaved": "Tag saved successfully.",
+  "tagDeleted": "Tag deleted successfully.",
+  "table": {
+    "name": "Tag Name",
+    "color": "Color",
+    "channels": "Channels",
+    "keys": "Keys",
+    "createdAt": "Created"
+  },
+  "form": {
+    "name": "Tag Name",
+    "namePlaceholder": "e.g., production, us-region, high-priority",
+    "color": "Color",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional description for this tag..."
+  },
+  "colors": {
+    "gray": "Gray",
+    "red": "Red",
+    "orange": "Orange",
+    "yellow": "Yellow",
+    "green": "Green",
+    "blue": "Blue",
+    "purple": "Purple",
+    "pink": "Pink"
+  }
+}

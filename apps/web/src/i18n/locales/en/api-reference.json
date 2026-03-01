@@ -1,0 +1,10 @@
+{
+  "title": "API Reference",
+  "description": "Interactive API documentation for Wheel.",
+  "loading": "Loading API documentation...",
+  "openInNewTab": "Open in New Tab",
+  "endpoints": "Endpoints",
+  "baseUrl": "Base URL",
+  "unavailable": "API documentation is not available",
+  "unavailableHint": "Make sure the backend server is running and the API docs endpoint is accessible."
+}

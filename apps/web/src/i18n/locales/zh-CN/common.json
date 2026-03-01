@@ -2,11 +2,24 @@
   "nav": {
     "dashboard": "仪表盘",
     "model": "模型",
+    "playground": "试验场",
     "keys": "API 密钥",
     "mcp": "MCP",
+    "guardrails": "安全护栏",
+    "tags": "标签",
+    "usage": "用量分析",
     "logs": "日志",
+    "budgets": "预算",
     "modelLimits": "模型限制",
+    "apiReference": "API 文档",
     "settings": "设置"
+  },
+  "navSection": {
+    "gateway": "AI 网关",
+    "observability": "可观测性",
+    "accessControl": "访问控制",
+    "developer": "开发者",
+    "system": "系统"
   },
   "actions": {
     "cancel": "取消",

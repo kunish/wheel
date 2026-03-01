@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { changePassword, changeUsername } from "@/lib/api-client"
 
 // ───────────── Lazy-loaded sections ─────────────
@@ -127,6 +128,13 @@ function AccountSection() {
   )
 }
 
+// ───────────── Suspense Fallback ─────────────
+
+function SectionFallback() {
+  const { t } = useTranslation("common")
+  return <p className="text-muted-foreground">{t("actions.loading")}</p>
+}
+
 // ───────────── Settings Page ─────────────
 
 export default function SettingsPage() {
@@ -134,37 +142,43 @@ export default function SettingsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <h2 className="shrink-0 pb-4 text-2xl font-bold tracking-tight">{t("title")}</h2>
-      <div className="min-h-0 flex-1 space-y-6 overflow-auto">
-        <AccountSection />
-        <Suspense
-          fallback={
-            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
-          }
-        >
-          <SystemConfigSection />
-        </Suspense>
-        <Suspense
-          fallback={
-            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
-          }
-        >
-          <ConnectionSection />
-        </Suspense>
-        <Suspense
-          fallback={
-            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
-          }
-        >
-          <BackupSection />
-        </Suspense>
-        <Suspense
-          fallback={
-            <p className="text-muted-foreground">{t("actions.loading", { ns: "common" })}</p>
-          }
-        >
-          <VersionSection />
-        </Suspense>
-      </div>
+      <Tabs defaultValue="account" className="flex min-h-0 flex-1 flex-col">
+        <TabsList variant="line" className="shrink-0">
+          <TabsTrigger value="account">{t("tabs.account")}</TabsTrigger>
+          <TabsTrigger value="system">{t("tabs.system")}</TabsTrigger>
+          <TabsTrigger value="connection">{t("tabs.connection")}</TabsTrigger>
+          <TabsTrigger value="backup">{t("tabs.backup")}</TabsTrigger>
+          <TabsTrigger value="version">{t("tabs.version")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="account" className="min-h-0 flex-1 overflow-auto pt-4">
+          <AccountSection />
+        </TabsContent>
+
+        <TabsContent value="system" className="min-h-0 flex-1 overflow-auto pt-4">
+          <Suspense fallback={<SectionFallback />}>
+            <SystemConfigSection />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="connection" className="min-h-0 flex-1 overflow-auto pt-4">
+          <Suspense fallback={<SectionFallback />}>
+            <ConnectionSection />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="backup" className="min-h-0 flex-1 overflow-auto pt-4">
+          <Suspense fallback={<SectionFallback />}>
+            <BackupSection />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="version" className="min-h-0 flex-1 overflow-auto pt-4">
+          <Suspense fallback={<SectionFallback />}>
+            <VersionSection />
+          </Suspense>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -1,0 +1,55 @@
+{
+  "title": "Guardrails",
+  "description": "Configure content safety rules for API requests and responses.",
+  "addRule": "Add Rule",
+  "editRule": "Edit Rule",
+  "deleteTitle": "Delete rule \"{{name}}\"?",
+  "deleteDescription": "This action cannot be undone. The guardrail rule will be permanently removed.",
+  "noRules": "No guardrail rules configured.",
+  "noRulesHint": "Add rules to filter content in API requests and responses.",
+  "ruleSaved": "Rule saved successfully.",
+  "ruleDeleted": "Rule deleted successfully.",
+  "table": {
+    "name": "Name",
+    "type": "Type",
+    "target": "Target",
+    "action": "Action",
+    "status": "Status",
+    "scope": "Scope"
+  },
+  "type": {
+    "keyword": "Keyword Filter",
+    "regex": "Regex Pattern",
+    "length": "Length Limit",
+    "pii": "PII Detection"
+  },
+  "target": {
+    "input": "Input",
+    "output": "Output",
+    "both": "Both"
+  },
+  "action": {
+    "block": "Block",
+    "warn": "Warn",
+    "redact": "Redact"
+  },
+  "scope": {
+    "all": "All Keys",
+    "specific": "Specific Keys"
+  },
+  "form": {
+    "name": "Rule Name",
+    "namePlaceholder": "e.g., Block sensitive content",
+    "type": "Rule Type",
+    "target": "Apply To",
+    "action": "Action",
+    "pattern": "Pattern",
+    "patternPlaceholder": "Enter keywords or regex pattern...",
+    "patternHint": "For keyword type, separate multiple keywords with commas.",
+    "maxLength": "Max Length",
+    "maxLengthHint": "Maximum number of characters allowed.",
+    "enabled": "Enabled",
+    "scope": "Scope",
+    "selectKeys": "Select API Keys"
+  }
+}

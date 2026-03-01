@@ -1,0 +1,39 @@
+{
+  "title": "预算管理",
+  "description": "管理 API 密钥的支出预算和定时重置。",
+  "table": {
+    "name": "名称",
+    "key": "API 密钥",
+    "maxCost": "预算上限",
+    "totalCost": "已花费",
+    "remaining": "剩余",
+    "percentage": "使用率",
+    "period": "重置周期",
+    "nextReset": "下次重置",
+    "status": "状态"
+  },
+  "period": {
+    "none": "不重置",
+    "daily": "每天",
+    "weekly": "每周",
+    "monthly": "每月"
+  },
+  "noBudgets": "未配置预算。",
+  "noBudgetsHint": "预算限制按 API 密钥配置。前往 API 密钥页面设置预算限制。",
+  "goToKeys": "前往 API 密钥",
+  "overBudget": "超出预算",
+  "nearLimit": "接近上限",
+  "healthy": "正常",
+  "noLimit": "无限制",
+  "unlimited": "无限制",
+  "summary": {
+    "totalBudget": "总预算",
+    "totalSpent": "总支出",
+    "keysOverBudget": "超出预算的密钥",
+    "keysNearLimit": "接近上限的密钥"
+  },
+  "alert": {
+    "threshold": "告警阈值",
+    "thresholdHint": "当使用率达到此百分比时发送通知。"
+  }
+}

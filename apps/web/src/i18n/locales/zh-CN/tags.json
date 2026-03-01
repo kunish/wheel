@@ -1,0 +1,36 @@
+{
+  "title": "标签管理",
+  "description": "使用标签组织通道和密钥，实现灵活路由。",
+  "addTag": "添加标签",
+  "editTag": "编辑标签",
+  "deleteTitle": "删除标签「{{name}}」？",
+  "deleteDescription": "该标签将从所有关联的通道和密钥中移除。",
+  "noTags": "暂无标签。",
+  "noTagsHint": "创建标签以组织通道和密钥，用于基于标签的路由。",
+  "tagSaved": "标签已保存。",
+  "tagDeleted": "标签已删除。",
+  "table": {
+    "name": "标签名称",
+    "color": "颜色",
+    "channels": "通道",
+    "keys": "密钥",
+    "createdAt": "创建时间"
+  },
+  "form": {
+    "name": "标签名称",
+    "namePlaceholder": "例如：production、us-region、high-priority",
+    "color": "颜色",
+    "description": "描述",
+    "descriptionPlaceholder": "可选的标签描述..."
+  },
+  "colors": {
+    "gray": "灰色",
+    "red": "红色",
+    "orange": "橙色",
+    "yellow": "黄色",
+    "green": "绿色",
+    "blue": "蓝色",
+    "purple": "紫色",
+    "pink": "粉色"
+  }
+}

@@ -6,6 +6,7 @@ import type { ModelProfile } from "@/lib/api-client"
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -25,6 +26,7 @@ import {
   X,
 } from "lucide-react"
 import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
@@ -213,9 +215,13 @@ export default function ModelPage() {
   // ─── Drag handlers ────────────────────────────
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 1 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
+
+  const measuring = {
+    droppable: { strategy: MeasuringStrategy.Always },
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDrag(event.active.data.current as DragData)
@@ -346,6 +352,7 @@ export default function ModelPage() {
   return (
     <DndContext
       sensors={sensors}
+      measuring={measuring}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -406,29 +413,32 @@ export default function ModelPage() {
         </div>
       </div>
 
-      {/* Drag overlay */}
-      <DragOverlay dropAnimation={null}>
-        {activeDrag?.type === "model" && (
-          <ModelCard
-            modelId={activeDrag.model}
-            className="cursor-grabbing shadow-lg"
-            price={priceMap.get(activeDrag.model)}
-          >
-            <ModelSourceBadge
+      {/* Drag overlay — portalled to body to escape any ancestor transform/willChange containing blocks */}
+      {createPortal(
+        <DragOverlay dropAnimation={null}>
+          {activeDrag?.type === "model" && (
+            <ModelCard
               modelId={activeDrag.model}
-              isApiFetched={
-                channels
-                  .find((c) => c.id === activeDrag.channelId)
-                  ?.fetchedModel?.includes(activeDrag.model) ?? false
-              }
-            />
-          </ModelCard>
-        )}
-        {activeDrag?.type === "channel" && <ChannelOverlay channel={activeDrag.channel} />}
-        {activeDrag?.type === "group" && (
-          <GroupOverlay group={groups.find((g) => g.id === activeDrag.groupId)} />
-        )}
-      </DragOverlay>
+              className="cursor-grabbing shadow-lg"
+              price={priceMap.get(activeDrag.model)}
+            >
+              <ModelSourceBadge
+                modelId={activeDrag.model}
+                isApiFetched={
+                  channels
+                    .find((c) => c.id === activeDrag.channelId)
+                    ?.fetchedModel?.includes(activeDrag.model) ?? false
+                }
+              />
+            </ModelCard>
+          )}
+          {activeDrag?.type === "channel" && <ChannelOverlay channel={activeDrag.channel} />}
+          {activeDrag?.type === "group" && (
+            <GroupOverlay group={groups.find((g) => g.id === activeDrag.groupId)} />
+          )}
+        </DragOverlay>,
+        document.body,
+      )}
 
       {/* ─── Model List Dialog ────────────────── */}
       <Dialog open={modelListOpen} onOpenChange={setModelListOpen}>

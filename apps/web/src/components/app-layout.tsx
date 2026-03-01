@@ -1,7 +1,10 @@
 import {
+  BarChart3,
+  BookOpen,
   Boxes,
   ChevronLeft,
   ChevronRight,
+  DollarSign,
   Ellipsis,
   FileText,
   Gauge,
@@ -14,7 +17,10 @@ import {
   Plug,
   Search,
   Settings,
+  Shield,
   Sun,
+  Tags,
+  Terminal,
 } from "lucide-react"
 import { motion } from "motion/react"
 import { useCallback, useEffect, useState } from "react"
@@ -41,15 +47,58 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useAuthStore } from "@/lib/store/auth"
 import { cn } from "@/lib/utils"
 
-const navItemDefs = [
-  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
-  { href: "/model", labelKey: "nav.model", icon: Boxes },
-  { href: "/keys", labelKey: "nav.keys", icon: Key },
-  { href: "/mcp", labelKey: "nav.mcp", icon: Plug },
-  { href: "/logs", labelKey: "nav.logs", icon: FileText },
-  { href: "/model-limits", labelKey: "nav.modelLimits", icon: Gauge },
-  { href: "/settings", labelKey: "nav.settings", icon: Settings },
-] as const
+// ── Nav structure with sections ──
+
+interface NavItem {
+  href: string
+  labelKey: string
+  icon: typeof LayoutDashboard
+}
+
+interface NavSection {
+  sectionKey: string
+  items: NavItem[]
+}
+
+const navSections: NavSection[] = [
+  {
+    sectionKey: "navSection.gateway",
+    items: [
+      { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+      { href: "/model", labelKey: "nav.model", icon: Boxes },
+      { href: "/playground", labelKey: "nav.playground", icon: Terminal },
+      { href: "/mcp", labelKey: "nav.mcp", icon: Plug },
+      { href: "/guardrails", labelKey: "nav.guardrails", icon: Shield },
+    ],
+  },
+  {
+    sectionKey: "navSection.observability",
+    items: [
+      { href: "/usage", labelKey: "nav.usage", icon: BarChart3 },
+      { href: "/logs", labelKey: "nav.logs", icon: FileText },
+    ],
+  },
+  {
+    sectionKey: "navSection.accessControl",
+    items: [
+      { href: "/keys", labelKey: "nav.keys", icon: Key },
+      { href: "/budgets", labelKey: "nav.budgets", icon: DollarSign },
+      { href: "/model-limits", labelKey: "nav.modelLimits", icon: Gauge },
+      { href: "/tags", labelKey: "nav.tags", icon: Tags },
+    ],
+  },
+  {
+    sectionKey: "navSection.developer",
+    items: [{ href: "/api-reference", labelKey: "nav.apiReference", icon: BookOpen }],
+  },
+  {
+    sectionKey: "navSection.system",
+    items: [{ href: "/settings", labelKey: "nav.settings", icon: Settings }],
+  },
+]
+
+// Flat list for mobile and navOrder
+const allNavItems = navSections.flatMap((s) => s.items)
 
 const SIDEBAR_COLLAPSED_KEY = "wheel-sidebar-collapsed"
 
@@ -137,47 +186,64 @@ function DesktopSidebar() {
             </button>
           </div>
 
-          {/* Nav items */}
-          <nav className="flex flex-1 flex-col gap-0.5 px-3">
-            {navItemDefs.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname.startsWith(item.href)
-              const link = (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={cn(
-                    "relative isolate flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
-                    isActive
-                      ? "text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent",
-                    collapsed && "justify-center px-0",
-                  )}
-                >
-                  {isActive && (
-                    <motion.div
-                      layoutId="sidebar-active"
-                      className="bg-nb-lime absolute inset-0 -z-10 rounded-lg"
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                  <Icon className="h-4.5 w-4.5 shrink-0" />
-                  {!collapsed && <span>{t(item.labelKey)}</span>}
-                </Link>
-              )
+          {/* Nav items with sections */}
+          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3">
+            {navSections.map((section, sectionIdx) => (
+              <div key={section.sectionKey}>
+                {/* Section header */}
+                {!collapsed && (
+                  <div
+                    className={cn(
+                      "text-muted-foreground/50 px-3 text-[10px] font-semibold tracking-wider uppercase",
+                      sectionIdx === 0 ? "pb-1" : "pt-4 pb-1",
+                    )}
+                  >
+                    {t(section.sectionKey)}
+                  </div>
+                )}
+                {collapsed && sectionIdx > 0 && <div className="bg-border mx-3 my-2 h-px" />}
 
-              if (collapsed) {
-                return (
-                  <Tooltip key={item.href}>
-                    <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    <TooltipContent side="right" sideOffset={8}>
-                      {t(item.labelKey)}
-                    </TooltipContent>
-                  </Tooltip>
-                )
-              }
-              return link
-            })}
+                {section.items.map((item) => {
+                  const Icon = item.icon
+                  const isActive = pathname.startsWith(item.href)
+                  const link = (
+                    <Link
+                      key={item.href}
+                      to={item.href}
+                      className={cn(
+                        "relative isolate flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                        isActive
+                          ? "text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent",
+                        collapsed && "justify-center px-0",
+                      )}
+                    >
+                      {isActive && (
+                        <motion.div
+                          layoutId="sidebar-active"
+                          className="bg-nb-lime absolute inset-0 -z-10 rounded-lg"
+                          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        />
+                      )}
+                      <Icon className="h-4.5 w-4.5 shrink-0" />
+                      {!collapsed && <span>{t(item.labelKey)}</span>}
+                    </Link>
+                  )
+
+                  if (collapsed) {
+                    return (
+                      <Tooltip key={item.href}>
+                        <TooltipTrigger asChild>{link}</TooltipTrigger>
+                        <TooltipContent side="right" sideOffset={8}>
+                          {t(item.labelKey)}
+                        </TooltipContent>
+                      </Tooltip>
+                    )
+                  }
+                  return link
+                })}
+              </div>
+            ))}
           </nav>
 
           {/* Bottom actions */}
@@ -276,8 +342,14 @@ function BottomNav() {
   const logout = useAuthStore((s) => s.logout)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
-  // Show only 5 items on mobile bottom nav (skip keys)
-  const mobileNavItems = navItemDefs.filter((item) => item.href !== "/keys")
+  // Show only the most important items on mobile bottom nav
+  const mobileNavItems = [
+    allNavItems[0], // dashboard
+    allNavItems[1], // model
+    allNavItems[5], // usage
+    allNavItems[6], // logs
+    allNavItems[12], // settings
+  ]
 
   return (
     <>
@@ -385,6 +457,8 @@ function BottomNav() {
 }
 
 // ── App Layout ──
+
+export { allNavItems }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const isDesktop = useMediaQuery("(min-width: 1024px)")

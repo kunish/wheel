@@ -22,7 +22,21 @@ export function ProtectedLayout() {
   const prevKeyRef = useRef(routeKey)
 
   // Determine scroll direction: entering route index vs previous
-  const navOrder = ["/dashboard", "/model", "/keys", "/mcp", "/logs", "/model-limits", "/settings"]
+  const navOrder = [
+    "/dashboard",
+    "/model",
+    "/playground",
+    "/mcp",
+    "/guardrails",
+    "/usage",
+    "/logs",
+    "/keys",
+    "/budgets",
+    "/model-limits",
+    "/tags",
+    "/api-reference",
+    "/settings",
+  ]
   const prevIdx = navOrder.indexOf(prevKeyRef.current)
   const currIdx = navOrder.indexOf(routeKey)
   const direction = currIdx >= prevIdx ? 1 : -1
@@ -47,7 +61,6 @@ export function ProtectedLayout() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: direction * -4 }}
           transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
-          style={{ willChange: "opacity, transform" }}
         >
           <Outlet />
         </motion.div>

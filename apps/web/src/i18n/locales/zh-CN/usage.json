@@ -1,0 +1,43 @@
+{
+  "title": "用量分析",
+  "description": "按密钥、模型和通道分析 API 使用情况。",
+  "tabs": {
+    "byKey": "按 API 密钥",
+    "byModel": "按模型",
+    "byChannel": "按通道"
+  },
+  "table": {
+    "name": "名称",
+    "requests": "请求数",
+    "tokens": "Token 数",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "cost": "费用",
+    "quota": "配额",
+    "used": "已用",
+    "remaining": "剩余",
+    "percentage": "使用率",
+    "lastUsed": "最后使用",
+    "channel": "通道",
+    "model": "模型",
+    "key": "API 密钥"
+  },
+  "chart": {
+    "costTrend": "费用趋势",
+    "requestsTrend": "请求趋势",
+    "tokensTrend": "Token 趋势",
+    "topModels": "费用最高的模型",
+    "topKeys": "费用最高的 API 密钥"
+  },
+  "summary": {
+    "totalCost": "总费用",
+    "totalRequests": "总请求数",
+    "totalTokens": "总 Token 数",
+    "avgCostPerRequest": "平均每请求费用"
+  },
+  "export": "导出 CSV",
+  "noData": "暂无用量数据。",
+  "noDataHint": "API 调用后用量数据将显示在此处。",
+  "unlimited": "无限制",
+  "timeRange": "时间范围"
+}

@@ -1,5 +1,8 @@
 import {
+  BarChart3,
+  BookOpen,
   Boxes,
+  DollarSign,
   FileText,
   Key,
   LayoutDashboard,
@@ -9,6 +12,8 @@ import {
   Settings,
   Shield,
   Sun,
+  Tags,
+  Terminal,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -73,6 +78,54 @@ export function CommandPalette() {
         icon: FileText,
         action: () => navigate("/logs"),
         keywords: ["request", "history", "日志"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-playground",
+        label: t("nav.playground"),
+        icon: Terminal,
+        action: () => navigate("/playground"),
+        keywords: ["test", "debug", "chat", "调试", "测试"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-usage",
+        label: t("nav.usage"),
+        icon: BarChart3,
+        action: () => navigate("/usage"),
+        keywords: ["analytics", "stats", "cost", "用量", "统计"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-budgets",
+        label: t("nav.budgets"),
+        icon: DollarSign,
+        action: () => navigate("/budgets"),
+        keywords: ["budget", "limit", "spending", "预算"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-guardrails",
+        label: t("nav.guardrails"),
+        icon: Shield,
+        action: () => navigate("/guardrails"),
+        keywords: ["safety", "filter", "content", "安全", "护栏"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-tags",
+        label: t("nav.tags"),
+        icon: Tags,
+        action: () => navigate("/tags"),
+        keywords: ["tag", "label", "category", "标签"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-api-reference",
+        label: t("nav.apiReference"),
+        icon: BookOpen,
+        action: () => navigate("/api-reference"),
+        keywords: ["api", "openapi", "docs", "reference", "API文档"],
         group: "Navigation",
       },
       {

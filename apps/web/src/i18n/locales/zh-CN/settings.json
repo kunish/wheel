@@ -1,5 +1,12 @@
 {
   "title": "设置",
+  "tabs": {
+    "account": "账户",
+    "system": "系统",
+    "connection": "连接",
+    "backup": "备份",
+    "version": "版本"
+  },
   "account": {
     "changeUsername": "修改用户名",
     "newUsername": "新用户名",

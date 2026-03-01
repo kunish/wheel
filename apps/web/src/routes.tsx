@@ -32,6 +32,12 @@ const LogsPage = lazy(() => import("./pages/logs"))
 const SettingsPage = lazy(() => import("./pages/settings"))
 const MCPPage = lazy(() => import("./pages/mcp"))
 const ModelLimitsPage = lazy(() => import("./pages/model-limits"))
+const PlaygroundPage = lazy(() => import("./pages/playground"))
+const UsagePage = lazy(() => import("./pages/usage"))
+const BudgetsPage = lazy(() => import("./pages/budgets"))
+const GuardrailsPage = lazy(() => import("./pages/guardrails"))
+const ApiReferencePage = lazy(() => import("./pages/api-reference"))
+const TagsPage = lazy(() => import("./pages/tags"))
 
 const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter
 
@@ -44,11 +50,17 @@ export function AppRouter() {
         <Route element={<ProtectedLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/model" element={<ModelPage />} />
+          <Route path="/playground" element={<PlaygroundPage />} />
           <Route path="/channels" element={<Navigate to="/model" replace />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/keys" element={<KeysPage />} />
           <Route path="/logs" element={<LogsPage />} />
+          <Route path="/usage" element={<UsagePage />} />
+          <Route path="/budgets" element={<BudgetsPage />} />
           <Route path="/model-limits" element={<ModelLimitsPage />} />
+          <Route path="/guardrails" element={<GuardrailsPage />} />
+          <Route path="/tags" element={<TagsPage />} />
+          <Route path="/api-reference" element={<ApiReferencePage />} />
           <Route path="/prices" element={<Navigate to="/model" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/mcp" element={<MCPPage />} />

@@ -8,6 +8,11 @@
 		reverse_proxy worker:8787
 	}
 
+	# API docs (Scalar) -> worker
+	handle /docs* {
+		reverse_proxy worker:8787
+	}
+
 	# Everything else -> Vite SPA static files
 	handle {
 		reverse_proxy web:3000
