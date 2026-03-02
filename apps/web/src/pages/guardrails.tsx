@@ -1,5 +1,6 @@
+import type { GuardrailRule } from "@/lib/api"
 import { Pencil, Plus, Shield, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
@@ -32,19 +33,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
-
-// Local state management (no backend API yet — this is a UI-ready scaffold)
-
-interface GuardrailRule {
-  id: string
-  name: string
-  type: "keyword" | "regex" | "length" | "pii"
-  target: "input" | "output" | "both"
-  action: "block" | "warn" | "redact"
-  pattern: string
-  maxLength?: number
-  enabled: boolean
-}
+import {
+  createGuardrailRule,
+  deleteGuardrailRule,
+  listGuardrailRules,
+  updateGuardrailRule,
+} from "@/lib/api"
 
 interface RuleFormData {
   name: string
@@ -69,54 +63,77 @@ const EMPTY_FORM: RuleFormData = {
 export default function GuardrailsPage() {
   const { t } = useTranslation("guardrails")
   const [rules, setRules] = useState<GuardrailRule[]>([])
+  const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState<RuleFormData>(EMPTY_FORM)
   const [editingRule, setEditingRule] = useState<GuardrailRule | null>(null)
   const [editForm, setEditForm] = useState<RuleFormData>(EMPTY_FORM)
   const [deleteConfirm, setDeleteConfirm] = useState<GuardrailRule | null>(null)
 
-  function handleCreate(form: RuleFormData) {
-    const rule: GuardrailRule = {
-      id: crypto.randomUUID(),
-      name: form.name,
-      type: form.type,
-      target: form.target,
-      action: form.action,
-      pattern: form.pattern,
-      maxLength: form.maxLength ? Number.parseInt(form.maxLength, 10) : undefined,
-      enabled: form.enabled,
+  const fetchRules = useCallback(async () => {
+    try {
+      const res = await listGuardrailRules()
+      setRules(res.data.rules)
+    } catch {
+      toast.error(t("fetchError", { ns: "common", defaultValue: "Failed to fetch data" }))
+    } finally {
+      setLoading(false)
     }
-    setRules((prev) => [...prev, rule])
-    setCreateForm(EMPTY_FORM)
-    setShowCreate(false)
-    toast.success(t("ruleSaved"))
+  }, [t])
+
+  useEffect(() => {
+    fetchRules()
+  }, [fetchRules])
+
+  async function handleCreate(form: RuleFormData) {
+    try {
+      await createGuardrailRule({
+        name: form.name,
+        type: form.type,
+        target: form.target,
+        action: form.action,
+        pattern: form.pattern,
+        maxLength: form.maxLength ? Number.parseInt(form.maxLength, 10) : 0,
+        enabled: form.enabled,
+      })
+      setCreateForm(EMPTY_FORM)
+      setShowCreate(false)
+      toast.success(t("ruleSaved"))
+      fetchRules()
+    } catch {
+      toast.error(t("saveError", { ns: "common", defaultValue: "Failed to save" }))
+    }
   }
 
-  function handleUpdate(id: string, form: RuleFormData) {
-    setRules((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              name: form.name,
-              type: form.type,
-              target: form.target,
-              action: form.action,
-              pattern: form.pattern,
-              maxLength: form.maxLength ? Number.parseInt(form.maxLength, 10) : undefined,
-              enabled: form.enabled,
-            }
-          : r,
-      ),
-    )
-    setEditingRule(null)
-    toast.success(t("ruleSaved"))
+  async function handleUpdate(id: number, form: RuleFormData) {
+    try {
+      await updateGuardrailRule({
+        id,
+        name: form.name,
+        type: form.type,
+        target: form.target,
+        action: form.action,
+        pattern: form.pattern,
+        maxLength: form.maxLength ? Number.parseInt(form.maxLength, 10) : 0,
+        enabled: form.enabled,
+      })
+      setEditingRule(null)
+      toast.success(t("ruleSaved"))
+      fetchRules()
+    } catch {
+      toast.error(t("saveError", { ns: "common", defaultValue: "Failed to save" }))
+    }
   }
 
-  function handleDelete(id: string) {
-    setRules((prev) => prev.filter((r) => r.id !== id))
-    setDeleteConfirm(null)
-    toast.success(t("ruleDeleted"))
+  async function handleDelete(id: number) {
+    try {
+      await deleteGuardrailRule(id)
+      setDeleteConfirm(null)
+      toast.success(t("ruleDeleted"))
+      fetchRules()
+    } catch {
+      toast.error(t("deleteError", { ns: "common", defaultValue: "Failed to delete" }))
+    }
   }
 
   function openEdit(rule: GuardrailRule) {
@@ -197,7 +214,11 @@ export default function GuardrailsPage() {
             onConfirm={() => deleteConfirm && handleDelete(deleteConfirm.id)}
           />
 
-          {rules.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <p className="text-muted-foreground text-sm">Loading...</p>
+            </div>
+          ) : rules.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16">
               <Shield className="text-muted-foreground h-10 w-10" />
               <p className="text-muted-foreground font-medium">{t("noRules")}</p>

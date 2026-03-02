@@ -127,4 +127,16 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/model-limit/create", h.CreateModelLimit)
 	admin.POST("/model-limit/update", h.UpdateModelLimit)
 	admin.DELETE("/model-limit/delete/:id", h.DeleteModelLimit)
+
+	// Guardrail rule routes
+	admin.GET("/guardrail/list", h.ListGuardrailRules)
+	admin.POST("/guardrail/create", h.CreateGuardrailRule)
+	admin.POST("/guardrail/update", h.UpdateGuardrailRule)
+	admin.DELETE("/guardrail/delete/:id", h.DeleteGuardrailRule)
+
+	// Tag routes
+	admin.GET("/tag/list", h.ListTags)
+	admin.POST("/tag/create", h.CreateTag)
+	admin.POST("/tag/update", h.UpdateTag)
+	admin.DELETE("/tag/delete/:id", h.DeleteTag)
 }

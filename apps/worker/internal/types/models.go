@@ -399,6 +399,31 @@ type ModelLimit struct {
 	Enabled       bool   `bun:"enabled"             json:"enabled"`
 }
 
+// GuardrailRule defines a content guardrail rule.
+type GuardrailRule struct {
+	bun.BaseModel `bun:"table:guardrail_rules"`
+	ID            int    `bun:"id,pk,autoincrement" json:"id"`
+	Name          string `bun:"name"                json:"name"`
+	Type          string `bun:"type"                json:"type"`
+	Target        string `bun:"target"              json:"target"`
+	Action        string `bun:"action"              json:"action"`
+	Pattern       string `bun:"pattern"             json:"pattern"`
+	MaxLength     int    `bun:"max_length"          json:"maxLength"`
+	Enabled       bool   `bun:"enabled"             json:"enabled"`
+}
+
+// Tag is a label that can be applied to channels/keys for organization.
+type Tag struct {
+	bun.BaseModel `bun:"table:tags"`
+	ID            int     `bun:"id,pk,autoincrement" json:"id"`
+	Name          string  `bun:"name"                json:"name"`
+	Color         string  `bun:"color"               json:"color"`
+	Description   string  `bun:"description"         json:"description"`
+	ChannelCount  int     `bun:"-"                   json:"channelCount"`
+	KeyCount      int     `bun:"-"                   json:"keyCount"`
+	CreatedAt     *string `bun:"created_at"          json:"createdAt,omitempty"`
+}
+
 // AttemptList is a []ChannelAttempt that scans/values as JSON TEXT.
 type AttemptList []ChannelAttempt
 

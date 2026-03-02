@@ -272,6 +272,44 @@ type ProfileDeleteRequest struct {
 	ID int `json:"id"`
 }
 
+// ──── Guardrail Rule ────
+
+type GuardrailRuleCreateRequest struct {
+	Name      string `json:"name" binding:"required"`
+	Type      string `json:"type" binding:"required"`
+	Target    string `json:"target" binding:"required"`
+	Action    string `json:"action" binding:"required"`
+	Pattern   string `json:"pattern"`
+	MaxLength int    `json:"maxLength"`
+	Enabled   bool   `json:"enabled"`
+}
+
+type GuardrailRuleUpdateRequest struct {
+	ID        int     `json:"id"`
+	Name      *string `json:"name,omitempty"`
+	Type      *string `json:"type,omitempty"`
+	Target    *string `json:"target,omitempty"`
+	Action    *string `json:"action,omitempty"`
+	Pattern   *string `json:"pattern,omitempty"`
+	MaxLength *int    `json:"maxLength,omitempty"`
+	Enabled   *bool   `json:"enabled,omitempty"`
+}
+
+// ──── Tag ────
+
+type TagCreateRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Color       string `json:"color" binding:"required"`
+	Description string `json:"description"`
+}
+
+type TagUpdateRequest struct {
+	ID          int     `json:"id"`
+	Name        *string `json:"name,omitempty"`
+	Color       *string `json:"color,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
 // ──── Sync ────
 
 type SyncResult struct {

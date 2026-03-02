@@ -1,5 +1,6 @@
+import type { Tag } from "@/lib/api"
 import { Pencil, Plus, Tags, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
@@ -30,18 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
-
-// Local state management (no backend API yet — UI-ready scaffold)
-
-interface Tag {
-  id: string
-  name: string
-  color: string
-  description: string
-  channelCount: number
-  keyCount: number
-  createdAt: string
-}
+import { createTag, deleteTag, listTags, updateTag } from "@/lib/api"
 
 interface TagFormData {
   name: string
@@ -71,44 +61,69 @@ const colorClasses: Record<string, string> = {
 export default function TagsPage() {
   const { t } = useTranslation("tags")
   const [tags, setTags] = useState<Tag[]>([])
+  const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState<TagFormData>(EMPTY_FORM)
   const [editingTag, setEditingTag] = useState<Tag | null>(null)
   const [editForm, setEditForm] = useState<TagFormData>(EMPTY_FORM)
   const [deleteConfirm, setDeleteConfirm] = useState<Tag | null>(null)
 
-  function handleCreate(form: TagFormData) {
-    const tag: Tag = {
-      id: crypto.randomUUID(),
-      name: form.name,
-      color: form.color,
-      description: form.description,
-      channelCount: 0,
-      keyCount: 0,
-      createdAt: new Date().toISOString(),
+  const fetchTags = useCallback(async () => {
+    try {
+      const res = await listTags()
+      setTags(res.data.tags)
+    } catch {
+      toast.error(t("fetchError", { ns: "common", defaultValue: "Failed to fetch data" }))
+    } finally {
+      setLoading(false)
     }
-    setTags((prev) => [...prev, tag])
-    setCreateForm(EMPTY_FORM)
-    setShowCreate(false)
-    toast.success(t("tagSaved"))
+  }, [t])
+
+  useEffect(() => {
+    fetchTags()
+  }, [fetchTags])
+
+  async function handleCreate(form: TagFormData) {
+    try {
+      await createTag({
+        name: form.name,
+        color: form.color,
+        description: form.description,
+      })
+      setCreateForm(EMPTY_FORM)
+      setShowCreate(false)
+      toast.success(t("tagSaved"))
+      fetchTags()
+    } catch {
+      toast.error(t("saveError", { ns: "common", defaultValue: "Failed to save" }))
+    }
   }
 
-  function handleUpdate(id: string, form: TagFormData) {
-    setTags((prev) =>
-      prev.map((tag) =>
-        tag.id === id
-          ? { ...tag, name: form.name, color: form.color, description: form.description }
-          : tag,
-      ),
-    )
-    setEditingTag(null)
-    toast.success(t("tagSaved"))
+  async function handleUpdate(id: number, form: TagFormData) {
+    try {
+      await updateTag({
+        id,
+        name: form.name,
+        color: form.color,
+        description: form.description,
+      })
+      setEditingTag(null)
+      toast.success(t("tagSaved"))
+      fetchTags()
+    } catch {
+      toast.error(t("saveError", { ns: "common", defaultValue: "Failed to save" }))
+    }
   }
 
-  function handleDelete(id: string) {
-    setTags((prev) => prev.filter((tag) => tag.id !== id))
-    setDeleteConfirm(null)
-    toast.success(t("tagDeleted"))
+  async function handleDelete(id: number) {
+    try {
+      await deleteTag(id)
+      setDeleteConfirm(null)
+      toast.success(t("tagDeleted"))
+      fetchTags()
+    } catch {
+      toast.error(t("deleteError", { ns: "common", defaultValue: "Failed to delete" }))
+    }
   }
 
   function openEdit(tag: Tag) {
@@ -181,7 +196,11 @@ export default function TagsPage() {
             onConfirm={() => deleteConfirm && handleDelete(deleteConfirm.id)}
           />
 
-          {tags.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <p className="text-muted-foreground text-sm">Loading...</p>
+            </div>
+          ) : tags.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16">
               <Tags className="text-muted-foreground h-10 w-10" />
               <p className="text-muted-foreground font-medium">{t("noTags")}</p>
