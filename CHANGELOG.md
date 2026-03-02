@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.18.0](https://github.com/kunish/wheel/compare/v1.17.0...v1.18.0) (2026-03-02)
+
+
+### Features
+
+* add backend CRUD for guardrails and tags pages ([85cffbb](https://github.com/kunish/wheel/commit/85cffbb7f397bacf223a75651ac237a7b2547bf0))
+
+
+### Bug Fixes
+
+* oauth hardening, API docs routing and frontend improvements ([79d793e](https://github.com/kunish/wheel/commit/79d793ef2796d1a99a84afb9dc1f9c6d7020708f))
+
 ## [1.17.0](https://github.com/kunish/wheel/compare/v1.16.0...v1.17.0) (2026-02-27)
 
 
