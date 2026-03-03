@@ -10,3 +10,4 @@ data/
 apps/worker/worker
 apps/worker/bin/
 apps/worker/tmp/
+.worktrees/
