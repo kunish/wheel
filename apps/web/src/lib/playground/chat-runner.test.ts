@@ -162,4 +162,54 @@ describe("chat-runner", () => {
       runner.run(makeBaseInput({ aliasMap: {}, mcpTools: [], mode: "auto" })),
     ).rejects.toThrow(/missing tool alias/i)
   })
+
+  it("keeps auto loop running when tool execution fails", async () => {
+    const deps: ChatRunnerDeps = {
+      createChatCompletion: vi
+        .fn()
+        .mockResolvedValueOnce({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    id: "call_1",
+                    function: { name: "weather_search", arguments: '{"city":"Tokyo"}' },
+                  },
+                ],
+              },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          choices: [{ message: { role: "assistant", content: "Fallback answer" } }],
+        }),
+      executeTool: vi.fn().mockRejectedValue(new Error("MCP tool timeout")),
+    }
+
+    const runner = createChatRunner(deps)
+    const result = await runner.run(makeBaseInput())
+
+    expect(result.status).toBe("completed")
+    if (result.status === "completed") {
+      expect(result.responseText).toBe("Fallback answer")
+    }
+
+    expect(deps.createChatCompletion).toHaveBeenCalledTimes(2)
+    expect(deps.createChatCompletion).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: "tool",
+              tool_call_id: "call_1",
+              content: JSON.stringify({ isError: true, error: "MCP tool timeout" }),
+            }),
+          ]),
+        }),
+      }),
+    )
+  })
 })

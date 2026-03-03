@@ -53,6 +53,61 @@ function safeStringify(value: unknown): string {
   }
 }
 
+function readToolErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null
+  const record = payload as Record<string, unknown>
+  if (record.isError !== true) return null
+  if (typeof record.error === "string" && record.error.trim()) {
+    return record.error
+  }
+  return "Tool execution failed"
+}
+
+function toContinuationPayload(item: Pick<TimelineItem, "status" | "payload" | "error">): unknown {
+  if (item.status === "error") {
+    const existingError = readToolErrorMessage(item.payload)
+    if (existingError) {
+      return {
+        isError: true,
+        error: existingError,
+      }
+    }
+    return {
+      isError: true,
+      error: item.error || "Tool execution failed",
+    }
+  }
+  return item.payload ?? {}
+}
+
+export function canContinueManualFromTimeline(
+  pendingCalls: ManualPendingToolCall[],
+  timeline: TimelineItem[],
+): boolean {
+  return (
+    pendingCalls.length > 0 &&
+    pendingCalls.every((call) =>
+      timeline.some(
+        (x) => x.callId === call.toolCallId && (x.status === "done" || x.status === "error"),
+      ),
+    )
+  )
+}
+
+export function buildManualToolOutputs(
+  pendingCalls: ManualPendingToolCall[],
+  timeline: TimelineItem[],
+): Array<{ toolCallId: string; payload: unknown }> {
+  const pendingSet = new Set(pendingCalls.map((x) => x.toolCallId))
+  return timeline
+    .filter((x) => pendingSet.has(x.callId))
+    .filter((x) => x.status === "done" || x.status === "error")
+    .map((x) => ({
+      toolCallId: x.callId,
+      payload: toContinuationPayload(x),
+    }))
+}
+
 export function usePlaygroundChat() {
   const mcp = usePlaygroundMcp()
 
@@ -119,10 +174,12 @@ export function usePlaygroundChat() {
       }
 
       if (event.type === "tool-result") {
+        const errorMessage = readToolErrorMessage(event.payload)
         updateTimeline(event.toolCallId, {
-          status: "done",
+          status: errorMessage ? "error" : "done",
           payload: event.payload,
           resultText: safeStringify(event.payload),
+          error: errorMessage ?? undefined,
         })
       }
     },
@@ -324,7 +381,14 @@ export function usePlaygroundChat() {
         })
         updateTimeline(toolCallId, { status: "done", payload, resultText: safeStringify(payload) })
       } catch (err: unknown) {
-        updateTimeline(toolCallId, { status: "error", error: toErrorMessage(err) })
+        const errorMessage = toErrorMessage(err)
+        const payload = { isError: true, error: errorMessage }
+        updateTimeline(toolCallId, {
+          status: "error",
+          payload,
+          error: errorMessage,
+          resultText: safeStringify(payload),
+        })
       }
     },
     [pendingCalls, authKey, updateTimeline],
@@ -332,14 +396,7 @@ export function usePlaygroundChat() {
 
   const continueAfterTools = useCallback(async () => {
     if (!pendingSession) return
-    const pendingSet = new Set(pendingCalls.map((x) => x.toolCallId))
-    const outputs = timeline
-      .filter((x) => pendingSet.has(x.callId))
-      .filter((x) => x.status === "done")
-      .map((x) => ({
-        toolCallId: x.callId,
-        payload: x.payload ?? {},
-      }))
+    const outputs = buildManualToolOutputs(pendingCalls, timeline)
     if (outputs.length < pendingCalls.length) return
 
     setIsLoading(true)
@@ -372,11 +429,7 @@ export function usePlaygroundChat() {
     }
   }, [pendingSession, pendingCalls, timeline, handleRunnerEvent])
 
-  const canContinueManual =
-    pendingCalls.length > 0 &&
-    pendingCalls.every((call) =>
-      timeline.some((x) => x.callId === call.toolCallId && x.status === "done"),
-    )
+  const canContinueManual = canContinueManualFromTimeline(pendingCalls, timeline)
 
   return {
     model,

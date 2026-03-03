@@ -57,6 +57,16 @@ describe("tool-selection", () => {
     expect(selected).toEqual(["1:forecast", "1:search"])
   })
 
+  it("keeps empty selection when fallback-to-all is disabled", () => {
+    const available = buildSelectableTools([
+      makeClient({ id: 1, name: "weather", tools: [{ name: "search" }, { name: "forecast" }] }),
+    ])
+
+    const selected = pickSelectedToolKeys(available, ["999:missing"], { fallbackToAll: false })
+
+    expect(selected).toEqual([])
+  })
+
   it("maps selected keys back to refs for execution", () => {
     const available = buildSelectableTools([
       makeClient({ id: 1, name: "weather", tools: [{ name: "search" }, { name: "forecast" }] }),

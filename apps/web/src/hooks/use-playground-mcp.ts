@@ -2,7 +2,7 @@ import type { ToolAliasRef } from "@/lib/playground/mcp-alias"
 import type { McpToolDef } from "@/lib/playground/request-builders"
 import type { SelectableToolRef } from "@/lib/playground/tool-selection"
 import { useQuery } from "@tanstack/react-query"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { listMCPClients } from "@/lib/api"
 import {
   buildMcpToolsForChat,
@@ -30,10 +30,21 @@ export interface UsePlaygroundMcpResult {
   clearAll: () => void
 }
 
+export function resolveSelectedKeysForMcpTools(
+  tools: SelectableToolRef[],
+  selectedKeys: string[],
+  hasUserTouchedSelection: boolean,
+): string[] {
+  return pickSelectedToolKeys(tools, selectedKeys, {
+    fallbackToAll: !hasUserTouchedSelection,
+  })
+}
+
 export function usePlaygroundMcp(): UsePlaygroundMcpResult {
   const [enabled, setEnabled] = useState(false)
   const [mode, setMode] = useState<PlaygroundMcpMode>("auto")
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+  const [hasUserTouchedSelection, setHasUserTouchedSelection] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ["mcp-clients"],
@@ -45,9 +56,14 @@ export function usePlaygroundMcp(): UsePlaygroundMcpResult {
   }, [data?.data?.clients])
 
   const effectiveSelectedKeys = useMemo(
-    () => pickSelectedToolKeys(tools, selectedKeys),
-    [tools, selectedKeys],
+    () => resolveSelectedKeysForMcpTools(tools, selectedKeys, hasUserTouchedSelection),
+    [tools, selectedKeys, hasUserTouchedSelection],
   )
+
+  const setSelectedKeysWithIntent = useCallback((next: string[]) => {
+    setHasUserTouchedSelection(true)
+    setSelectedKeys(next)
+  }, [])
 
   const selected = useMemo(() => {
     return toSelectedToolRefs(tools, effectiveSelectedKeys)
@@ -78,13 +94,14 @@ export function usePlaygroundMcp(): UsePlaygroundMcpResult {
     aliasMap: mcpDefs.aliasMap,
     setEnabled,
     setMode,
-    setSelectedKeys,
+    setSelectedKeys: setSelectedKeysWithIntent,
     toggleTool: (key: string) => {
+      setHasUserTouchedSelection(true)
       setSelectedKeys((prev) =>
         prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key].sort(),
       )
     },
-    selectAll: () => setSelectedKeys(tools.map((x) => x.key).sort()),
-    clearAll: () => setSelectedKeys([]),
+    selectAll: () => setSelectedKeysWithIntent(tools.map((x) => x.key).sort()),
+    clearAll: () => setSelectedKeysWithIntent([]),
   }
 }

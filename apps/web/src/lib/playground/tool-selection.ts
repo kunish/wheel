@@ -36,10 +36,15 @@ export function buildSelectableTools(clients: MCPClientRecord[]): SelectableTool
   })
 }
 
-export function pickSelectedToolKeys(available: SelectableToolRef[], previous: string[]): string[] {
+export function pickSelectedToolKeys(
+  available: SelectableToolRef[],
+  previous: string[],
+  options?: { fallbackToAll?: boolean },
+): string[] {
   const availableSet = new Set(available.map((x) => x.key))
   const valid = previous.filter((x) => availableSet.has(x))
   if (valid.length > 0) return valid.sort()
+  if (options?.fallbackToAll === false) return []
   return available.map((x) => x.key).sort()
 }
 

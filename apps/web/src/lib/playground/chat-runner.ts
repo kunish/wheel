@@ -69,6 +69,18 @@ export type ChatRunnerEvent =
 
 const DEFAULT_MAX_ROUNDS = 6
 
+function toErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message
+  return "Unknown tool execution error"
+}
+
+function buildToolErrorPayload(err: unknown): { isError: true; error: string } {
+  return {
+    isError: true,
+    error: toErrorMessage(err),
+  }
+}
+
 function asRecord(value: string): Record<string, unknown> {
   if (!value) return {}
   try {
@@ -116,13 +128,18 @@ async function executeAutoTools(
   const toolMessages: ChatMessage[] = []
   for (const pending of pendingCalls) {
     onEvent?.({ type: "tool-call", call: pending })
-    const payload = await deps.executeTool({
-      apiKey,
-      clientId: pending.ref.clientId,
-      toolName: pending.ref.toolName,
-      argumentsObj: pending.argumentsObj,
-      signal,
-    })
+    let payload: unknown
+    try {
+      payload = await deps.executeTool({
+        apiKey,
+        clientId: pending.ref.clientId,
+        toolName: pending.ref.toolName,
+        argumentsObj: pending.argumentsObj,
+        signal,
+      })
+    } catch (err: unknown) {
+      payload = buildToolErrorPayload(err)
+    }
     onEvent?.({ type: "tool-result", toolCallId: pending.toolCallId, payload })
     toolMessages.push(makeToolMessage(pending.toolCallId, payload))
   }
