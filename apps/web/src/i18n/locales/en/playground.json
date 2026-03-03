@@ -34,5 +34,28 @@
   "copiedCurl": "cURL copied to clipboard",
   "error": "Error",
   "history": "History",
-  "clearHistory": "Clear History"
+  "clearHistory": "Clear History",
+  "mcp": {
+    "title": "MCP Tools",
+    "enable": "Enable MCP",
+    "enableHint": "Use MCP tools in Playground requests",
+    "mode": "Execution Mode",
+    "modeAuto": "Auto (loop until done)",
+    "modeManual": "Manual (pause on tool calls)",
+    "tools": "Tool Selection",
+    "selectedCount": "{{count}} selected",
+    "selectAll": "Select all",
+    "clearSelection": "Clear",
+    "noTools": "No connected MCP tools available"
+  },
+  "timeline": {
+    "title": "Tool Call Timeline",
+    "empty": "Tool calls will appear here once the model invokes a tool.",
+    "pending": "Pending",
+    "running": "Running",
+    "done": "Done",
+    "error": "Error",
+    "execute": "Execute tool",
+    "continue": "Continue conversation"
+  }
 }

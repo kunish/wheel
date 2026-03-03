@@ -34,5 +34,28 @@
   "copiedCurl": "cURL 已复制到剪贴板",
   "error": "错误",
   "history": "历史记录",
-  "clearHistory": "清空历史"
+  "clearHistory": "清空历史",
+  "mcp": {
+    "title": "MCP 工具",
+    "enable": "启用 MCP",
+    "enableHint": "在 Playground 请求中启用 MCP 工具",
+    "mode": "执行模式",
+    "modeAuto": "自动（循环直到完成）",
+    "modeManual": "手动（工具调用时暂停）",
+    "tools": "工具选择",
+    "selectedCount": "已选 {{count}} 个",
+    "selectAll": "全选",
+    "clearSelection": "清空",
+    "noTools": "暂无可用的已连接 MCP 工具"
+  },
+  "timeline": {
+    "title": "工具调用时间线",
+    "empty": "模型触发工具调用后会显示在这里。",
+    "pending": "待执行",
+    "running": "执行中",
+    "done": "已完成",
+    "error": "错误",
+    "execute": "执行工具",
+    "continue": "继续对话"
+  }
 }
