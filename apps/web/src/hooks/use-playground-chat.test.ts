@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest"
 import {
   buildManualToolOutputs,
+  buildPlaygroundRequestMessages,
   canContinueManualFromTimeline,
+  deriveConversationTurns,
   derivePlaygroundModels,
   mergePendingCallsIntoTimeline,
+  normalizeConversationMessages,
   parseActiveProfileId,
   resolveStreamForRequest,
 } from "./use-playground-chat"
@@ -35,6 +38,37 @@ describe("use-playground-chat helpers", () => {
         { name: "" },
       ]),
     ).toEqual(["claude-3-5-sonnet", "gpt-4o"])
+  })
+
+  it("normalizes conversation by removing system role", () => {
+    expect(
+      normalizeConversationMessages([
+        { role: "system", content: "you are helpful" },
+        { role: "user", content: "hello" },
+      ] as any),
+    ).toEqual([{ role: "user", content: "hello" }])
+  })
+
+  it("builds request messages with trimmed system prompt", () => {
+    expect(
+      buildPlaygroundRequestMessages("  helper  ", [{ role: "user", content: "q" }] as any),
+    ).toEqual([
+      { role: "system", content: "helper" },
+      { role: "user", content: "q" },
+    ])
+  })
+
+  it("derives display turns from user and assistant messages", () => {
+    expect(
+      deriveConversationTurns([
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "world" },
+        { role: "tool", content: "ignored" },
+      ] as any),
+    ).toEqual([
+      { id: "user-0", role: "user", content: "hello" },
+      { id: "assistant-1", role: "assistant", content: "world" },
+    ])
   })
 
   it("allows manual continue when each pending call is done or error", () => {

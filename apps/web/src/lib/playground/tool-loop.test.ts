@@ -26,6 +26,14 @@ describe("tool-loop", () => {
     expect(msg.content).toBe(JSON.stringify({ ok: true }))
   })
 
+  it("uses MCP text payload directly when available", () => {
+    const msg = makeToolMessage("c2", {
+      isError: false,
+      content: [{ type: "text", text: "issue list" }],
+    })
+    expect(msg.content).toBe("issue list")
+  })
+
   it("stops when rounds exceed max", () => {
     expect(shouldStopLoop({ round: 7, maxRounds: 6, pendingCalls: 1 })).toBe(true)
   })

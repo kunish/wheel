@@ -5,7 +5,7 @@ import type {
 } from "@/lib/playground/chat-runner"
 import type { ChatMessage } from "@/lib/playground/request-builders"
 import { useQuery } from "@tanstack/react-query"
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   createPlaygroundChatCompletion,
   executePlaygroundMcpTool,
@@ -15,6 +15,8 @@ import {
   listGroups,
 } from "@/lib/api-client"
 import { createChatRunner } from "@/lib/playground/chat-runner"
+import { readPlaygroundSettings, writePlaygroundSettings } from "@/lib/playground/persistence"
+import { formatToolPayloadForDisplay } from "@/lib/playground/tool-payload"
 import { usePlaygroundMcp } from "./use-playground-mcp"
 
 export interface MessageStats {
@@ -37,6 +39,12 @@ export interface TimelineItem {
   error?: string
 }
 
+export interface ConversationTurn {
+  id: string
+  role: "user" | "assistant"
+  content: string
+}
+
 export function resolveStreamForRequest(stream: boolean, mcpEnabled: boolean): boolean {
   return mcpEnabled ? false : stream
 }
@@ -57,17 +65,51 @@ export function derivePlaygroundModels(groups: Array<{ name?: string }>): string
   ).sort((a, b) => a.localeCompare(b))
 }
 
+export function normalizeConversationMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.filter((message) => message.role !== "system")
+}
+
+export function buildPlaygroundRequestMessages(
+  systemPrompt: string,
+  historyMessages: ChatMessage[],
+): ChatMessage[] {
+  const prompt = systemPrompt.trim()
+  const normalized = normalizeConversationMessages(historyMessages)
+  return [...(prompt ? [{ role: "system" as const, content: prompt }] : []), ...normalized]
+}
+
+export function deriveConversationTurns(messages: ChatMessage[]): ConversationTurn[] {
+  return normalizeConversationMessages(messages)
+    .map((message, index) => {
+      if ((message.role !== "user" && message.role !== "assistant") || !message.content) return null
+      const content = message.content.trim()
+      if (!content) return null
+      return {
+        id: `${message.role}-${index}`,
+        role: message.role,
+        content,
+      }
+    })
+    .filter((item): item is ConversationTurn => item !== null)
+}
+
+function getLastAssistantText(messages: ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (
+      message.role === "assistant" &&
+      typeof message.content === "string" &&
+      message.content.trim()
+    ) {
+      return message.content
+    }
+  }
+  return ""
+}
+
 function toErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message
   return "Unknown error"
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
 }
 
 function readToolErrorMessage(payload: unknown): string | null {
@@ -149,19 +191,24 @@ export function mergePendingCallsIntoTimeline(
 export function usePlaygroundChat() {
   const mcp = usePlaygroundMcp()
 
-  const [model, setModel] = useState("")
-  const [systemPrompt, setSystemPrompt] = useState("")
+  const persistedSettings = useMemo(() => readPlaygroundSettings(), [])
+
+  const [model, setModel] = useState(persistedSettings?.model ?? "")
+  const [systemPrompt, setSystemPrompt] = useState(persistedSettings?.systemPrompt ?? "")
   const [userMessage, setUserMessage] = useState("")
   const [customApiKey, setCustomApiKey] = useState("")
-  const [stream, setStream] = useState(true)
-  const [temperature, setTemperature] = useState(0.7)
-  const [maxTokens, setMaxTokens] = useState(4096)
-  const [topP, setTopP] = useState(1)
+  const [stream, setStream] = useState(persistedSettings?.stream ?? true)
+  const [temperature, setTemperature] = useState(persistedSettings?.temperature ?? 0.7)
+  const [maxTokens, setMaxTokens] = useState(persistedSettings?.maxTokens ?? 4096)
+  const [topP, setTopP] = useState(persistedSettings?.topP ?? 1)
 
   const [response, setResponse] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [stats, setStats] = useState<MessageStats | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [sendState, setSendState] = useState<"idle" | "sending" | "failed">("idle")
+  const [lastSubmittedMessage, setLastSubmittedMessage] = useState("")
+  const [messageHistory, setMessageHistory] = useState<ChatMessage[]>([])
 
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [pendingSession, setPendingSession] = useState<ChatRunnerSession | null>(null)
@@ -197,6 +244,32 @@ export function usePlaygroundChat() {
   const authKey = customApiKey || defaultApiKey || ""
 
   const resolvedStream = resolveStreamForRequest(stream, mcp.enabled)
+  const conversation = useMemo(() => deriveConversationTurns(messageHistory), [messageHistory])
+  const requestMessagesForCurl = useMemo(() => {
+    const draft = userMessage.trim()
+    const nextHistory = draft
+      ? [...messageHistory, { role: "user" as const, content: draft }]
+      : messageHistory
+    return buildPlaygroundRequestMessages(systemPrompt, nextHistory)
+  }, [messageHistory, systemPrompt, userMessage])
+
+  useEffect(() => {
+    writePlaygroundSettings({
+      model,
+      systemPrompt,
+      stream,
+      temperature,
+      maxTokens,
+      topP,
+    })
+  }, [model, systemPrompt, stream, temperature, maxTokens, topP])
+
+  useEffect(() => {
+    if (models.length === 0) return
+    if (!model || !models.includes(model)) {
+      setModel(models[0])
+    }
+  }, [models, model])
 
   const updateTimeline = useCallback((callId: string, patch: Partial<TimelineItem>) => {
     setTimeline((prev) => prev.map((x) => (x.callId === callId ? { ...x, ...patch } : x)))
@@ -227,7 +300,7 @@ export function usePlaygroundChat() {
         updateTimeline(event.toolCallId, {
           status: errorMessage ? "error" : "done",
           payload: event.payload,
-          resultText: safeStringify(event.payload),
+          resultText: formatToolPayloadForDisplay(event.payload),
           error: errorMessage ?? undefined,
         })
       }
@@ -295,98 +368,136 @@ export function usePlaygroundChat() {
         }
       }
 
-      setStats({
+      return {
+        text,
         latencyMs: performance.now() - startTime,
         firstTokenMs,
-        inputTokens: usage?.prompt_tokens,
-        outputTokens: usage?.completion_tokens,
-        totalTokens: usage?.total_tokens,
-      })
+        usage,
+      }
     },
     [authKey, model, temperature, maxTokens, topP],
   )
 
-  const send = useCallback(async () => {
-    if (!model || !userMessage.trim()) return
+  const sendWithInput = useCallback(
+    async (input: string) => {
+      if (!model || !input.trim() || pendingSession) return
 
-    setIsLoading(true)
-    setError(null)
-    setStats(null)
-    setResponse("")
-    setTimeline([])
-    setPendingSession(null)
-    setPendingCalls([])
+      const inputMessage = input.trim()
+      setLastSubmittedMessage(inputMessage)
 
-    const controller = new AbortController()
-    requestAbortRef.current = controller
-    const startTime = performance.now()
+      const nextHistory: ChatMessage[] = [
+        ...messageHistory,
+        { role: "user", content: inputMessage },
+      ]
+      const messages = buildPlaygroundRequestMessages(systemPrompt, nextHistory)
 
-    const messages: ChatMessage[] = [
-      ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
-      { role: "user" as const, content: userMessage },
-    ]
+      setIsLoading(true)
+      setSendState("sending")
+      setError(null)
+      setStats(null)
+      setResponse("")
+      setTimeline([])
+      setPendingSession(null)
+      setPendingCalls([])
+      setMessageHistory(nextHistory)
+      setUserMessage("")
 
-    try {
-      if (!mcp.enabled && resolvedStream) {
-        await runStreaming(messages, controller, startTime)
-        return
-      }
+      const controller = new AbortController()
+      requestAbortRef.current = controller
+      const startTime = performance.now()
 
-      const runner = createChatRunner({
-        createChatCompletion: createPlaygroundChatCompletion,
-        executeTool: executePlaygroundMcpTool,
-      })
+      try {
+        if (!mcp.enabled && resolvedStream) {
+          const streaming = await runStreaming(messages, controller, startTime)
+          setMessageHistory([...nextHistory, { role: "assistant", content: streaming.text }])
+          setStats({
+            latencyMs: streaming.latencyMs,
+            firstTokenMs: streaming.firstTokenMs,
+            inputTokens: streaming.usage?.prompt_tokens,
+            outputTokens: streaming.usage?.completion_tokens,
+            totalTokens: streaming.usage?.total_tokens,
+          })
+          setSendState("idle")
+          return
+        }
 
-      const result = await runner.run({
-        apiKey: authKey,
-        model,
-        messages,
-        mcpTools: mcp.enabled ? mcp.mcpTools : undefined,
-        aliasMap: mcp.enabled ? mcp.aliasMap : undefined,
-        mode: mcp.mode,
-        signal: controller.signal,
-        temperature,
-        maxTokens,
-        topP,
-        onEvent: handleRunnerEvent,
-      })
-
-      if (result.status === "completed") {
-        setResponse(result.responseText)
-        setStats({
-          latencyMs: performance.now() - startTime,
-          inputTokens: result.response?.usage?.prompt_tokens,
-          outputTokens: result.response?.usage?.completion_tokens,
-          totalTokens: result.response?.usage?.total_tokens,
+        const runner = createChatRunner({
+          createChatCompletion: createPlaygroundChatCompletion,
+          executeTool: executePlaygroundMcpTool,
         })
-      } else {
-        setPendingSession(result.session)
-        setPendingCalls(result.pendingCalls)
-        setTimeline((prev) => mergePendingCallsIntoTimeline(prev, result.pendingCalls))
+
+        const result = await runner.run({
+          apiKey: authKey,
+          model,
+          messages,
+          mcpTools: mcp.enabled ? mcp.mcpTools : undefined,
+          aliasMap: mcp.enabled ? mcp.aliasMap : undefined,
+          mode: mcp.mode,
+          signal: controller.signal,
+          temperature,
+          maxTokens,
+          topP,
+          onEvent: handleRunnerEvent,
+        })
+
+        if (result.status === "completed") {
+          const normalized = normalizeConversationMessages(result.messages)
+          setMessageHistory(normalized)
+          setResponse(result.responseText || getLastAssistantText(normalized))
+          setStats({
+            latencyMs: performance.now() - startTime,
+            inputTokens: result.response?.usage?.prompt_tokens,
+            outputTokens: result.response?.usage?.completion_tokens,
+            totalTokens: result.response?.usage?.total_tokens,
+          })
+        } else {
+          const normalized = normalizeConversationMessages(result.messages)
+          setMessageHistory(normalized)
+          setPendingSession(result.session)
+          setPendingCalls(result.pendingCalls)
+          setResponse(getLastAssistantText(normalized))
+          setTimeline((prev) => mergePendingCallsIntoTimeline(prev, result.pendingCalls))
+        }
+        setSendState("idle")
+      } catch (err: unknown) {
+        if ((err as Error).name !== "AbortError") {
+          setError(toErrorMessage(err))
+          setSendState("failed")
+        } else {
+          setSendState("idle")
+        }
+      } finally {
+        setIsLoading(false)
+        if (requestAbortRef.current === controller) {
+          requestAbortRef.current = null
+        }
       }
-    } catch (err: unknown) {
-      if ((err as Error).name !== "AbortError") {
-        setError(toErrorMessage(err))
-      }
-    } finally {
-      setIsLoading(false)
-      if (requestAbortRef.current === controller) {
-        requestAbortRef.current = null
-      }
-    }
-  }, [
-    model,
-    userMessage,
-    systemPrompt,
-    mcp,
-    resolvedStream,
-    runStreaming,
-    authKey,
-    temperature,
-    maxTokens,
-    topP,
-    handleRunnerEvent,
-  ])
+    },
+    [
+      model,
+      pendingSession,
+      messageHistory,
+      systemPrompt,
+      mcp,
+      resolvedStream,
+      runStreaming,
+      authKey,
+      temperature,
+      maxTokens,
+      topP,
+      handleRunnerEvent,
+    ],
+  )
+
+  const send = useCallback(async () => {
+    if (!userMessage.trim()) return
+    await sendWithInput(userMessage)
+  }, [userMessage, sendWithInput])
+
+  const retryLast = useCallback(async () => {
+    if (!lastSubmittedMessage || isLoading || pendingSession) return
+    await sendWithInput(lastSubmittedMessage)
+  }, [lastSubmittedMessage, isLoading, pendingSession, sendWithInput])
 
   const stop = useCallback(() => {
     requestAbortRef.current?.abort()
@@ -396,6 +507,7 @@ export function usePlaygroundChat() {
     }
     toolAbortRef.current.clear()
     setIsLoading(false)
+    setSendState("idle")
   }, [])
 
   const clear = useCallback(() => {
@@ -405,6 +517,10 @@ export function usePlaygroundChat() {
     setTimeline([])
     setPendingSession(null)
     setPendingCalls([])
+    setMessageHistory([])
+    setUserMessage("")
+    setSendState("idle")
+    setLastSubmittedMessage("")
   }, [])
 
   const executePendingTool = useCallback(
@@ -430,7 +546,7 @@ export function usePlaygroundChat() {
           status: errorMessage ? "error" : "done",
           payload,
           error: errorMessage ?? undefined,
-          resultText: safeStringify(payload),
+          resultText: formatToolPayloadForDisplay(payload),
         })
       } catch (err: unknown) {
         if ((err as Error).name === "AbortError") return
@@ -440,7 +556,7 @@ export function usePlaygroundChat() {
           status: "error",
           payload,
           error: errorMessage,
-          resultText: safeStringify(payload),
+          resultText: formatToolPayloadForDisplay(payload),
         })
       } finally {
         if (toolAbortRef.current.get(toolCallId) === controller) {
@@ -457,6 +573,7 @@ export function usePlaygroundChat() {
     if (outputs.length < pendingCalls.length) return
 
     setIsLoading(true)
+    setSendState("sending")
     setError(null)
     const startTime = performance.now()
     const controller = new AbortController()
@@ -470,9 +587,11 @@ export function usePlaygroundChat() {
         signal: controller.signal,
       })
       if (next.status === "completed") {
+        const normalized = normalizeConversationMessages(next.messages)
+        setMessageHistory(normalized)
         setPendingSession(null)
         setPendingCalls([])
-        setResponse(next.responseText)
+        setResponse(next.responseText || getLastAssistantText(normalized))
         setStats({
           latencyMs: performance.now() - startTime,
           inputTokens: next.response?.usage?.prompt_tokens,
@@ -480,13 +599,20 @@ export function usePlaygroundChat() {
           totalTokens: next.response?.usage?.total_tokens,
         })
       } else {
+        const normalized = normalizeConversationMessages(next.messages)
+        setMessageHistory(normalized)
         setPendingSession(next.session)
         setPendingCalls(next.pendingCalls)
+        setResponse(getLastAssistantText(normalized))
         setTimeline((prev) => mergePendingCallsIntoTimeline(prev, next.pendingCalls))
       }
+      setSendState("idle")
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
         setError(toErrorMessage(err))
+        setSendState("failed")
+      } else {
+        setSendState("idle")
       }
     } finally {
       setIsLoading(false)
@@ -518,15 +644,21 @@ export function usePlaygroundChat() {
     setTopP,
     response,
     isLoading,
+    sendState,
     stats,
     error,
+    conversation,
     models,
     defaultApiKey,
     mcp,
+    requestMessagesForCurl,
+    hasPendingToolCalls: pendingSession !== null,
+    canRetryLast: !!lastSubmittedMessage && !isLoading && pendingSession === null,
     timeline,
     pendingCalls,
     canContinueManual,
     send,
+    retryLast,
     stop,
     clear,
     executePendingTool,

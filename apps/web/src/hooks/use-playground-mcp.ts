@@ -2,8 +2,9 @@ import type { ToolAliasRef } from "@/lib/playground/mcp-alias"
 import type { McpToolDef } from "@/lib/playground/request-builders"
 import type { SelectableToolRef } from "@/lib/playground/tool-selection"
 import { useQuery } from "@tanstack/react-query"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { listMCPClients } from "@/lib/api"
+import { readPlaygroundMcpSnapshot, writePlaygroundMcpSnapshot } from "@/lib/playground/persistence"
 import {
   buildMcpToolsForChat,
   buildSelectableTools,
@@ -41,10 +42,14 @@ export function resolveSelectedKeysForMcpTools(
 }
 
 export function usePlaygroundMcp(): UsePlaygroundMcpResult {
-  const [enabled, setEnabled] = useState(false)
-  const [mode, setMode] = useState<PlaygroundMcpMode>("auto")
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
-  const [hasUserTouchedSelection, setHasUserTouchedSelection] = useState(false)
+  const persisted = useMemo(() => readPlaygroundMcpSnapshot(), [])
+
+  const [enabled, setEnabled] = useState(persisted?.enabled ?? false)
+  const [mode, setMode] = useState<PlaygroundMcpMode>(persisted?.mode ?? "auto")
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(persisted?.selectedKeys ?? [])
+  const [hasUserTouchedSelection, setHasUserTouchedSelection] = useState(
+    persisted?.hasUserTouchedSelection ?? false,
+  )
 
   const { data, isLoading } = useQuery({
     queryKey: ["mcp-clients"],
@@ -64,6 +69,15 @@ export function usePlaygroundMcp(): UsePlaygroundMcpResult {
     setHasUserTouchedSelection(true)
     setSelectedKeys(next)
   }, [])
+
+  useEffect(() => {
+    writePlaygroundMcpSnapshot({
+      enabled,
+      mode,
+      selectedKeys,
+      hasUserTouchedSelection,
+    })
+  }, [enabled, mode, selectedKeys, hasUserTouchedSelection])
 
   const selected = useMemo(() => {
     return toSelectedToolRefs(tools, effectiveSelectedKeys)

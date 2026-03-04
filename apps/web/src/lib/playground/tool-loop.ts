@@ -1,3 +1,5 @@
+import { normalizeToolPayloadForModel } from "./tool-payload"
+
 export interface ToolCall {
   id: string
   name: string
@@ -14,7 +16,11 @@ export function extractToolCalls(resp: any): ToolCall[] {
 }
 
 export function makeToolMessage(toolCallId: string, payload: unknown) {
-  return { role: "tool" as const, tool_call_id: toolCallId, content: JSON.stringify(payload) }
+  return {
+    role: "tool" as const,
+    tool_call_id: toolCallId,
+    content: normalizeToolPayloadForModel(payload),
+  }
 }
 
 export function shouldStopLoop(input: { round: number; maxRounds: number; pendingCalls: number }) {

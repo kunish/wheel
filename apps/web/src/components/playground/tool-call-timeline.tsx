@@ -67,7 +67,7 @@ export function ToolCallTimeline({
   }
 
   return (
-    <Card>
+    <Card className="shrink-0 overflow-hidden">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Wrench className="h-4 w-4" />
@@ -77,27 +77,27 @@ export function ToolCallTimeline({
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="min-h-0 space-y-3">
         {items.length === 0 ? (
           <p className="text-muted-foreground text-xs">{t("timeline.empty")}</p>
         ) : (
-          <div className="space-y-2">
+          <div className="max-h-72 space-y-2 overflow-auto pr-1">
             {items.map((item) => (
-              <div key={item.id} className="rounded-md border p-2">
+              <div key={item.id} className="min-w-0 rounded-md border p-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-medium">{item.title}</p>
-                    <p className="text-muted-foreground truncate font-mono text-[11px]">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium break-all">{item.title}</p>
+                    <p className="text-muted-foreground font-mono text-[11px] break-all">
                       {item.alias}
                     </p>
                   </div>
                   {statusBadge(item.status, statusLabels)}
                 </div>
-                <pre className="bg-muted mt-2 overflow-x-auto rounded p-2 text-[11px] whitespace-pre-wrap">
+                <pre className="bg-muted mt-2 max-h-40 overflow-auto rounded p-2 text-[11px] break-all whitespace-pre-wrap">
                   {JSON.stringify(item.argumentsObj, null, 2)}
                 </pre>
                 {item.resultText && (
-                  <pre className="bg-muted mt-2 overflow-x-auto rounded p-2 text-[11px] whitespace-pre-wrap">
+                  <pre className="bg-muted mt-2 max-h-56 overflow-auto rounded p-2 text-[11px] break-all whitespace-pre-wrap">
                     {item.resultText}
                   </pre>
                 )}
