@@ -10,6 +10,7 @@ import {
   createPlaygroundChatCompletion,
   executePlaygroundMcpTool,
   getApiBaseUrl,
+  getSettings,
   listApiKeys,
   listGroups,
 } from "@/lib/api-client"
@@ -38,6 +39,22 @@ export interface TimelineItem {
 
 export function resolveStreamForRequest(stream: boolean, mcpEnabled: boolean): boolean {
   return mcpEnabled ? false : stream
+}
+
+export function parseActiveProfileId(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === "0") return undefined
+  const n = Number(raw)
+  return Number.isNaN(n) || n === 0 ? undefined : n
+}
+
+export function derivePlaygroundModels(groups: Array<{ name?: string }>): string[] {
+  return Array.from(
+    new Set(
+      groups
+        .map((g) => (typeof g.name === "string" ? g.name.trim() : ""))
+        .filter((name) => name.length > 0),
+    ),
+  ).sort((a, b) => a.localeCompare(b))
 }
 
 function toErrorMessage(err: unknown): string {
@@ -153,12 +170,22 @@ export function usePlaygroundChat() {
   const requestAbortRef = useRef<AbortController | null>(null)
   const toolAbortRef = useRef<Map<string, AbortController>>(new Map())
 
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+  })
+  const activeProfileId = useMemo(
+    () => parseActiveProfileId(settingsData?.data?.settings?.active_profile_id),
+    [settingsData?.data?.settings?.active_profile_id],
+  )
+
   const { data: groupData } = useQuery({
-    queryKey: ["groups"],
-    queryFn: () => listGroups(),
+    queryKey: ["groups", activeProfileId],
+    queryFn: () => listGroups(activeProfileId),
+    enabled: activeProfileId !== undefined,
   })
   const models = useMemo(
-    () => ((groupData?.data?.groups ?? []) as { name: string }[]).map((g) => g.name).sort(),
+    () => derivePlaygroundModels((groupData?.data?.groups ?? []) as Array<{ name?: string }>),
     [groupData?.data?.groups],
   )
 

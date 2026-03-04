@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   buildManualToolOutputs,
   canContinueManualFromTimeline,
+  derivePlaygroundModels,
   mergePendingCallsIntoTimeline,
+  parseActiveProfileId,
   resolveStreamForRequest,
 } from "./use-playground-chat"
 
@@ -15,6 +17,24 @@ describe("use-playground-chat helpers", () => {
   it("keeps stream setting in non-MCP mode", () => {
     expect(resolveStreamForRequest(true, false)).toBe(true)
     expect(resolveStreamForRequest(false, false)).toBe(false)
+  })
+
+  it("parses active profile id from settings", () => {
+    expect(parseActiveProfileId(undefined)).toBeUndefined()
+    expect(parseActiveProfileId("0")).toBeUndefined()
+    expect(parseActiveProfileId("abc")).toBeUndefined()
+    expect(parseActiveProfileId("3")).toBe(3)
+  })
+
+  it("derives sorted unique model names from groups", () => {
+    expect(
+      derivePlaygroundModels([
+        { name: " claude-3-5-sonnet " },
+        { name: "gpt-4o" },
+        { name: "gpt-4o" },
+        { name: "" },
+      ]),
+    ).toEqual(["claude-3-5-sonnet", "gpt-4o"])
   })
 
   it("allows manual continue when each pending call is done or error", () => {
