@@ -98,14 +98,35 @@ export function buildManualToolOutputs(
   pendingCalls: ManualPendingToolCall[],
   timeline: TimelineItem[],
 ): Array<{ toolCallId: string; payload: unknown }> {
-  const pendingSet = new Set(pendingCalls.map((x) => x.toolCallId))
-  return timeline
-    .filter((x) => pendingSet.has(x.callId))
-    .filter((x) => x.status === "done" || x.status === "error")
-    .map((x) => ({
-      toolCallId: x.callId,
-      payload: toContinuationPayload(x),
-    }))
+  return pendingCalls.flatMap((call) => {
+    const item = timeline.find(
+      (x) => x.callId === call.toolCallId && (x.status === "done" || x.status === "error"),
+    )
+    if (!item) return []
+    return [{ toolCallId: call.toolCallId, payload: toContinuationPayload(item) }]
+  })
+}
+
+export function mergePendingCallsIntoTimeline(
+  timeline: TimelineItem[],
+  pendingCalls: ManualPendingToolCall[],
+): TimelineItem[] {
+  const exists = new Set(timeline.map((x) => x.callId))
+  const next = [...timeline]
+
+  for (const call of pendingCalls) {
+    if (exists.has(call.toolCallId)) continue
+    next.push({
+      id: `${call.toolCallId}-${next.length + 1}`,
+      callId: call.toolCallId,
+      alias: call.alias,
+      title: `${call.ref.clientName}.${call.ref.toolName}`,
+      argumentsObj: call.argumentsObj,
+      status: "pending",
+    })
+  }
+
+  return next
 }
 
 export function usePlaygroundChat() {
@@ -129,7 +150,8 @@ export function usePlaygroundChat() {
   const [pendingSession, setPendingSession] = useState<ChatRunnerSession | null>(null)
   const [pendingCalls, setPendingCalls] = useState<ManualPendingToolCall[]>([])
 
-  const abortRef = useRef<AbortController | null>(null)
+  const requestAbortRef = useRef<AbortController | null>(null)
+  const toolAbortRef = useRef<Map<string, AbortController>>(new Map())
 
   const { data: groupData } = useQuery({
     queryKey: ["groups"],
@@ -269,7 +291,7 @@ export function usePlaygroundChat() {
     setPendingCalls([])
 
     const controller = new AbortController()
-    abortRef.current = controller
+    requestAbortRef.current = controller
     const startTime = performance.now()
 
     const messages: ChatMessage[] = [
@@ -313,22 +335,7 @@ export function usePlaygroundChat() {
       } else {
         setPendingSession(result.session)
         setPendingCalls(result.pendingCalls)
-        setTimeline((prev) => {
-          const exists = new Set(prev.map((x) => x.callId))
-          const next = [...prev]
-          for (const call of result.pendingCalls) {
-            if (exists.has(call.toolCallId)) continue
-            next.push({
-              id: `${call.toolCallId}-${next.length + 1}`,
-              callId: call.toolCallId,
-              alias: call.alias,
-              title: `${call.ref.clientName}.${call.ref.toolName}`,
-              argumentsObj: call.argumentsObj,
-              status: "pending",
-            })
-          }
-          return next
-        })
+        setTimeline((prev) => mergePendingCallsIntoTimeline(prev, result.pendingCalls))
       }
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
@@ -336,7 +343,9 @@ export function usePlaygroundChat() {
       }
     } finally {
       setIsLoading(false)
-      abortRef.current = null
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null
+      }
     }
   }, [
     model,
@@ -353,7 +362,12 @@ export function usePlaygroundChat() {
   ])
 
   const stop = useCallback(() => {
-    abortRef.current?.abort()
+    requestAbortRef.current?.abort()
+    requestAbortRef.current = null
+    for (const controller of toolAbortRef.current.values()) {
+      controller.abort()
+    }
+    toolAbortRef.current.clear()
     setIsLoading(false)
   }, [])
 
@@ -371,6 +385,10 @@ export function usePlaygroundChat() {
       const call = pendingCalls.find((x) => x.toolCallId === toolCallId)
       if (!call || !authKey) return
 
+      toolAbortRef.current.get(toolCallId)?.abort()
+      const controller = new AbortController()
+      toolAbortRef.current.set(toolCallId, controller)
+
       updateTimeline(toolCallId, { status: "running", error: undefined })
       try {
         const payload = await executePlaygroundMcpTool({
@@ -378,9 +396,17 @@ export function usePlaygroundChat() {
           clientId: call.ref.clientId,
           toolName: call.ref.toolName,
           argumentsObj: call.argumentsObj,
+          signal: controller.signal,
         })
-        updateTimeline(toolCallId, { status: "done", payload, resultText: safeStringify(payload) })
+        const errorMessage = readToolErrorMessage(payload)
+        updateTimeline(toolCallId, {
+          status: errorMessage ? "error" : "done",
+          payload,
+          error: errorMessage ?? undefined,
+          resultText: safeStringify(payload),
+        })
       } catch (err: unknown) {
+        if ((err as Error).name === "AbortError") return
         const errorMessage = toErrorMessage(err)
         const payload = { isError: true, error: errorMessage }
         updateTimeline(toolCallId, {
@@ -389,6 +415,10 @@ export function usePlaygroundChat() {
           error: errorMessage,
           resultText: safeStringify(payload),
         })
+      } finally {
+        if (toolAbortRef.current.get(toolCallId) === controller) {
+          toolAbortRef.current.delete(toolCallId)
+        }
       }
     },
     [pendingCalls, authKey, updateTimeline],
@@ -402,12 +432,16 @@ export function usePlaygroundChat() {
     setIsLoading(true)
     setError(null)
     const startTime = performance.now()
+    const controller = new AbortController()
+    requestAbortRef.current = controller
     try {
       const runner = createChatRunner({
         createChatCompletion: createPlaygroundChatCompletion,
         executeTool: executePlaygroundMcpTool,
       })
-      const next = await runner.continueManual(pendingSession, outputs, handleRunnerEvent)
+      const next = await runner.continueManual(pendingSession, outputs, handleRunnerEvent, {
+        signal: controller.signal,
+      })
       if (next.status === "completed") {
         setPendingSession(null)
         setPendingCalls([])
@@ -421,11 +455,17 @@ export function usePlaygroundChat() {
       } else {
         setPendingSession(next.session)
         setPendingCalls(next.pendingCalls)
+        setTimeline((prev) => mergePendingCallsIntoTimeline(prev, next.pendingCalls))
       }
     } catch (err: unknown) {
-      setError(toErrorMessage(err))
+      if ((err as Error).name !== "AbortError") {
+        setError(toErrorMessage(err))
+      }
     } finally {
       setIsLoading(false)
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null
+      }
     }
   }, [pendingSession, pendingCalls, timeline, handleRunnerEvent])
 

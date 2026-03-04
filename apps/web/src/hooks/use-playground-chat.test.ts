@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildManualToolOutputs,
   canContinueManualFromTimeline,
+  mergePendingCallsIntoTimeline,
   resolveStreamForRequest,
 } from "./use-playground-chat"
 
@@ -39,5 +40,56 @@ describe("use-playground-chat helpers", () => {
       { toolCallId: "call_1", payload: { ok: true } },
       { toolCallId: "call_2", payload: { isError: true, error: "Permission denied" } },
     ])
+  })
+
+  it("preserves pending call order when building continuation payloads", () => {
+    const outputs = buildManualToolOutputs(
+      [{ toolCallId: "call_1" }, { toolCallId: "call_2" }] as any,
+      [
+        { callId: "call_2", status: "done", payload: { second: true } },
+        { callId: "call_1", status: "done", payload: { first: true } },
+      ] as any,
+    )
+
+    expect(outputs).toEqual([
+      { toolCallId: "call_1", payload: { first: true } },
+      { toolCallId: "call_2", payload: { second: true } },
+    ])
+  })
+
+  it("merges newly paused calls into timeline without duplicates", () => {
+    const timeline = [
+      {
+        id: "existing",
+        callId: "call_1",
+        alias: "a",
+        title: "t",
+        argumentsObj: {},
+        status: "done",
+      },
+    ] as any
+
+    const merged = mergePendingCallsIntoTimeline(timeline, [
+      {
+        toolCallId: "call_1",
+        alias: "a",
+        argumentsObj: {},
+        ref: { clientName: "c", toolName: "t" },
+      },
+      {
+        toolCallId: "call_2",
+        alias: "b",
+        argumentsObj: { q: 1 },
+        ref: { clientName: "c2", toolName: "t2" },
+      },
+    ] as any)
+
+    expect(merged).toHaveLength(2)
+    expect(merged[1]).toMatchObject({
+      callId: "call_2",
+      alias: "b",
+      title: "c2.t2",
+      status: "pending",
+    })
   })
 })

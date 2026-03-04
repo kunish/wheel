@@ -232,6 +232,7 @@ export function createChatRunner(deps: ChatRunnerDeps) {
       session: ChatRunnerSession,
       toolOutputs: ManualToolOutput[],
       onEvent?: (event: ChatRunnerEvent) => void,
+      options?: { signal?: AbortSignal },
     ) {
       const toolMessages = toolOutputs.map((x) => {
         onEvent?.({ type: "tool-result", toolCallId: x.toolCallId, payload: x.payload })
@@ -244,6 +245,7 @@ export function createChatRunner(deps: ChatRunnerDeps) {
           onEvent,
           mode: "manual",
           messages: [],
+          signal: options?.signal,
         },
         [...session.messages, ...toolMessages],
         session.round + 1,

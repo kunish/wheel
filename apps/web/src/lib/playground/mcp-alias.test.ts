@@ -23,6 +23,37 @@ describe("buildToolAliasMap", () => {
     expect(Object.keys(map)).toContain("my_service_get_data")
   })
 
+  it("sanitizes unsupported characters and prefixes numeric aliases", () => {
+    const selected: SelectedToolRef[] = [
+      { clientId: 1, clientName: "123@service", toolName: "*lookup*" },
+    ]
+    const map = buildToolAliasMap(selected)
+    expect(Object.keys(map)).toContain("tool_123_service_lookup")
+  })
+
+  it("falls back to a safe alias when names become empty after sanitization", () => {
+    const selected: SelectedToolRef[] = [
+      { clientId: 1, clientName: "天气", toolName: "查找" },
+      { clientId: 2, clientName: "天气", toolName: "查找" },
+    ]
+    const map = buildToolAliasMap(selected)
+    expect(Object.keys(map)).toContain("tool")
+    expect(Object.keys(map)).toContain("tool_2")
+  })
+
+  it("caps alias length while keeping collision suffix", () => {
+    const long = "a".repeat(200)
+    const selected: SelectedToolRef[] = [
+      { clientId: 1, clientName: long, toolName: long },
+      { clientId: 2, clientName: long, toolName: long },
+    ]
+    const map = buildToolAliasMap(selected)
+    const aliases = Object.keys(map)
+    expect(aliases[0].length).toBeLessThanOrEqual(64)
+    expect(aliases[1].length).toBeLessThanOrEqual(64)
+    expect(aliases[1].endsWith("_2")).toBe(true)
+  })
+
   it("returns empty map for empty input", () => {
     expect(buildToolAliasMap([])).toEqual({})
   })
