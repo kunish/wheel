@@ -12,7 +12,9 @@
     "budgets": "预算",
     "modelLimits": "模型限制",
     "apiReference": "API 文档",
-    "settings": "设置"
+    "settings": "设置",
+    "adaptiveRouting": "路由",
+    "observability": "可观测性"
   },
   "navSection": {
     "gateway": "AI 网关",
@@ -127,6 +129,17 @@
     "to": "到",
     "apply": "应用",
     "today": "今天",
+    "yesterday": "昨天",
+    "custom": "自定义",
     "last": "最近 {{label}}"
+  },
+  "logs": {
+    "stream": {
+      "live": "实时",
+      "paused": "已暂停",
+      "streaming": "传输中",
+      "pause": "暂停",
+      "resume": "恢复"
+    }
   }
 }

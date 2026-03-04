@@ -139,4 +139,10 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/tag/create", h.CreateTag)
 	admin.POST("/tag/update", h.UpdateTag)
 	admin.DELETE("/tag/delete/:id", h.DeleteTag)
+
+	// Virtual Key routes
+	admin.GET("/virtual-key/list", h.ListVirtualKeys)
+	admin.POST("/virtual-key/create", h.CreateVirtualKey)
+	admin.POST("/virtual-key/update", h.UpdateVirtualKey)
+	admin.DELETE("/virtual-key/delete/:id", h.DeleteVirtualKey)
 }

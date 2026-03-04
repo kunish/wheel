@@ -38,6 +38,8 @@ const BudgetsPage = lazy(() => import("./pages/budgets"))
 const GuardrailsPage = lazy(() => import("./pages/guardrails"))
 const ApiReferencePage = lazy(() => import("./pages/api-reference"))
 const TagsPage = lazy(() => import("./pages/tags"))
+const AdaptiveRoutingPage = lazy(() => import("./pages/adaptive-routing"))
+const ObservabilityPage = lazy(() => import("./pages/observability"))
 
 const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter
 
@@ -60,6 +62,8 @@ export function AppRouter() {
           <Route path="/model-limits" element={<ModelLimitsPage />} />
           <Route path="/guardrails" element={<GuardrailsPage />} />
           <Route path="/tags" element={<TagsPage />} />
+          <Route path="/adaptive-routing" element={<AdaptiveRoutingPage />} />
+          <Route path="/observability" element={<ObservabilityPage />} />
           <Route path="/api-reference" element={<ApiReferencePage />} />
           <Route path="/prices" element={<Navigate to="/model" replace />} />
           <Route path="/settings" element={<SettingsPage />} />

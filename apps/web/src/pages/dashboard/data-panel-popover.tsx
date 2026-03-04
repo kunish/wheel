@@ -1,7 +1,9 @@
+import type { ChartType } from "@/components/dashboard/chart-type-toggle"
 import type { ChannelStatsRow, ModelStatsItem, StatsDaily, StatsHourly } from "@/lib/api-client"
 import { Bot, Radio, TrendingUp } from "lucide-react"
-import { useMemo, useRef } from "react"
-import { Area, AreaChart, ResponsiveContainer } from "recharts"
+import { useMemo, useRef, useState } from "react"
+import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer } from "recharts"
+import { ChartTypeToggle } from "@/components/dashboard/chart-type-toggle"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { formatCount, formatMoney } from "@/lib/format"
 import { HubChannelList } from "./hub-channel-list"
@@ -17,6 +19,8 @@ function HubCostChart({
   dailyData?: StatsDaily[]
   hourlyData?: StatsHourly[]
 }) {
+  const [chartType, setChartType] = useState<ChartType>("area")
+
   const sortedDaily = useMemo(() => {
     if (!dailyData) return []
     return [...dailyData].sort((a, b) => a.date.localeCompare(b.date))
@@ -42,40 +46,59 @@ function HubCostChart({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex justify-between text-[10px] tabular-nums">
-        {[
-          { label: "REQ", value: formatCount(periodTotals.req) },
-          { label: "IN", value: formatCount(periodTotals.inTok) },
-          { label: "OUT", value: formatCount(periodTotals.outTok) },
-          { label: "$", value: formatMoney(periodTotals.cost) },
-        ].map((m) => (
-          <div key={m.label} className="flex flex-col items-center">
-            <span className="text-muted-foreground text-[10px] font-bold">{m.label}</span>
-            <span className="font-bold">
-              {m.value.value}
-              {m.value.unit && (
-                <span className="text-muted-foreground ml-px text-[10px]">{m.value.unit}</span>
-              )}
-            </span>
-          </div>
-        ))}
+      <div className="flex items-center justify-between">
+        <div className="flex flex-1 justify-between text-[10px] tabular-nums">
+          {[
+            { label: "REQ", value: formatCount(periodTotals.req) },
+            { label: "IN", value: formatCount(periodTotals.inTok) },
+            { label: "OUT", value: formatCount(periodTotals.outTok) },
+            { label: "$", value: formatMoney(periodTotals.cost) },
+          ].map((m) => (
+            <div key={m.label} className="flex flex-col items-center">
+              <span className="text-muted-foreground text-[10px] font-bold">{m.label}</span>
+              <span className="font-bold">
+                {m.value.value}
+                {m.value.unit && (
+                  <span className="text-muted-foreground ml-px text-[10px]">{m.value.unit}</span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+        <ChartTypeToggle value={chartType} onChange={setChartType} />
       </div>
       <ResponsiveContainer width="100%" height={60}>
-        <AreaChart data={chartData} margin={{ left: 0, right: 0, top: 2, bottom: 0 }}>
-          <defs>
-            <linearGradient id="fillCostMini" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.6} />
-              <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.05} />
-            </linearGradient>
-          </defs>
-          <Area
-            type="monotone"
-            dataKey="cost"
-            stroke="var(--primary)"
-            strokeWidth={1.5}
-            fill="url(#fillCostMini)"
-          />
-        </AreaChart>
+        {chartType === "area" ? (
+          <AreaChart data={chartData} margin={{ left: 0, right: 0, top: 2, bottom: 0 }}>
+            <defs>
+              <linearGradient id="fillCostMini" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.6} />
+                <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.05} />
+              </linearGradient>
+            </defs>
+            <Area
+              type="monotone"
+              dataKey="cost"
+              stroke="var(--primary)"
+              strokeWidth={1.5}
+              fill="url(#fillCostMini)"
+            />
+          </AreaChart>
+        ) : chartType === "line" ? (
+          <LineChart data={chartData} margin={{ left: 0, right: 0, top: 2, bottom: 0 }}>
+            <Line
+              type="monotone"
+              dataKey="cost"
+              stroke="var(--primary)"
+              strokeWidth={1.5}
+              dot={false}
+            />
+          </LineChart>
+        ) : (
+          <BarChart data={chartData} margin={{ left: 0, right: 0, top: 2, bottom: 0 }}>
+            <Bar dataKey="cost" fill="var(--primary)" radius={[2, 2, 0, 0]} />
+          </BarChart>
+        )}
       </ResponsiveContainer>
     </div>
   )
@@ -112,6 +135,7 @@ export function DataPanelPopover({
       >
         <PopoverTrigger asChild>
           <button
+            type="button"
             onClick={() => setDataTab((prev) => (prev === null ? "cost" : null))}
             className={`rounded-md p-1.5 transition-colors ${
               dataTab !== null
@@ -130,6 +154,7 @@ export function DataPanelPopover({
               { key: "channels" as const, Icon: Radio },
             ].map(({ key, Icon }) => (
               <button
+                type="button"
                 key={key}
                 onClick={() => setDataTab(key)}
                 className={`rounded-md p-1.5 transition-colors ${

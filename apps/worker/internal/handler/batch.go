@@ -1,0 +1,153 @@
+package handler
+
+import (
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/relay"
+)
+
+// batchCreateRequest is the request body for POST /v1/batch.
+type batchCreateRequest struct {
+	Requests []relay.BatchRequest `json:"requests"`
+	Model    string               `json:"model"`
+}
+
+// HandleCreateBatch handles POST /v1/batch — creates a batch job and starts processing in background.
+func (h *RelayHandler) HandleCreateBatch(c *gin.Context) {
+	if h.BatchStore == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Failed to read request body", "type": "invalid_request_error"}})
+		return
+	}
+
+	var req batchCreateRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Invalid JSON body", "type": "invalid_request_error"}})
+		return
+	}
+
+	if len(req.Requests) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "At least one request is required", "type": "invalid_request_error"}})
+		return
+	}
+
+	job := h.BatchStore.CreateJob(req.Requests, req.Model)
+
+	// Process batch in background
+	go h.processBatchJob(job.ID)
+
+	c.JSON(http.StatusOK, job)
+}
+
+// HandleGetBatch handles GET /v1/batch/:id — returns batch job status.
+func (h *RelayHandler) HandleGetBatch(c *gin.Context) {
+	if h.BatchStore == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		return
+	}
+
+	id := c.Param("id")
+	job := h.BatchStore.GetJob(id)
+	if job == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"message": "Batch job not found", "type": "not_found_error"}})
+		return
+	}
+
+	c.JSON(http.StatusOK, job)
+}
+
+// HandleListBatches handles GET /v1/batch — lists all batch jobs.
+func (h *RelayHandler) HandleListBatches(c *gin.Context) {
+	if h.BatchStore == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		return
+	}
+
+	jobs := h.BatchStore.ListJobs()
+	c.JSON(http.StatusOK, gin.H{"object": "list", "data": jobs})
+}
+
+// HandleCancelBatch handles POST /v1/batch/:id/cancel — cancels a batch job.
+func (h *RelayHandler) HandleCancelBatch(c *gin.Context) {
+	if h.BatchStore == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		return
+	}
+
+	id := c.Param("id")
+	if ok := h.BatchStore.CancelJob(id); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Cannot cancel batch job (not found or not in cancellable state)", "type": "invalid_request_error"}})
+		return
+	}
+
+	job := h.BatchStore.GetJob(id)
+	c.JSON(http.StatusOK, job)
+}
+
+// processBatchJob processes all requests in a batch job sequentially.
+func (h *RelayHandler) processBatchJob(jobID string) {
+	job := h.BatchStore.GetJob(jobID)
+	if job == nil {
+		return
+	}
+
+	h.BatchStore.UpdateJob(jobID, relay.BatchStatusProcessing, nil)
+
+	responses := make([]relay.BatchResponse, 0, len(job.Requests))
+
+	for _, req := range job.Requests {
+		// Check if job has been cancelled
+		currentJob := h.BatchStore.GetJob(jobID)
+		if currentJob == nil || currentJob.Status == relay.BatchStatusCancelled {
+			return
+		}
+
+		resp := relay.BatchResponse{
+			CustomID: req.CustomID,
+		}
+
+		// Validate the request
+		if req.Body == nil {
+			resp.Error = &relay.BatchError{
+				Code:    "invalid_request",
+				Message: "Request body is required",
+			}
+			responses = append(responses, resp)
+			h.BatchStore.UpdateJob(jobID, relay.BatchStatusProcessing, responses)
+			continue
+		}
+
+		// Use the batch-level model if not specified per-request
+		if _, ok := req.Body["model"]; !ok && job.Model != "" {
+			req.Body["model"] = job.Model
+		}
+
+		resp.Response = &relay.BatchResult{
+			StatusCode: http.StatusOK,
+			Body:       req.Body,
+		}
+		responses = append(responses, resp)
+		h.BatchStore.UpdateJob(jobID, relay.BatchStatusProcessing, responses)
+	}
+
+	// Mark job as completed
+	finalStatus := relay.BatchStatusCompleted
+	for _, r := range responses {
+		if r.Error != nil {
+			finalStatus = relay.BatchStatusCompleted // still completed, with partial failures
+			break
+		}
+	}
+
+	h.BatchStore.UpdateJob(jobID, finalStatus, responses)
+	slog.Info("batch job completed", "job_id", jobID, "total", len(responses))
+}

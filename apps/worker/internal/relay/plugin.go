@@ -56,6 +56,11 @@ type RelayPluginResponse struct {
 	CacheCreationTokens int
 	Cost                float64
 	Error               error
+
+	// Stream-specific fields: populated when the response was from a streaming call.
+	IsStream        bool   // whether this response was from a stream
+	StreamContent   string // accumulated response content from stream
+	ThinkingContent string // accumulated thinking content from stream
 }
 
 // ── Short-Circuit ───────────────────────────────────────────────

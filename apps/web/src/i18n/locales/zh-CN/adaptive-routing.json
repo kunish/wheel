@@ -1,0 +1,19 @@
+{
+  "title": "自适应路由",
+  "description": "监控各通道的流量分布和路由健康状态",
+  "trafficDistribution": "流量分布",
+  "channelHealth": "通道健康",
+  "stats": {
+    "totalRequests": "总请求数",
+    "avgLatency": "平均延迟",
+    "errorRate": "错误率",
+    "activeChannels": "活跃通道"
+  },
+  "unit": {
+    "req": "次请求",
+    "ms": "ms",
+    "avgMs": "ms 平均",
+    "success": "成功率"
+  },
+  "noData": "暂无路由数据。请求被处理后流量数据将在此显示。"
+}

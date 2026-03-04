@@ -2,6 +2,7 @@ package relay
 
 import (
 	"encoding/json"
+	"log"
 	"regexp"
 	"sort"
 	"strings"
@@ -15,15 +16,22 @@ type RoutingEngine struct {
 	mu            sync.RWMutex
 	rules         []RoutingRule
 	compiledRegex map[string]*regexp.Regexp // cond value -> compiled regex
+	celEngine     *CELEngine
 }
 
 // NewRoutingEngine creates a new RoutingEngine.
 func NewRoutingEngine() *RoutingEngine {
-	return &RoutingEngine{}
+	celEngine, err := NewCELEngine()
+	if err != nil {
+		log.Printf("[routing] failed to create CEL engine: %v", err)
+	}
+	return &RoutingEngine{
+		celEngine: celEngine,
+	}
 }
 
 // SetRules replaces the rule set (sorted by priority ascending).
-// Regex patterns are pre-compiled here to avoid per-request overhead.
+// Regex patterns and CEL expressions are pre-compiled here to avoid per-request overhead.
 func (e *RoutingEngine) SetRules(rules []RoutingRule) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -49,6 +57,18 @@ func (e *RoutingEngine) SetRules(rules []RoutingRule) {
 		}
 	}
 	e.compiledRegex = compiled
+
+	// Pre-compile CEL expressions
+	if e.celEngine != nil {
+		e.celEngine.ClearCache()
+		for _, rule := range sorted {
+			if rule.CELExpression != "" {
+				if err := e.celEngine.Compile(rule.CELExpression); err != nil {
+					log.Printf("[routing] failed to compile CEL expression for rule %q: %v", rule.Name, err)
+				}
+			}
+		}
+	}
 }
 
 // LoadFromModels converts DB models to internal rules and replaces the rule set.
@@ -62,11 +82,12 @@ func (e *RoutingEngine) LoadFromModels(models []types.RoutingRuleModel) {
 			})
 		}
 		rules = append(rules, RoutingRule{
-			ID:         m.ID,
-			Name:       m.Name,
-			Priority:   m.Priority,
-			Enabled:    m.Enabled,
-			Conditions: conds,
+			ID:            m.ID,
+			Name:          m.Name,
+			Priority:      m.Priority,
+			Enabled:       m.Enabled,
+			Conditions:    conds,
+			CELExpression: m.CELExpression,
 			Action: RoutingAction{
 				Type:       m.Action.Type,
 				GroupName:  m.Action.GroupName,
@@ -88,7 +109,17 @@ func (e *RoutingEngine) Evaluate(ctx *RuleEvalContext) *RuleResult {
 		if !rule.Enabled {
 			continue
 		}
-		if matchAll(rule.Conditions, ctx, e.compiledRegex) {
+
+		var matched bool
+		if rule.CELExpression != "" && e.celEngine != nil {
+			// Use CEL expression when available
+			matched = e.celEngine.Evaluate(rule.CELExpression, ctx)
+		} else {
+			// Fall back to traditional condition matching
+			matched = matchAll(rule.Conditions, ctx, e.compiledRegex)
+		}
+
+		if matched {
 			return &RuleResult{
 				Matched:  true,
 				RuleName: rule.Name,

@@ -1,6 +1,7 @@
 import { ArrowUp } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { LogStreamIndicator } from "@/components/log-stream-indicator"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AuditLogTab } from "./audit-log-tab"
@@ -20,8 +21,18 @@ export default function LogsPage() {
 
 function LogsPageContent() {
   const { t } = useTranslation("logs")
-  const { total, pendingCount, handleShowNew, totalPages, page, pageSize, updateFilter } =
-    useLogQueryContext()
+  const {
+    total,
+    pendingCount,
+    pendingStreams,
+    isPaused,
+    togglePause,
+    handleShowNew,
+    totalPages,
+    page,
+    pageSize,
+    updateFilter,
+  } = useLogQueryContext()
   const [activeTab, setActiveTab] = useState("requests")
 
   return (
@@ -47,6 +58,12 @@ function LogsPageContent() {
                 <span className="text-muted-foreground text-sm">
                   {t("totalCount", { count: total })}
                 </span>
+                <LogStreamIndicator
+                  isLive={pendingStreams.size > 0}
+                  isPaused={isPaused}
+                  streamCount={pendingStreams.size}
+                  onTogglePause={togglePause}
+                />
                 {pendingCount > 0 && (
                   <Button
                     variant="outline"

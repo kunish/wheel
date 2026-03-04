@@ -216,11 +216,14 @@ func main() {
 	mcpSrv.SyncTools()
 
 	// ── Handlers ──
+	dlock := db.NewDistributedLock(database)
+
 	h := &handler.Handler{
 		DB:              database,
 		Cache:           kv,
 		Config:          cfg,
 		CircuitBreakers: cbm,
+		DLock:           dlock,
 	}
 
 	rh := &handler.RelayHandler{
@@ -229,6 +232,7 @@ func main() {
 			Cache:           kv,
 			Config:          cfg,
 			CircuitBreakers: cbm,
+			DLock:           dlock,
 		},
 		Broadcast:       hub.Broadcast,
 		StreamTracker:   hub,

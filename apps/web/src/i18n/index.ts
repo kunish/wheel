@@ -2,6 +2,7 @@ import i18n from "i18next"
 import LanguageDetector from "i18next-browser-languagedetector"
 import { initReactI18next } from "react-i18next"
 
+import enAdaptiveRouting from "./locales/en/adaptive-routing.json"
 import enApiReference from "./locales/en/api-reference.json"
 import enBudgets from "./locales/en/budgets.json"
 import enCommon from "./locales/en/common.json"
@@ -13,11 +14,13 @@ import enLogs from "./locales/en/logs.json"
 import enMcp from "./locales/en/mcp.json"
 import enModelLimits from "./locales/en/model-limits.json"
 import enModel from "./locales/en/model.json"
+import enObservability from "./locales/en/observability.json"
 import enPlayground from "./locales/en/playground.json"
 import enSettings from "./locales/en/settings.json"
 import enTags from "./locales/en/tags.json"
 import enUsage from "./locales/en/usage.json"
 
+import zhCNAdaptiveRouting from "./locales/zh-CN/adaptive-routing.json"
 import zhCNApiReference from "./locales/zh-CN/api-reference.json"
 import zhCNBudgets from "./locales/zh-CN/budgets.json"
 import zhCNCommon from "./locales/zh-CN/common.json"
@@ -29,6 +32,7 @@ import zhCNLogs from "./locales/zh-CN/logs.json"
 import zhCNMcp from "./locales/zh-CN/mcp.json"
 import zhCNModelLimits from "./locales/zh-CN/model-limits.json"
 import zhCNModel from "./locales/zh-CN/model.json"
+import zhCNObservability from "./locales/zh-CN/observability.json"
 import zhCNPlayground from "./locales/zh-CN/playground.json"
 import zhCNSettings from "./locales/zh-CN/settings.json"
 import zhCNTags from "./locales/zh-CN/tags.json"
@@ -51,6 +55,8 @@ export const ns = [
   "guardrails",
   "api-reference",
   "tags",
+  "adaptive-routing",
+  "observability",
 ] as const
 
 export const resources = {
@@ -70,6 +76,8 @@ export const resources = {
     guardrails: enGuardrails,
     "api-reference": enApiReference,
     tags: enTags,
+    "adaptive-routing": enAdaptiveRouting,
+    observability: enObservability,
   },
   "zh-CN": {
     common: zhCNCommon,
@@ -87,6 +95,8 @@ export const resources = {
     guardrails: zhCNGuardrails,
     "api-reference": zhCNApiReference,
     tags: zhCNTags,
+    "adaptive-routing": zhCNAdaptiveRouting,
+    observability: zhCNObservability,
   },
 } as const
 

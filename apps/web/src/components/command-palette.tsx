@@ -8,12 +8,14 @@ import {
   LayoutDashboard,
   Moon,
   Plug,
+  Radio,
   Search,
   Settings,
   Shield,
   Sun,
   Tags,
   Terminal,
+  Waypoints,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -142,6 +144,22 @@ export function CommandPalette() {
         icon: Settings,
         action: () => navigate("/settings"),
         keywords: ["config", "设置"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-adaptive-routing",
+        label: t("nav.adaptiveRouting"),
+        icon: Waypoints,
+        action: () => navigate("/adaptive-routing"),
+        keywords: ["routing", "traffic", "channel", "路由", "流量"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-observability",
+        label: t("nav.observability"),
+        icon: Radio,
+        action: () => navigate("/observability"),
+        keywords: ["metrics", "latency", "health", "监控", "可观测"],
         group: "Navigation",
       },
       {

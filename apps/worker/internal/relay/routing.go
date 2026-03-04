@@ -20,12 +20,13 @@ type RoutingAction struct {
 
 // RoutingRule is a single conditional routing rule.
 type RoutingRule struct {
-	ID         int                `json:"id"`
-	Name       string             `json:"name"`
-	Priority   int                `json:"priority"` // lower = higher priority
-	Enabled    bool               `json:"enabled"`
-	Conditions []RoutingCondition `json:"conditions"`
-	Action     RoutingAction      `json:"action"`
+	ID            int                `json:"id"`
+	Name          string             `json:"name"`
+	Priority      int                `json:"priority"` // lower = higher priority
+	Enabled       bool               `json:"enabled"`
+	Conditions    []RoutingCondition `json:"conditions"`
+	CELExpression string             `json:"cel_expression"` // optional CEL expression (overrides Conditions if set)
+	Action        RoutingAction      `json:"action"`
 }
 
 // RuleEvalContext holds the request data for rule evaluation.
@@ -36,6 +37,7 @@ type RuleEvalContext struct {
 	ApiKeyName  string
 	RequestType string
 	Body        map[string]any
+	IsStream    bool
 }
 
 // RuleResult is the outcome of evaluating all rules.

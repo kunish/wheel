@@ -178,6 +178,30 @@ var initSchema = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 	)`,
+	`CREATE TABLE IF NOT EXISTS distributed_locks (
+		lock_name VARCHAR(255) PRIMARY KEY,
+		holder_id VARCHAR(255) NOT NULL,
+		acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		expires_at TIMESTAMP NOT NULL,
+		INDEX idx_distributed_locks_expires_at (expires_at)
+	)`,
+	`CREATE TABLE IF NOT EXISTS virtual_keys (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		name VARCHAR(255) NOT NULL,
+		` + "`key`" + ` VARCHAR(255) NOT NULL UNIQUE,
+		description TEXT NOT NULL DEFAULT '',
+		team_id INT,
+		api_key_id INT NOT NULL,
+		enabled BOOLEAN DEFAULT true NOT NULL,
+		rate_limit_rpm INT DEFAULT 0 NOT NULL,
+		rate_limit_tpm INT DEFAULT 0 NOT NULL,
+		max_budget DOUBLE DEFAULT 0 NOT NULL,
+		current_spend DOUBLE DEFAULT 0 NOT NULL,
+		allowed_models TEXT NOT NULL DEFAULT '[]',
+		expires_at DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+	)`,
 }
 
 // initIndexes contains indexes created after tables exist.
@@ -192,6 +216,7 @@ var initIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_mcp_logs_time ON mcp_logs(time)`,
 	`CREATE INDEX IF NOT EXISTS idx_mcp_logs_client_id ON mcp_logs(client_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_model_limits_model ON model_limits(model)`,
+	`CREATE INDEX IF NOT EXISTS idx_virtual_keys_api_key_id ON virtual_keys(api_key_id)`,
 }
 
 // initAlters upgrades existing columns (idempotent).
@@ -207,6 +232,7 @@ var initAlters = []string{
 	`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rpm_limit INT NOT NULL DEFAULT 0`,
 	`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS tpm_limit INT NOT NULL DEFAULT 0`,
 	`ALTER TABLE mcp_clients ADD COLUMN IF NOT EXISTS oauth_config TEXT`,
+	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS cel_expression TEXT DEFAULT '' AFTER enabled`,
 	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP`,
 	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
 }

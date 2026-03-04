@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/config"
+	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/middleware"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
@@ -22,6 +23,7 @@ type Handler struct {
 	Cache           *cache.MemoryKV
 	Config          *config.Config
 	CircuitBreakers *relay.CircuitBreakerManager
+	DLock           *db.DistributedLock
 }
 
 // JSON helpers

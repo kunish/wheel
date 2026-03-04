@@ -68,11 +68,12 @@ func (h *RelayHandler) CreateRoutingRule(c *gin.Context) {
 	}
 
 	rule := &types.RoutingRuleModel{
-		Name:       req.Name,
-		Priority:   req.Priority,
-		Enabled:    req.Enabled,
-		Conditions: types.ConditionList(req.Conditions),
-		Action:     types.ActionJSON(req.Action),
+		Name:          req.Name,
+		Priority:      req.Priority,
+		Enabled:       req.Enabled,
+		CELExpression: req.CELExpression,
+		Conditions:    types.ConditionList(req.Conditions),
+		Action:        types.ActionJSON(req.Action),
 	}
 
 	if err := dal.CreateRoutingRule(c.Request.Context(), h.DB, rule); err != nil {
@@ -116,6 +117,9 @@ func (h *RelayHandler) UpdateRoutingRule(c *gin.Context) {
 	}
 	if req.Conditions != nil {
 		data["conditions"] = types.ConditionList(req.Conditions)
+	}
+	if req.CELExpression != nil {
+		data["cel_expression"] = *req.CELExpression
 	}
 	if req.Action != nil {
 		data["action"] = types.ActionJSON(*req.Action)

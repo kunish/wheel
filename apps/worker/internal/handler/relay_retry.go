@@ -21,6 +21,7 @@ type retryOutcome struct {
 	LastRetryAfterMs int64
 	LastStreamID     string
 	Attempts         []attemptRecord
+	Result           *relayResult // populated on success, carries token counts and content
 }
 
 // executeWithRetry runs the retry loop across ordered channels using the given strategy.
@@ -255,7 +256,7 @@ func (h *RelayHandler) executeWithRetry(
 			params.Attempts = attempts
 			strategy.HandleSuccess(h, params, result)
 
-			return &retryOutcome{Success: true, Attempts: attempts, LastStreamID: result.StreamID}
+			return &retryOutcome{Success: true, Attempts: attempts, LastStreamID: result.StreamID, Result: result}
 		}
 	}
 

@@ -35,6 +35,7 @@ type ProxyResult struct {
 	CacheReadTokens     int
 	CacheCreationTokens int
 	StatusCode          int
+	UpstreamHeaders     http.Header
 }
 
 // StreamCompleteInfo holds usage info collected after a stream finishes.
@@ -47,6 +48,38 @@ type StreamCompleteInfo struct {
 	StatusCode          int
 	ResponseContent     string
 	ThinkingContent     string
+}
+
+// ToResponseBody constructs a synthetic OpenAI chat completion response from accumulated stream data.
+// This allows PostHook plugins (e.g. SemanticCache) to access the complete response body
+// even for streaming requests.
+func (s *StreamCompleteInfo) ToResponseBody(model string) map[string]any {
+	message := map[string]any{
+		"role":    "assistant",
+		"content": s.ResponseContent,
+	}
+	if s.ThinkingContent != "" {
+		message["reasoning_content"] = s.ThinkingContent
+	}
+
+	return map[string]any{
+		"id":      fmt.Sprintf("chatcmpl-stream-%d", currentUnixSec()),
+		"object":  "chat.completion",
+		"created": float64(currentUnixSec()),
+		"model":   model,
+		"choices": []any{
+			map[string]any{
+				"index":         0,
+				"message":       message,
+				"finish_reason": "stop",
+			},
+		},
+		"usage": map[string]any{
+			"prompt_tokens":     s.InputTokens,
+			"completion_tokens": s.OutputTokens,
+			"total_tokens":      s.InputTokens + s.OutputTokens,
+		},
+	}
 }
 
 // extractCacheTokens extracts cache token counts from a response usage object.
@@ -155,6 +188,7 @@ func ProxyNonStreaming(
 			CacheReadTokens:     cacheRead,
 			CacheCreationTokens: cacheCreation,
 			StatusCode:          resp.StatusCode,
+			UpstreamHeaders:     resp.Header.Clone(),
 		}, nil
 	}
 
@@ -177,6 +211,7 @@ func ProxyNonStreaming(
 		CacheReadTokens:     cacheRead,
 		CacheCreationTokens: cacheCreation,
 		StatusCode:          resp.StatusCode,
+		UpstreamHeaders:     resp.Header.Clone(),
 	}, nil
 }
 
@@ -256,11 +291,6 @@ func ProxyStreaming(
 		return nil, &ProxyError{Message: "streaming not supported", StatusCode: 500}
 	}
 
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
 	// Derive upstream context from the client request context so that
 	// client disconnection (e.g. ESC in Claude Code) cancels the upstream read.
 	ctx, cancel := context.WithCancel(clientCtx)
@@ -291,6 +321,15 @@ func ProxyStreaming(
 			RetryAfterMs: parseRetryDelay(resp, errorText),
 		}
 	}
+
+	// Forward upstream response headers before setting SSE headers
+	ForwardResponseHeaders(w, resp)
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
 	state := &streamingState{onContent: onContent}
 
 	// First token timeout timer

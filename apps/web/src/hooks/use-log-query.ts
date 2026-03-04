@@ -69,6 +69,9 @@ export function useLogQuery() {
     // Streaming state
     pendingStreams: streamState.pendingStreams,
     pendingCount: streamState.pendingCount,
+    isPaused: streamState.isPaused,
+    connectionState: streamState.connectionState,
+    togglePause: streamState.togglePause,
     handleShowNew,
   }
 }

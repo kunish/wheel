@@ -12,7 +12,9 @@
     "budgets": "Budgets",
     "modelLimits": "Model Limits",
     "apiReference": "API Reference",
-    "settings": "Settings"
+    "settings": "Settings",
+    "adaptiveRouting": "Routing",
+    "observability": "Observability"
   },
   "navSection": {
     "gateway": "AI Gateway",
@@ -127,6 +129,17 @@
     "to": "To",
     "apply": "Apply",
     "today": "Today",
+    "yesterday": "Yesterday",
+    "custom": "Custom",
     "last": "Last {{label}}"
+  },
+  "logs": {
+    "stream": {
+      "live": "Live",
+      "paused": "Paused",
+      "streaming": "streaming",
+      "pause": "Pause",
+      "resume": "Resume"
+    }
   }
 }

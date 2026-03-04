@@ -1,0 +1,18 @@
+{
+  "title": "Observability",
+  "description": "Monitor system health, latency, and error rates",
+  "requestRate": "Request Rate",
+  "latencyTrend": "Latency Trend",
+  "modelUsage": "Model Usage Distribution",
+  "stats": {
+    "totalRequests": "Total Requests",
+    "avgLatency": "Avg Latency",
+    "errorRate": "Error Rate",
+    "totalModels": "Models Tracked"
+  },
+  "unit": {
+    "ms": "ms",
+    "avgLatency": "Avg Latency"
+  },
+  "noData": "No observability data available yet."
+}

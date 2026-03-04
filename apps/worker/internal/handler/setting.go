@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/service"
@@ -78,7 +79,12 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
-	if err := dal.UpdateSettings(c.Request.Context(), h.DB, req.Settings); err != nil {
+	ctx := c.Request.Context()
+	instanceID := uuid.New().String()
+
+	if err := h.DLock.WithLock(ctx, "config_update", instanceID, 30*time.Second, 10*time.Second, func() error {
+		return dal.UpdateSettings(ctx, h.DB, req.Settings)
+	}); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -190,7 +196,17 @@ func (h *Handler) ImportData(c *gin.Context) {
 		return
 	}
 
-	result := service.ImportData(c.Request.Context(), h.DB, &dump)
+	ctx := c.Request.Context()
+	instanceID := uuid.New().String()
+
+	var result types.ImportResult
+	if err := h.DLock.WithLock(ctx, "config_update", instanceID, 30*time.Second, 10*time.Second, func() error {
+		result = service.ImportData(ctx, h.DB, &dump)
+		return nil
+	}); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	// Invalidate caches
 	h.Cache.Delete("channels")

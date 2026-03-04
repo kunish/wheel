@@ -184,10 +184,32 @@ type RelayHandler struct {
 	// ── MCP Gateway ──
 	MCPManager *mcpgw.Manager
 	MCPServer  *mcpgw.Server
+
+	// ── Batch & Async ──
+	BatchStore *relay.BatchStore
+	AsyncStore *relay.AsyncStore
 }
 
 // RegisterRelayRoutes registers the /v1/* relay routes on a Gin engine.
 func (h *RelayHandler) RegisterRelayRoutes(r *gin.Engine) {
+	// Rerank and Count Tokens API (API key authenticated)
+	// Registered before the catch-all wildcard route.
+	v1ApiKey := r.Group("/v1")
+	v1ApiKey.Use(middleware.ApiKeyAuth(h.DB))
+	v1ApiKey.POST("/rerank", h.HandleRerank)
+	v1ApiKey.POST("/count-tokens", h.HandleCountTokens)
+
+	// Batch API
+	v1ApiKey.POST("/batch", h.HandleCreateBatch)
+	v1ApiKey.GET("/batch", h.HandleListBatches)
+	v1ApiKey.GET("/batch/:id", h.HandleGetBatch)
+	v1ApiKey.POST("/batch/:id/cancel", h.HandleCancelBatch)
+
+	// Async Inference API
+	v1ApiKey.POST("/async/chat/completions", h.HandleCreateAsyncInference)
+	v1ApiKey.GET("/async", h.HandleListAsyncJobs)
+	v1ApiKey.GET("/async/:id", h.HandleGetAsyncJob)
+
 	v1 := r.Group("/v1")
 	v1.Use(middleware.ApiKeyAuth(h.DB))
 	v1.GET("/models", h.handleModels)
@@ -414,6 +436,34 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 		resp := &relay.RelayPluginResponse{Success: outcome.Success}
 		if !outcome.Success {
 			resp.Error = fmt.Errorf("%s", outcome.LastError)
+		}
+		if outcome.Success && outcome.Result != nil {
+			resp.InputTokens = outcome.Result.InputTokens
+			resp.OutputTokens = outcome.Result.OutputTokens
+			resp.CacheReadTokens = outcome.Result.CacheReadTokens
+			resp.CacheCreationTokens = outcome.Result.CacheCreationTokens
+			if req.Stream {
+				resp.IsStream = true
+				resp.StreamContent = outcome.Result.ResponseContent
+				resp.ThinkingContent = outcome.Result.ThinkingContent
+				// Construct a synthetic response body from accumulated stream data
+				// so PostHook plugins can access the complete response.
+				streamInfo := &relay.StreamCompleteInfo{
+					InputTokens:         outcome.Result.InputTokens,
+					OutputTokens:        outcome.Result.OutputTokens,
+					CacheReadTokens:     outcome.Result.CacheReadTokens,
+					CacheCreationTokens: outcome.Result.CacheCreationTokens,
+					ResponseContent:     outcome.Result.ResponseContent,
+					ThinkingContent:     outcome.Result.ThinkingContent,
+				}
+				targetModel := req.Model
+				if req.OriginalModel != "" {
+					targetModel = req.OriginalModel
+				}
+				resp.Body = streamInfo.ToResponseBody(targetModel)
+			} else {
+				resp.Body = outcome.Result.Response
+			}
 		}
 		h.Plugins.RunPostHooks(pluginCtx, resp, preResult.ExecutedCount)
 	}

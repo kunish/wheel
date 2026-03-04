@@ -1,0 +1,19 @@
+{
+  "title": "Adaptive Routing",
+  "description": "Monitor traffic distribution and routing health across channels",
+  "trafficDistribution": "Traffic Distribution",
+  "channelHealth": "Channel Health",
+  "stats": {
+    "totalRequests": "Total Requests",
+    "avgLatency": "Avg Latency",
+    "errorRate": "Error Rate",
+    "activeChannels": "Active Channels"
+  },
+  "unit": {
+    "req": "req",
+    "ms": "ms",
+    "avgMs": "ms avg",
+    "success": "success"
+  },
+  "noData": "No routing data available yet. Traffic will appear once requests are processed."
+}

@@ -111,23 +111,50 @@ type APIKeyUpdateRequest struct {
 	TPMLimit        *int     `json:"tpmLimit,omitempty"`
 }
 
+// ──── Virtual Key ────
+
+type VirtualKeyCreateRequest struct {
+	Name          string   `json:"name" binding:"required"`
+	Description   string   `json:"description"`
+	TeamID        *int     `json:"teamId"`
+	ApiKeyID      int      `json:"apiKeyId" binding:"required"`
+	RateLimitRPM  int      `json:"rateLimitRpm"`
+	RateLimitTPM  int      `json:"rateLimitTpm"`
+	MaxBudget     float64  `json:"maxBudget"`
+	AllowedModels []string `json:"allowedModels"`
+	ExpiresAt     *string  `json:"expiresAt"` // ISO 8601
+}
+
+type VirtualKeyUpdateRequest struct {
+	ID            int       `json:"id" binding:"required"`
+	Name          *string   `json:"name,omitempty"`
+	Description   *string   `json:"description,omitempty"`
+	Enabled       *bool     `json:"enabled,omitempty"`
+	RateLimitRPM  *int      `json:"rateLimitRpm,omitempty"`
+	RateLimitTPM  *int      `json:"rateLimitTpm,omitempty"`
+	MaxBudget     *float64  `json:"maxBudget,omitempty"`
+	AllowedModels *[]string `json:"allowedModels,omitempty"`
+}
+
 // ──── Routing Rule ────
 
 type RoutingRuleCreateRequest struct {
-	Name       string                 `json:"name" binding:"required"`
-	Priority   int                    `json:"priority"`
-	Enabled    bool                   `json:"enabled"`
-	Conditions []RoutingConditionItem `json:"conditions"`
-	Action     RoutingActionItem      `json:"action" binding:"required"`
+	Name          string                 `json:"name" binding:"required"`
+	Priority      int                    `json:"priority"`
+	Enabled       bool                   `json:"enabled"`
+	CELExpression string                 `json:"cel_expression"`
+	Conditions    []RoutingConditionItem `json:"conditions"`
+	Action        RoutingActionItem      `json:"action" binding:"required"`
 }
 
 type RoutingRuleUpdateRequest struct {
-	ID         int                    `json:"id"`
-	Name       *string                `json:"name,omitempty"`
-	Priority   *int                   `json:"priority,omitempty"`
-	Enabled    *bool                  `json:"enabled,omitempty"`
-	Conditions []RoutingConditionItem `json:"conditions,omitempty"`
-	Action     *RoutingActionItem     `json:"action,omitempty"`
+	ID            int                    `json:"id"`
+	Name          *string                `json:"name,omitempty"`
+	Priority      *int                   `json:"priority,omitempty"`
+	Enabled       *bool                  `json:"enabled,omitempty"`
+	CELExpression *string                `json:"cel_expression,omitempty"`
+	Conditions    []RoutingConditionItem `json:"conditions,omitempty"`
+	Action        *RoutingActionItem     `json:"action,omitempty"`
 }
 
 // ──── Log ────

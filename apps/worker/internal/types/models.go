@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/uptrace/bun"
 )
@@ -92,6 +93,26 @@ type APIKey struct {
 	TotalCost       float64 `bun:"total_cost"          json:"totalCost"`
 	RPMLimit        int     `bun:"rpm_limit"           json:"rpmLimit"`
 	TPMLimit        int     `bun:"tpm_limit"           json:"tpmLimit"`
+}
+
+// VirtualKey represents a virtual API key that maps to upstream provider keys.
+type VirtualKey struct {
+	bun.BaseModel `bun:"table:virtual_keys"`
+	ID            int        `bun:"id,pk,autoincrement" json:"id"`
+	Name          string     `bun:"name,notnull"        json:"name"`
+	Key           string     `bun:"key,notnull,unique"  json:"key"` // vk-wheel-xxx format
+	Description   string     `bun:"description"         json:"description"`
+	TeamID        *int       `bun:"team_id"             json:"teamId"`
+	ApiKeyID      int        `bun:"api_key_id,notnull"  json:"apiKeyId"`
+	Enabled       bool       `bun:"enabled,default:true" json:"enabled"`
+	RateLimitRPM  int        `bun:"rate_limit_rpm"      json:"rateLimitRpm"`
+	RateLimitTPM  int        `bun:"rate_limit_tpm"      json:"rateLimitTpm"`
+	MaxBudget     float64    `bun:"max_budget"          json:"maxBudget"`
+	CurrentSpend  float64    `bun:"current_spend"       json:"currentSpend"`
+	AllowedModels StringList `bun:"allowed_models,type:text" json:"allowedModels"`
+	ExpiresAt     *time.Time `bun:"expires_at"          json:"expiresAt"`
+	CreatedAt     time.Time  `bun:"created_at,nullzero,default:current_timestamp" json:"createdAt"`
+	UpdatedAt     time.Time  `bun:"updated_at,nullzero,default:current_timestamp" json:"updatedAt"`
 }
 
 // ChannelAttempt records a single relay attempt.
@@ -189,6 +210,7 @@ type RoutingRuleModel struct {
 	Name          string        `bun:"name"                json:"name"`
 	Priority      int           `bun:"priority"            json:"priority"`
 	Enabled       bool          `bun:"enabled"             json:"enabled"`
+	CELExpression string        `bun:"cel_expression"      json:"cel_expression"`
 	Conditions    ConditionList `bun:"conditions"          json:"conditions"`
 	Action        ActionJSON    `bun:"action"              json:"action"`
 }

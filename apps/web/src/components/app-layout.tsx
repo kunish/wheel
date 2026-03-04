@@ -15,12 +15,14 @@ import {
   Monitor,
   Moon,
   Plug,
+  Radio,
   Search,
   Settings,
   Shield,
   Sun,
   Tags,
   Terminal,
+  Waypoints,
 } from "lucide-react"
 import { motion } from "motion/react"
 import { useCallback, useEffect, useState } from "react"
@@ -76,6 +78,8 @@ const navSections: NavSection[] = [
     items: [
       { href: "/usage", labelKey: "nav.usage", icon: BarChart3 },
       { href: "/logs", labelKey: "nav.logs", icon: FileText },
+      { href: "/adaptive-routing", labelKey: "nav.adaptiveRouting", icon: Waypoints },
+      { href: "/observability", labelKey: "nav.observability", icon: Radio },
     ],
   },
   {
@@ -348,7 +352,7 @@ function BottomNav() {
     allNavItems[1], // model
     allNavItems[5], // usage
     allNavItems[6], // logs
-    allNavItems[12], // settings
+    allNavItems[14], // settings
   ]
 
   return (

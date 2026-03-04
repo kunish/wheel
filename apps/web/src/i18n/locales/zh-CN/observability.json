@@ -1,0 +1,18 @@
+{
+  "title": "可观测性",
+  "description": "监控系统健康状态、延迟和错误率",
+  "requestRate": "请求速率",
+  "latencyTrend": "延迟趋势",
+  "modelUsage": "模型使用分布",
+  "stats": {
+    "totalRequests": "总请求数",
+    "avgLatency": "平均延迟",
+    "errorRate": "错误率",
+    "totalModels": "追踪模型数"
+  },
+  "unit": {
+    "ms": "ms",
+    "avgLatency": "平均延迟"
+  },
+  "noData": "暂无可观测性数据。"
+}
