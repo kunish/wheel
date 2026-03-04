@@ -14,6 +14,16 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { McpPanel } from "@/components/playground/mcp-panel"
 import { ToolCallTimeline } from "@/components/playground/tool-call-timeline"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,6 +55,7 @@ export default function PlaygroundPage() {
   const { t } = useTranslation("playground")
   const chat = usePlaygroundChat()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const chatScrollRef = useRef<HTMLDivElement>(null)
 
   const visibleTurns = useMemo(() => {
@@ -116,11 +127,6 @@ export default function PlaygroundPage() {
                   </Badge>
                 )}
                 <div className="ml-auto flex items-center gap-1">
-                  <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title={t("parameters")}>
-                      <Settings2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </SheetTrigger>
                   {chat.response && (
                     <Button
                       variant="ghost"
@@ -241,9 +247,6 @@ export default function PlaygroundPage() {
                         <Settings2 className="h-4 w-4" />
                       </Button>
                     </SheetTrigger>
-                    <Button variant="ghost" size="icon" onClick={chat.clear} title={t("clear")}>
-                      <RotateCcw className="h-4 w-4" />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -272,6 +275,14 @@ export default function PlaygroundPage() {
                     {statsSummary && (
                       <span className="text-muted-foreground text-xs">{statsSummary}</span>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setClearConfirmOpen(true)}
+                      title={t("clear")}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
                     <Button
                       onClick={chat.isLoading ? chat.stop : chat.send}
                       disabled={!chat.model || !chat.userMessage.trim() || chat.hasPendingToolCalls}
@@ -408,6 +419,27 @@ export default function PlaygroundPage() {
               <McpPanel mcp={chat.mcp} disabled={chat.isLoading} />
             </div>
           </SheetContent>
+
+          <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("clearConfirmTitle")}</AlertDialogTitle>
+                <AlertDialogDescription>{t("clearConfirmDescription")}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("actions.cancel", { ns: "common" })}</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={() => {
+                    chat.clear()
+                    setClearConfirmOpen(false)
+                  }}
+                >
+                  {t("clear")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </Sheet>
     </div>

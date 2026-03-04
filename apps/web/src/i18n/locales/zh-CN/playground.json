@@ -32,6 +32,8 @@
   "apiKeyPlaceholder": "sk-...（可选，留空使用管理员密钥）",
   "copyAsCurl": "复制为 cURL",
   "copiedCurl": "cURL 已复制到剪贴板",
+  "clearConfirmTitle": "确认清空会话？",
+  "clearConfirmDescription": "这会清空当前对话消息、响应和工具调用状态，且无法撤销。",
   "error": "错误",
   "history": "历史记录",
   "clearHistory": "清空历史",

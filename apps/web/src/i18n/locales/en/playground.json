@@ -32,6 +32,8 @@
   "apiKeyPlaceholder": "sk-... (optional, uses admin key if empty)",
   "copyAsCurl": "Copy as cURL",
   "copiedCurl": "cURL copied to clipboard",
+  "clearConfirmTitle": "Clear this conversation?",
+  "clearConfirmDescription": "This will remove current messages, response, and tool-call state and cannot be undone.",
   "error": "Error",
   "history": "History",
   "clearHistory": "Clear History",
