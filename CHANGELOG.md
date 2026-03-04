@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.1](https://github.com/kunish/wheel/compare/v1.19.0...v1.19.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **playground:** streamline settings entry and confirm clear action ([468dbf1](https://github.com/kunish/wheel/commit/468dbf1e9eed243f2fe0f01466fe19e9e1787d32))
+
 ## [1.19.0](https://github.com/kunish/wheel/compare/v1.18.0...v1.19.0) (2026-03-04)
 
 
