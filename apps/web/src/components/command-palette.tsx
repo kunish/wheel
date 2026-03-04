@@ -17,7 +17,7 @@ import {
   Terminal,
   Waypoints,
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router"
 import { useTheme } from "@/components/theme-provider"
@@ -36,6 +36,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { setTheme } = useTheme()
@@ -202,7 +203,7 @@ export function CommandPalette() {
     return map
   }, [filtered])
 
-  const flatItems = useMemo(() => filtered, [filtered])
+  const flatItems = filtered
 
   const execute = useCallback((item: CommandItem) => {
     item.action()
@@ -230,7 +231,13 @@ export function CommandPalette() {
   // Arrow key navigation
   useEffect(() => {
     if (!open) return
+    inputRef.current?.focus()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
     function handleKeyDown(e: KeyboardEvent) {
+      if (flatItems.length === 0) return
       if (e.key === "ArrowDown") {
         e.preventDefault()
         setSelectedIndex((i) => Math.min(i + 1, flatItems.length - 1))
@@ -245,11 +252,6 @@ export function CommandPalette() {
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [open, flatItems, selectedIndex, execute])
-
-  // Reset selection when search changes
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [search])
 
   if (!open) return null
 
@@ -270,9 +272,12 @@ export function CommandPalette() {
           <div className="flex items-center gap-2 border-b px-4 py-3">
             <Search className="text-muted-foreground h-4 w-4 shrink-0" />
             <input
-              ref={(el) => el?.focus()}
+              ref={inputRef}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setSelectedIndex(0)
+              }}
               placeholder="Type a command or search..."
               className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none"
             />

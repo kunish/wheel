@@ -97,6 +97,7 @@ export function ActivitySection({
 
   const dataMap = useMemo(() => new Map((data ?? []).map((d) => [d.date, d])), [data])
   const nav = useDateNavigation(dataMap)
+  const currentView = nav.view.current
 
   const [activeTooltip, setActiveTooltip] = useState<HeatmapTooltip | null>(null)
   const [dataTab, setDataTab] = useState<DataPanelPopoverProps["dataTab"]>(null)
@@ -111,7 +112,7 @@ export function ActivitySection({
   // ── Gear clock center data ──
   const gearData = useMemo(() => {
     const sd = streamingDelta ?? { inputTokens: 0, outputTokens: 0, inputCost: 0, outputCost: 0 }
-    if (nav.view.current === "day") {
+    if (currentView === "day") {
       const dayMetrics = nav.day.data
       return {
         reqCount: dayMetrics
@@ -129,7 +130,7 @@ export function ActivitySection({
       totalCost:
         (totalData?.input_cost ?? 0) + (totalData?.output_cost ?? 0) + sd.inputCost + sd.outputCost,
     }
-  }, [nav.view.current, nav.day.data, totalData, streamingDelta])
+  }, [currentView, nav.day.data, totalData, streamingDelta])
 
   // ── Tooltip handlers ──
   const handleMouseEnter = useCallback(

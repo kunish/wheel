@@ -25,6 +25,7 @@ type AsyncJob struct {
 	UpdatedAt   int64          `json:"updated_at"`
 	CompletedAt *int64         `json:"completed_at,omitempty"`
 	Model       string         `json:"model"`
+	ApiKeyID    int            `json:"-"`
 	Request     map[string]any `json:"request,omitempty"`
 	Response    map[string]any `json:"response,omitempty"`
 	Error       *string        `json:"error,omitempty"`
@@ -45,7 +46,7 @@ func NewAsyncStore() *AsyncStore {
 }
 
 // CreateJob creates a new async inference job.
-func (s *AsyncStore) CreateJob(model string, request map[string]any) *AsyncJob {
+func (s *AsyncStore) CreateJob(model string, apiKeyID int, request map[string]any) *AsyncJob {
 	now := time.Now().Unix()
 	job := &AsyncJob{
 		ID:        fmt.Sprintf("async_%d", time.Now().UnixNano()),
@@ -54,6 +55,7 @@ func (s *AsyncStore) CreateJob(model string, request map[string]any) *AsyncJob {
 		CreatedAt: now,
 		UpdatedAt: now,
 		Model:     model,
+		ApiKeyID:  apiKeyID,
 		Request:   request,
 	}
 	s.mu.Lock()

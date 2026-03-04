@@ -62,6 +62,13 @@ const EMPTY_FORM: RoutingRuleInput = {
 const FIELD_OPTIONS = ["model", "apikey_name", "request_type", "header:", "body:"] as const
 const OPERATOR_OPTIONS = ["eq", "neq", "contains", "prefix", "suffix", "regex", "in"] as const
 const ACTION_TYPES = ["reject", "route", "rewrite"] as const
+const CONDITION_ROW_KEY = Symbol("conditionRowKey")
+
+function getConditionRowKey(condition: RoutingConditionItem): string {
+  const keyedCondition = condition as RoutingConditionItem & { [CONDITION_ROW_KEY]?: string }
+  if (!keyedCondition[CONDITION_ROW_KEY]) keyedCondition[CONDITION_ROW_KEY] = crypto.randomUUID()
+  return keyedCondition[CONDITION_ROW_KEY]
+}
 
 export default function RoutingRulesSheet({
   open,
@@ -444,7 +451,7 @@ function ConditionEditor({
     <div className="flex flex-col gap-2">
       <Label>{t("routingRules.form.conditions")}</Label>
       {conditions.map((cond, idx) => (
-        <div key={idx} className="flex items-center gap-2">
+        <div key={getConditionRowKey(cond)} className="flex items-center gap-2">
           <Select
             value={getFieldBase(cond.field)}
             onValueChange={(v) => {

@@ -19,7 +19,8 @@ export default function ApiReferencePage() {
   // verify it looks like the Scalar API Reference page rather than the SPA shell.
   useEffect(() => {
     let cancelled = false
-    fetch(docsUrl)
+    const controller = new AbortController()
+    fetch(docsUrl, { signal: controller.signal })
       .then(async (res) => {
         if (cancelled) return
         if (!res.ok) {
@@ -33,6 +34,7 @@ export default function ApiReferencePage() {
         }
         // Read a small prefix to check for API docs markers
         const text = await res.text()
+        if (cancelled) return
         const prefix = text.slice(0, 4096).toLowerCase()
         const isDocs =
           prefix.includes("scalar") ||
@@ -46,6 +48,7 @@ export default function ApiReferencePage() {
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [docsUrl])
 
@@ -88,7 +91,7 @@ export default function ApiReferencePage() {
             src={docsUrl}
             title={t("title")}
             className="h-full w-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            sandbox="allow-scripts allow-forms allow-popups"
           />
         )}
       </div>

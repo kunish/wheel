@@ -112,6 +112,8 @@ func main() {
 	cbm := relay.NewCircuitBreakerManager(obs, kv)
 	sm := relay.NewSessionManager()
 	bal := relay.NewBalancerState()
+	batchStore := relay.NewBatchStore()
+	asyncStore := relay.NewAsyncStore()
 
 	// ── Routing Engine (load rules from DB) ──
 	routingEngine := relay.NewRoutingEngine()
@@ -164,6 +166,19 @@ func main() {
 	cbm.StartCleanup(ctx)
 	sm.StartCleanup(ctx)
 	rateLimitPlugin.Limiter().StartCleanup(ctx.Done())
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				batchStore.Cleanup(24 * time.Hour)
+				asyncStore.Cleanup(24 * time.Hour)
+			}
+		}
+	}()
 
 	// ── Start Health Check Loop ──
 	healthChecker.Start(ctx, func() []relay.HealthCheckTarget {
@@ -248,6 +263,8 @@ func main() {
 		HealthChecker:   healthChecker,
 		MCPManager:      mcpManager,
 		MCPServer:       mcpSrv,
+		BatchStore:      batchStore,
+		AsyncStore:      asyncStore,
 	}
 
 	// ── Router ──

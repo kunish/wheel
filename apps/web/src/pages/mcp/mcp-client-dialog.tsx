@@ -18,6 +18,13 @@ import { discoverOAuthMetadata } from "@/lib/api-client"
 
 const CONNECTION_TYPES = ["http", "sse", "stdio"] as const
 const AUTH_TYPES = ["none", "headers", "oauth"] as const
+const HEADER_ROW_KEY = Symbol("headerRowKey")
+
+function getHeaderRowKey(header: MCPHeaderEntry): string {
+  const keyedHeader = header as MCPHeaderEntry & { [HEADER_ROW_KEY]?: string }
+  if (!keyedHeader[HEADER_ROW_KEY]) keyedHeader[HEADER_ROW_KEY] = crypto.randomUUID()
+  return keyedHeader[HEADER_ROW_KEY]
+}
 
 /** Returns true if OAuth config is valid (or authType is not oauth). */
 function isOAuthValid(form: MCPClientInput): boolean {
@@ -277,7 +284,7 @@ function HeadersEditor({
     <div className="flex flex-col gap-2">
       <Label>{t("form.headers")}</Label>
       {headers.map((h, idx) => (
-        <div key={idx} className="flex items-center gap-2">
+        <div key={getHeaderRowKey(h)} className="flex items-center gap-2">
           <Input
             className="flex-1"
             placeholder={t("form.headerKey")}

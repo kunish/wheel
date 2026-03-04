@@ -44,10 +44,20 @@ interface WsMessage {
 }
 type WsListener = (msg: WsMessage) => void
 
+type WsConnectionState = "connected" | "reconnecting" | "disconnected"
+
 let globalWs: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let refCount = 0
 const listeners = new Set<WsListener>()
+
+function publish(msg: WsMessage) {
+  for (const fn of listeners) fn(msg)
+}
+
+function publishConnectionState(state: WsConnectionState) {
+  publish({ event: "ws-state", data: { state }, ts: Date.now() })
+}
 
 function ensureConnection() {
   if (globalWs && globalWs.readyState <= WebSocket.OPEN) return
@@ -61,10 +71,14 @@ function ensureConnection() {
   const ws = new WebSocket(getWsUrl())
   globalWs = ws
 
+  ws.onopen = () => {
+    publishConnectionState("connected")
+  }
+
   ws.onmessage = (ev) => {
     try {
       const msg = JSON.parse(ev.data)
-      for (const fn of listeners) fn(msg)
+      publish(msg)
     } catch {
       // ignore non-JSON
     }
@@ -75,7 +89,10 @@ function ensureConnection() {
     if (globalWs === ws) {
       globalWs = null
       if (refCount > 0) {
+        publishConnectionState("reconnecting")
         reconnectTimer = setTimeout(ensureConnection, WS_RECONNECT_INTERVAL)
+      } else {
+        publishConnectionState("disconnected")
       }
     }
   }
@@ -91,6 +108,9 @@ function addRef() {
     // Cancel any pending reconnect — we'll connect fresh
     clearTimeout(reconnectTimer)
     reconnectTimer = null
+  }
+  if (!globalWs) {
+    publishConnectionState("reconnecting")
   }
   ensureConnection()
 }

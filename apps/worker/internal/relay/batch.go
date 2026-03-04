@@ -51,6 +51,7 @@ type BatchJob struct {
 	Status        BatchStatus     `json:"status"`
 	CreatedAt     int64           `json:"created_at"`
 	CompletedAt   *int64          `json:"completed_at,omitempty"`
+	ApiKeyID      int             `json:"-"`
 	RequestCounts BatchCounts     `json:"request_counts"`
 	Requests      []BatchRequest  `json:"-"`
 	Responses     []BatchResponse `json:"responses,omitempty"`
@@ -78,12 +79,13 @@ func NewBatchStore() *BatchStore {
 }
 
 // CreateJob creates a new batch job and returns it.
-func (s *BatchStore) CreateJob(requests []BatchRequest, model string) *BatchJob {
+func (s *BatchStore) CreateJob(requests []BatchRequest, model string, apiKeyID int) *BatchJob {
 	job := &BatchJob{
 		ID:        fmt.Sprintf("batch_%d", time.Now().UnixNano()),
 		Object:    "batch",
 		Status:    BatchStatusPending,
 		CreatedAt: time.Now().Unix(),
+		ApiKeyID:  apiKeyID,
 		RequestCounts: BatchCounts{
 			Total: len(requests),
 		},
@@ -135,6 +137,23 @@ func (s *BatchStore) UpdateJob(id string, status BatchStatus, responses []BatchR
 	defer s.mu.Unlock()
 	job, ok := s.jobs[id]
 	if !ok {
+		return
+	}
+	if job.Status == BatchStatusCancelled && status != BatchStatusCancelled {
+		if responses != nil {
+			job.Responses = responses
+			completed := 0
+			failed := 0
+			for _, r := range responses {
+				if r.Error != nil {
+					failed++
+				} else {
+					completed++
+				}
+			}
+			job.RequestCounts.Completed = completed
+			job.RequestCounts.Failed = failed
+		}
 		return
 	}
 	job.Status = status

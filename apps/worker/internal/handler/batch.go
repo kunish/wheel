@@ -5,8 +5,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/middleware"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 )
 
@@ -40,7 +42,41 @@ func (h *RelayHandler) HandleCreateBatch(c *gin.Context) {
 		return
 	}
 
-	job := h.BatchStore.CreateJob(req.Requests, req.Model)
+	supportedModels, _ := c.Get("supportedModels")
+	sm, _ := supportedModels.(string)
+
+	for i := range req.Requests {
+		if req.Requests[i].Body == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Request body is required", "type": "invalid_request_error"}})
+			return
+		}
+		if req.Requests[i].Method != "" && strings.ToUpper(req.Requests[i].Method) != http.MethodPost {
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Only POST requests are supported in batch", "type": "invalid_request_error"}})
+			return
+		}
+
+		model, _ := req.Requests[i].Body["model"].(string)
+		if model == "" {
+			model = req.Model
+		}
+		if model == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Model is required for each batch request", "type": "invalid_request_error"}})
+			return
+		}
+		if !middleware.CheckModelAccess(sm, model) {
+			c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": "Model not allowed for this API key", "type": "invalid_request_error"}})
+			return
+		}
+		req.Requests[i].Body["model"] = model
+		if req.Requests[i].URL == "" {
+			req.Requests[i].URL = "/v1/chat/completions"
+		}
+	}
+
+	apiKeyIDRaw, _ := c.Get("apiKeyId")
+	apiKeyID, _ := apiKeyIDRaw.(int)
+
+	job := h.BatchStore.CreateJob(req.Requests, req.Model, apiKeyID)
 
 	// Process batch in background
 	go h.processBatchJob(job.ID)
@@ -126,15 +162,34 @@ func (h *RelayHandler) processBatchJob(jobID string) {
 			continue
 		}
 
-		// Use the batch-level model if not specified per-request
-		if _, ok := req.Body["model"]; !ok && job.Model != "" {
-			req.Body["model"] = job.Model
+		model, _ := req.Body["model"].(string)
+		if model == "" {
+			if job.Model != "" {
+				model = job.Model
+				req.Body["model"] = model
+			} else {
+				resp.Error = &relay.BatchError{Code: "invalid_request", Message: "Model is required"}
+				responses = append(responses, resp)
+				h.BatchStore.UpdateJob(jobID, relay.BatchStatusProcessing, responses)
+				continue
+			}
 		}
 
-		resp.Response = &relay.BatchResult{
-			StatusCode: http.StatusOK,
-			Body:       req.Body,
+		path := req.URL
+		if path == "" {
+			path = "/v1/chat/completions"
 		}
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+
+		result, err := h.executeBackgroundNonStream(path, req.Body, model, job.ApiKeyID)
+		if err != nil {
+			resp.Error = &relay.BatchError{Code: "upstream_error", Message: err.Error()}
+		} else {
+			resp.Response = &relay.BatchResult{StatusCode: result.StatusCode, Body: result.Response}
+		}
+
 		responses = append(responses, resp)
 		h.BatchStore.UpdateJob(jobID, relay.BatchStatusProcessing, responses)
 	}

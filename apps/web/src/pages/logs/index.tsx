@@ -26,6 +26,7 @@ function LogsPageContent() {
     pendingCount,
     pendingStreams,
     isPaused,
+    connectionState,
     togglePause,
     handleShowNew,
     totalPages,
@@ -59,9 +60,10 @@ function LogsPageContent() {
                   {t("totalCount", { count: total })}
                 </span>
                 <LogStreamIndicator
-                  isLive={pendingStreams.size > 0}
+                  isLive
                   isPaused={isPaused}
                   streamCount={pendingStreams.size}
+                  connectionState={connectionState}
                   onTogglePause={togglePause}
                 />
                 {pendingCount > 0 && (

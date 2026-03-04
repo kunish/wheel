@@ -33,6 +33,8 @@ interface BufferedEvent {
   data: any
 }
 
+const MAX_BUFFERED_EVENTS = 2000
+
 export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
   const queryClient = useQueryClient()
   const [pendingStreams, setPendingStreams] = useState<Map<string, LogEntry>>(() => new Map())
@@ -52,6 +54,7 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
 
   const processEvent = useCallback(
     (event: BufferedEvent) => {
+      setConnectionState("connected")
       const { type, data } = event
 
       if (type === "log-stream-start") {
@@ -185,9 +188,17 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
 
   // ── WS event handlers — buffer when paused, process when live ──
 
+  const bufferEvent = useCallback((event: BufferedEvent) => {
+    const next = bufferedEventsRef.current
+    if (next.length >= MAX_BUFFERED_EVENTS) {
+      next.splice(0, next.length - MAX_BUFFERED_EVENTS + 1)
+    }
+    next.push(event)
+  }, [])
+
   useWsEvent("log-stream-start", (data) => {
     if (isPausedRef.current) {
-      bufferedEventsRef.current.push({ type: "log-stream-start", data })
+      bufferEvent({ type: "log-stream-start", data })
       return
     }
     processEvent({ type: "log-stream-start", data })
@@ -195,7 +206,7 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
 
   useWsEvent("log-streaming", (data) => {
     if (isPausedRef.current) {
-      bufferedEventsRef.current.push({ type: "log-streaming", data })
+      bufferEvent({ type: "log-streaming", data })
       return
     }
     processEvent({ type: "log-streaming", data })
@@ -203,7 +214,7 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
 
   useWsEvent("log-created", (data) => {
     if (isPausedRef.current) {
-      bufferedEventsRef.current.push({ type: "log-created", data })
+      bufferEvent({ type: "log-created", data })
       return
     }
     processEvent({ type: "log-created", data })
@@ -211,7 +222,7 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
 
   useWsEvent("log-stream-end", (data) => {
     if (isPausedRef.current) {
-      bufferedEventsRef.current.push({ type: "log-stream-end", data })
+      bufferEvent({ type: "log-stream-end", data })
       return
     }
     processEvent({ type: "log-stream-end", data })
@@ -219,15 +230,12 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
 
   // ── Connection state tracking ──
 
-  useWsEvent("ping", () => {
-    setConnectionState("connected")
+  useWsEvent("ws-state", (data) => {
+    const state = data?.state
+    if (state === "connected" || state === "reconnecting" || state === "disconnected") {
+      setConnectionState(state)
+    }
   })
-
-  // Track connection state from WS open/close
-  useEffect(() => {
-    // Mark as connected when we start receiving events
-    setConnectionState("connected")
-  }, [])
 
   // ── Pause / Resume ──
 

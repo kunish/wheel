@@ -3,7 +3,7 @@ import { Activity, AlertTriangle, Shield, Zap } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Card, CardContent } from "@/components/ui/card"
-import { getChannelStats, getGlobalStats } from "@/lib/api-client"
+import { getChannelStats, getTotalStats } from "@/lib/api-client"
 
 function formatNumber(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -20,9 +20,9 @@ export default function AdaptiveRoutingPage() {
     staleTime: 30_000,
   })
 
-  const { data: globalData } = useQuery({
-    queryKey: ["stats", "global"],
-    queryFn: getGlobalStats,
+  const { data: totalData } = useQuery({
+    queryKey: ["stats", "total"],
+    queryFn: getTotalStats,
     staleTime: 30_000,
   })
 
@@ -34,10 +34,6 @@ export default function AdaptiveRoutingPage() {
     requests: ch.totalRequests || 0,
     avgLatency: Math.round(ch.avgLatency || 0),
     cost: ch.totalCost || 0,
-    successRate:
-      ch.totalRequests > 0
-        ? (((ch.totalRequests - (ch.totalCost > 0 ? 0 : 0)) / ch.totalRequests) * 100).toFixed(1)
-        : "100.0",
   }))
 
   // Summary metrics
@@ -47,6 +43,10 @@ export default function AdaptiveRoutingPage() {
       ? Math.round(channels.reduce((sum, ch) => sum + (ch.avgLatency || 0), 0) / channels.length)
       : 0
   const activeChannels = channels.length
+  const totalSuccess = totalData?.data?.request_success ?? 0
+  const totalFailed = totalData?.data?.request_failed ?? 0
+  const errorRate =
+    totalSuccess + totalFailed > 0 ? (totalFailed / (totalSuccess + totalFailed)) * 100 : 0
 
   const summaryCards = [
     {
@@ -61,9 +61,7 @@ export default function AdaptiveRoutingPage() {
     },
     {
       label: t("stats.errorRate"),
-      value: globalData?.data
-        ? `${((globalData.data as Record<string, number>).error_rate ?? 0).toFixed(1)}%`
-        : "0%",
+      value: `${errorRate.toFixed(1)}%`,
       icon: AlertTriangle,
     },
     {
@@ -137,15 +135,7 @@ export default function AdaptiveRoutingPage() {
             {trafficData.map((ch, i) => (
               <div key={i} className="bg-muted/50 flex items-center justify-between rounded-md p-3">
                 <div className="flex items-center gap-2">
-                  <div
-                    className={`h-2 w-2 rounded-full ${
-                      Number(ch.successRate) > 95
-                        ? "bg-green-500"
-                        : Number(ch.successRate) > 80
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
-                    }`}
-                  />
+                  <div className="h-2 w-2 rounded-full bg-slate-400" />
                   <span className="text-sm font-medium">{ch.name}</span>
                 </div>
                 <div className="text-muted-foreground flex items-center gap-6 text-sm">
@@ -156,9 +146,7 @@ export default function AdaptiveRoutingPage() {
                     {ch.avgLatency}
                     {t("unit.avgMs")}
                   </span>
-                  <span className={Number(ch.successRate) > 95 ? "text-green-600" : "text-red-600"}>
-                    {ch.successRate}% {t("unit.success")}
-                  </span>
+                  <span>{t("noData")}</span>
                 </div>
               </div>
             ))}

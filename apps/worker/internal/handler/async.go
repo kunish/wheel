@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/middleware"
 )
 
 // asyncCreateRequest is the request body for POST /v1/async/chat/completions.
@@ -42,7 +43,17 @@ func (h *RelayHandler) HandleCreateAsyncInference(c *gin.Context) {
 		return
 	}
 
-	job := h.AsyncStore.CreateJob(model, body)
+	supportedModels, _ := c.Get("supportedModels")
+	sm, _ := supportedModels.(string)
+	if !middleware.CheckModelAccess(sm, model) {
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": "Model not allowed for this API key", "type": "invalid_request_error"}})
+		return
+	}
+
+	apiKeyIDRaw, _ := c.Get("apiKeyId")
+	apiKeyID, _ := apiKeyIDRaw.(int)
+
+	job := h.AsyncStore.CreateJob(model, apiKeyID, body)
 
 	// Process async job in background
 	go h.processAsyncJob(job.ID)
@@ -101,20 +112,28 @@ func (h *RelayHandler) processAsyncJob(jobID string) {
 	// Mark as processing
 	h.AsyncStore.MarkProcessing(jobID)
 
-	// Build a placeholder response based on the request
-	response := map[string]any{
-		"id":      jobID,
-		"object":  "chat.completion",
-		"model":   job.Model,
-		"choices": []map[string]any{},
+	body := job.Request
+	if body == nil {
+		h.AsyncStore.FailJob(jobID, "invalid async request body")
+		return
+	}
+	if stream, ok := body["stream"].(bool); ok && stream {
+		delete(body, "stream")
+	}
+
+	result, err := h.executeBackgroundNonStream("/v1/chat/completions", body, job.Model, job.ApiKeyID)
+	if err != nil {
+		h.AsyncStore.FailJob(jobID, err.Error())
+		slog.Error("async job failed", "job_id", jobID, "model", job.Model, "error", err)
+		return
 	}
 
 	usage := map[string]any{
-		"prompt_tokens":     0,
-		"completion_tokens": 0,
-		"total_tokens":      0,
+		"prompt_tokens":     result.InputTokens,
+		"completion_tokens": result.OutputTokens,
+		"total_tokens":      result.InputTokens + result.OutputTokens,
 	}
 
-	h.AsyncStore.CompleteJob(jobID, response, usage)
+	h.AsyncStore.CompleteJob(jobID, result.Response, usage)
 	slog.Info("async job completed", "job_id", jobID, "model", job.Model)
 }

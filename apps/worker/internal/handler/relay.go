@@ -190,30 +190,40 @@ type RelayHandler struct {
 	AsyncStore *relay.AsyncStore
 }
 
-// RegisterRelayRoutes registers the /v1/* relay routes on a Gin engine.
+// RegisterRelayRoutes registers relay and related /v1 routes on a Gin engine.
 func (h *RelayHandler) RegisterRelayRoutes(r *gin.Engine) {
-	// Rerank and Count Tokens API (API key authenticated)
-	// Registered before the catch-all wildcard route.
-	v1ApiKey := r.Group("/v1")
-	v1ApiKey.Use(middleware.ApiKeyAuth(h.DB))
-	v1ApiKey.POST("/rerank", h.HandleRerank)
-	v1ApiKey.POST("/count-tokens", h.HandleCountTokens)
-
-	// Batch API
-	v1ApiKey.POST("/batch", h.HandleCreateBatch)
-	v1ApiKey.GET("/batch", h.HandleListBatches)
-	v1ApiKey.GET("/batch/:id", h.HandleGetBatch)
-	v1ApiKey.POST("/batch/:id/cancel", h.HandleCancelBatch)
-
-	// Async Inference API
-	v1ApiKey.POST("/async/chat/completions", h.HandleCreateAsyncInference)
-	v1ApiKey.GET("/async", h.HandleListAsyncJobs)
-	v1ApiKey.GET("/async/:id", h.HandleGetAsyncJob)
-
 	v1 := r.Group("/v1")
 	v1.Use(middleware.ApiKeyAuth(h.DB))
+
+	// Rerank and Count Tokens API
+	v1.POST("/rerank", h.HandleRerank)
+	v1.POST("/count-tokens", h.HandleCountTokens)
+
+	// Batch API
+	v1.POST("/batch", h.HandleCreateBatch)
+	v1.GET("/batch", h.HandleListBatches)
+	v1.GET("/batch/:id", h.HandleGetBatch)
+	v1.POST("/batch/:id/cancel", h.HandleCancelBatch)
+
+	// Async Inference API
+	v1.POST("/async/chat/completions", h.HandleCreateAsyncInference)
+	v1.GET("/async", h.HandleListAsyncJobs)
+	v1.GET("/async/:id", h.HandleGetAsyncJob)
+
+	// MCP tool execution endpoint
+	v1.POST("/mcp/tool/execute", h.ExecuteMCPTool)
+
+	// Relay endpoints
 	v1.GET("/models", h.handleModels)
-	v1.POST("/*path", h.handleRelay)
+	v1.POST("/chat/completions", h.handleRelay)
+	v1.POST("/messages", h.handleRelay)
+	v1.POST("/embeddings", h.handleRelay)
+	v1.POST("/responses", h.handleRelay)
+	v1.POST("/images/generations", h.handleRelay)
+	v1.POST("/audio/speech", h.handleRelay)
+	v1.POST("/audio/transcriptions", h.handleRelay)
+	v1.POST("/audio/translations", h.handleRelay)
+	v1.POST("/moderations", h.handleRelay)
 
 	// MCP Server endpoint (API Key auth)
 	if h.MCPServer != nil {

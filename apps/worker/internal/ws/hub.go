@@ -43,7 +43,7 @@ type Hub struct {
 	mu      sync.RWMutex
 	clients map[*wsClient]struct{}
 
-	streamMu     sync.RWMutex
+	streamMu      sync.RWMutex
 	activeStreams map[string]map[string]any // streamId -> log-stream-start payload
 
 	jwtSecret string
@@ -52,9 +52,9 @@ type Hub struct {
 // New creates a new WebSocket Hub.
 func New(jwtSecret string) *Hub {
 	return &Hub{
-		clients:      make(map[*wsClient]struct{}),
+		clients:       make(map[*wsClient]struct{}),
 		activeStreams: make(map[string]map[string]any),
-		jwtSecret:    jwtSecret,
+		jwtSecret:     jwtSecret,
 	}
 }
 

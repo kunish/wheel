@@ -97,8 +97,11 @@ var initSchema = []string{
 		name VARCHAR(255) NOT NULL,
 		priority INT DEFAULT 0 NOT NULL,
 		enabled BOOLEAN DEFAULT true NOT NULL,
+		cel_expression TEXT NOT NULL,
 		conditions TEXT NOT NULL,
-		action TEXT NOT NULL
+		action TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 	)`,
 	`CREATE TABLE IF NOT EXISTS relay_logs (
 		id INT PRIMARY KEY AUTO_INCREMENT,
@@ -189,7 +192,7 @@ var initSchema = []string{
 		id INT PRIMARY KEY AUTO_INCREMENT,
 		name VARCHAR(255) NOT NULL,
 		` + "`key`" + ` VARCHAR(255) NOT NULL UNIQUE,
-		description TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL,
 		team_id INT,
 		api_key_id INT NOT NULL,
 		enabled BOOLEAN DEFAULT true NOT NULL,
@@ -197,7 +200,7 @@ var initSchema = []string{
 		rate_limit_tpm INT DEFAULT 0 NOT NULL,
 		max_budget DOUBLE DEFAULT 0 NOT NULL,
 		current_spend DOUBLE DEFAULT 0 NOT NULL,
-		allowed_models TEXT NOT NULL DEFAULT '[]',
+		allowed_models TEXT NOT NULL,
 		expires_at DATETIME,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -232,7 +235,9 @@ var initAlters = []string{
 	`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rpm_limit INT NOT NULL DEFAULT 0`,
 	`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS tpm_limit INT NOT NULL DEFAULT 0`,
 	`ALTER TABLE mcp_clients ADD COLUMN IF NOT EXISTS oauth_config TEXT`,
-	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS cel_expression TEXT DEFAULT '' AFTER enabled`,
+	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS cel_expression TEXT AFTER enabled`,
+	`UPDATE routing_rules SET cel_expression = '' WHERE cel_expression IS NULL`,
+	`ALTER TABLE routing_rules MODIFY COLUMN cel_expression TEXT NOT NULL`,
 	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP`,
 	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
 }

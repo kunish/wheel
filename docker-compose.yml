@@ -16,7 +16,7 @@ services:
     volumes:
       - tidb-data:/tmp/tidb
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-P", "4000", "-u", "root"]
+      test: [CMD, mysqladmin, ping, -h, 127.0.0.1, -P, "4000", -u, root]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,7 +48,7 @@ services:
       tidb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      test: [CMD, curl, -f, "http://localhost:8787/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -74,7 +74,7 @@ services:
       worker:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      test: [CMD, wget, --spider, -q, "http://localhost:3000"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -100,7 +100,7 @@ services:
       web:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      test: [CMD, wget, --spider, -q, "http://localhost:3000"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -125,7 +125,7 @@ services:
       worker:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      test: [CMD, wget, --spider, -q, "http://localhost:9090/-/healthy"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -154,7 +154,7 @@ services:
       prometheus:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      test: [CMD, wget, --spider, -q, "http://localhost:3000/api/health"]
       interval: 10s
       timeout: 5s
       retries: 3
