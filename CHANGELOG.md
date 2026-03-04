@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.19.0](https://github.com/kunish/wheel/compare/v1.18.0...v1.19.0) (2026-03-04)
+
+
+### Features
+
+* implement 20 enterprise features inspired by Bifrost AI gateway ([e9b5826](https://github.com/kunish/wheel/commit/e9b5826126d3491efad293ae5a9b160a00bb5c82))
+* **playground:** add MCP auto/manual chat workflow ([b07be5c](https://github.com/kunish/wheel/commit/b07be5c97730d8b8cce1b9a61efa0baa8a563b33))
+* **playground:** add MCP-aware request builders and API helpers ([7aab15c](https://github.com/kunish/wheel/commit/7aab15cae68d2ab62af846cc512b7acfc09b94f0))
+
+
+### Bug Fixes
+
+* **playground:** keep cleared tool selection and continue after tool errors ([17683d5](https://github.com/kunish/wheel/commit/17683d5d126ec1fa96472d851c910a3b1b17b098))
+* **playground:** resolve MCP review blockers ([6c178fd](https://github.com/kunish/wheel/commit/6c178fdc72e630f4b04d8f88e6c179e5c53b41a7))
+* **playground:** scope model selector to active profile groups ([dac0d6b](https://github.com/kunish/wheel/commit/dac0d6bb8d1db2f0d28d93ec6741c4d796505304))
+* **playground:** stabilize relay background flows and dashboard UX ([67a7c85](https://github.com/kunish/wheel/commit/67a7c85f4e8decdbff1699d18d83626cf530c113))
+
 ## [1.18.0](https://github.com/kunish/wheel/compare/v1.17.0...v1.18.0) (2026-03-02)
 
 ### Features
