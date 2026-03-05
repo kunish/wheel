@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0](https://github.com/kunish/wheel/compare/v1.19.2...v1.20.0) (2026-03-05)
+
+
+### Features
+
+* **logs:** stabilize list layout and enrich detail diagnostics ([256804d](https://github.com/kunish/wheel/commit/256804d9fbfc84798f1aa6549a5a4513998c81bb))
+
 ## [1.19.2](https://github.com/kunish/wheel/compare/v1.19.1...v1.19.2) (2026-03-05)
 
 
