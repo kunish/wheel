@@ -105,7 +105,7 @@
     "step2Title": "Use Aggregated MCP Server",
     "step2Desc": "All tools from connected clients are aggregated into a single MCP Server endpoint:",
     "step3Title": "REST Tool Execution",
-    "step3Desc": "For non-MCP clients, call tools directly via REST API:",
+    "step3Desc": "When direct tool invocation is needed (e.g. debugging, automation, integrations), use the REST API:",
     "httpDesc": "Remote MCP servers supporting Streamable HTTP",
     "sseDesc": "Remote MCP servers supporting Server-Sent Events",
     "stdioDesc": "Local MCP server processes"

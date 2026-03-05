@@ -74,6 +74,8 @@
 
 ### Docker Compose
 
+> 说明：下方是最小化示例。仓库根目录 `docker-compose.yml` 提供完整参考配置（含 healthcheck、监控、资源限制等）。如需与当前实现完全一致，请优先使用仓库内该文件。
+
 ```yaml
 volumes:
   tidb-data:

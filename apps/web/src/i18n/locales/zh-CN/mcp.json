@@ -105,7 +105,7 @@
     "step2Title": "使用聚合 MCP Server",
     "step2Desc": "所有已连接客户端的工具会聚合为统一的 MCP Server 端点：",
     "step3Title": "REST 工具调用",
-    "step3Desc": "对于不支持 MCP 协议的客户端，可通过 REST API 直接调用工具：",
+    "step3Desc": "当需要直接调用工具（如调试、自动化或第三方集成）时，可通过 REST API 调用：",
     "httpDesc": "支持 Streamable HTTP 的远程 MCP 服务器",
     "sseDesc": "支持 Server-Sent Events 的远程 MCP 服务器",
     "stdioDesc": "本地 MCP 服务器进程"

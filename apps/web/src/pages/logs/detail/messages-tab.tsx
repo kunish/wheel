@@ -672,7 +672,7 @@ export function MessagesTabContent({
     [detail.responseHeaders],
   )
 
-  // Use streaming overlay content when available (real-time during SSE proxy),
+  // Use streaming overlay content when available (real-time via log-streaming WS events),
   // otherwise fall back to the stored response content from the DB.
   const effectiveResponseContent = streamingOverlay
     ? (streamingOverlay.thinkingContent

@@ -299,8 +299,9 @@ func (s *streamingState) appendContent(text string) {
 	s.maybeNotify()
 }
 
-// ProxyStreaming performs an SSE streaming proxy, writing directly to the http.ResponseWriter.
-// It handles protocol conversion between Anthropic SSE and OpenAI SSE formats.
+// ProxyStreaming performs an SSE streaming proxy and writes directly to http.ResponseWriter.
+// It handles provider-specific protocol conversions (Anthropic/Bedrock, Gemini/Vertex,
+// Cohere, and OpenAI<->Anthropic where applicable).
 // clientCtx should be the request context (e.g. c.Request.Context()) so that
 // client disconnection automatically cancels the upstream read loop.
 func ProxyStreaming(

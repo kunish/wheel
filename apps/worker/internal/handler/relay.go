@@ -325,15 +325,9 @@ func (h *RelayHandler) handleModels(c *gin.Context) {
 	c.JSON(200, gin.H{"object": "list", "data": data})
 }
 
-// ── POST /v1/* Relay Handler ────────────────────────────────────
+// ── Relay handler for explicitly registered /v1 endpoints ───────
 
 func (h *RelayHandler) handleRelay(c *gin.Context) {
-	// Dispatch MCP tool execute before relay processing
-	if c.Param("path") == "/mcp/tool/execute" {
-		h.ExecuteMCPTool(c)
-		return
-	}
-
 	startTime := time.Now()
 
 	// Start relay span (no-op if tracing disabled)

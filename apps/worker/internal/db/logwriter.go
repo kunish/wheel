@@ -209,8 +209,8 @@ func (w *LogWriter) flush(entries []logEntry) {
 	}
 }
 
-// Shutdown closes the channel and waits for Run to drain remaining items.
-// Call this during graceful shutdown. Run() will return after draining.
+// Shutdown closes the input channel and returns immediately.
+// Run() drains remaining items asynchronously before returning.
 func (w *LogWriter) Shutdown() {
 	close(w.ch)
 }

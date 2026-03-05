@@ -351,8 +351,8 @@ func (tm *TokenManager) InvalidateToken(clientID int) {
 	delete(tm.tokens, clientID)
 }
 
-// GetBearerToken returns the "Authorization: Bearer <token>" header value for a client.
-// Returns empty string if the client doesn't use OAuth.
+// GetBearerToken returns the Authorization header value ("<tokenType> <accessToken>").
+// Callers should only use this for OAuth-enabled clients.
 func (tm *TokenManager) GetBearerToken(clientID int, cfg *MCPOAuthConfig) (string, error) {
 	token, err := tm.GetToken(clientID, cfg)
 	if err != nil {

@@ -9,7 +9,8 @@ import (
 )
 
 // Connect establishes a connection to an MCP server based on the client config.
-// Returns the mcp-go client and a cancel function (for SSE/STDIO cleanup).
+// It returns an MCP client and an optional cancel function (used by SSE contexts).
+// Final resource cleanup is done via client.Close().
 // oauthBearerToken is optional; if non-empty it will be added as Authorization header.
 func Connect(ctx context.Context, cfg *MCPClient, oauthBearerToken string) (client.MCPClient, func(), error) {
 	switch cfg.ConnectionType {
@@ -48,7 +49,7 @@ func connectSSE(ctx context.Context, cfg *MCPClient, oauthBearerToken string) (c
 		return nil, nil, fmt.Errorf("sse connect failed: %w", err)
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	// Start SSE connection in background
+	// Keep a cancellable lifecycle context; protocol initialization happens on client calls.
 	go func() {
 		<-ctx.Done()
 	}()
