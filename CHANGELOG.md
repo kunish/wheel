@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.19.2](https://github.com/kunish/wheel/compare/v1.19.1...v1.19.2) (2026-03-05)
+
+
+### Bug Fixes
+
+* **mcp:** split gateway endpoints and stabilize tool discovery ([43e6249](https://github.com/kunish/wheel/commit/43e62497f8ee81ccc388039f1ab7c10dd5216a8d))
+* **relay:** stop retrying non-retryable proxy errors ([fd7fefb](https://github.com/kunish/wheel/commit/fd7fefbe78d65c308b97f1efb31567c3274feba5))
+
 ## [1.19.1](https://github.com/kunish/wheel/compare/v1.19.0...v1.19.1) (2026-03-04)
 
 
