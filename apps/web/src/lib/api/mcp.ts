@@ -68,7 +68,7 @@ export interface MCPClientInput {
 }
 
 export function listMCPClients() {
-  return apiFetch<{ success: boolean; data: { clients: MCPClientRecord[] } }>(
+  return apiFetch<{ success: boolean; data: { clients: MCPClientRecord[]; serverUrl?: string } }>(
     "/api/v1/mcp/client/list",
   )
 }

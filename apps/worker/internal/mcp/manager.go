@@ -112,10 +112,10 @@ func discoverTools(ctx context.Context, conn interface {
 }
 
 // isToolAllowed checks if a tool name is permitted by the ToolsToExecute filter.
-// [] or nil or ["*"] = all allowed, ["a","b"] = only those.
+// [] or nil = deny all, ["*"] = allow all, ["a","b"] = only those.
 func isToolAllowed(toolName string, filter StringListJSON) bool {
 	if len(filter) == 0 {
-		return true
+		return false
 	}
 	if len(filter) == 1 && filter[0] == "*" {
 		return true
@@ -148,6 +148,11 @@ func (m *Manager) RemoveClient(id int) {
 
 	if ok && state.CancelFunc != nil {
 		state.CancelFunc()
+	}
+	if ok && state.Conn != nil {
+		if err := state.Conn.Close(); err != nil {
+			log.Printf("[mcp] close client id=%d failed: %v", id, err)
+		}
 	}
 	// Clean up cached OAuth token
 	m.tokenManager.InvalidateToken(id)
@@ -230,6 +235,9 @@ func (m *Manager) ExecuteTool(ctx context.Context, clientID int, toolName string
 	if state.GetState() != StateConnected {
 		return nil, fmt.Errorf("client id=%d is not connected", clientID)
 	}
+	if !isToolAllowed(toolName, state.Config.ToolsToExecute) {
+		return nil, fmt.Errorf("tool %q is not allowed for client id=%d", toolName, clientID)
+	}
 
 	req := mcplib.CallToolRequest{
 		Params: mcplib.CallToolParams{
@@ -299,6 +307,11 @@ func (m *Manager) Stop() {
 	for _, state := range clients {
 		if state.CancelFunc != nil {
 			state.CancelFunc()
+		}
+		if state.Conn != nil {
+			if err := state.Conn.Close(); err != nil {
+				log.Printf("[mcp] close client during stop failed (id=%d): %v", state.Config.ID, err)
+			}
 		}
 	}
 	log.Printf("[mcp] manager stopped, %d clients disconnected", len(clients))

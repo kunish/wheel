@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"sort"
@@ -32,7 +33,10 @@ func (h *RelayHandler) ListMCPClients(c *gin.Context) {
 		resp = append(resp, r)
 	}
 
-	successJSON(c, gin.H{"clients": resp})
+	successJSON(c, gin.H{
+		"clients":   resp,
+		"serverUrl": buildPublicMCPServerURL(c.Request),
+	})
 }
 
 // buildClientResponse merges DB config with runtime state into an API response.
@@ -124,7 +128,7 @@ func (h *RelayHandler) CreateMCPClient(c *gin.Context) {
 		client.OAuthConfig = mcpgw.OAuthConfigJSON(*req.OAuthConfig)
 	}
 
-	// Default: allow all tools
+	// Default: allow all tools for newly created clients.
 	if client.ToolsToExecute == nil {
 		client.ToolsToExecute = mcpgw.StringListJSON{"*"}
 	}
@@ -145,6 +149,7 @@ func (h *RelayHandler) CreateMCPClient(c *gin.Context) {
 			// Don't rollback DB — client is saved but disconnected
 		}
 	}
+	h.syncMCPServerTools()
 
 	successJSON(c, client)
 }
@@ -220,6 +225,7 @@ func (h *RelayHandler) UpdateMCPClient(c *gin.Context) {
 		if err := h.MCPManager.UpdateClient(c.Request.Context(), updated); err != nil {
 			log.Printf("[mcp] reconnect after update failed (id=%d): %v", req.ID, err)
 		}
+		h.syncMCPServerTools()
 	}
 
 	successNoData(c)
@@ -242,6 +248,7 @@ func (h *RelayHandler) DeleteMCPClient(c *gin.Context) {
 
 	// Disconnect from runtime
 	h.MCPManager.RemoveClient(id)
+	h.syncMCPServerTools()
 	successNoData(c)
 }
 
@@ -267,6 +274,7 @@ func (h *RelayHandler) ReconnectMCPClient(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.syncMCPServerTools()
 
 	successNoData(c)
 }
@@ -303,8 +311,7 @@ func (h *RelayHandler) ExecuteMCPTool(c *gin.Context) {
 	if err != nil {
 		mcpLog.Status = "error"
 		mcpLog.Error = err.Error()
-		// Fire-and-forget log write
-		go dal.CreateMCPLog(c.Request.Context(), h.DB, mcpLog)
+		h.writeMCPLogAsync(mcpLog)
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -313,7 +320,7 @@ func (h *RelayHandler) ExecuteMCPTool(c *gin.Context) {
 	} else {
 		mcpLog.Status = "ok"
 	}
-	go dal.CreateMCPLog(c.Request.Context(), h.DB, mcpLog)
+	h.writeMCPLogAsync(mcpLog)
 
 	resp := mcpgw.ToolExecuteResponse{IsError: result.IsError}
 	for _, content := range result.Content {
@@ -326,6 +333,26 @@ func (h *RelayHandler) ExecuteMCPTool(c *gin.Context) {
 	}
 
 	successJSON(c, resp)
+}
+
+func (h *RelayHandler) syncMCPServerTools() {
+	if h.MCPServer == nil {
+		return
+	}
+	h.MCPServer.SyncTools()
+}
+
+func (h *RelayHandler) writeMCPLogAsync(entry *types.MCPLog) {
+	if entry == nil || h.DB == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := dal.CreateMCPLog(ctx, h.DB, entry); err != nil {
+			log.Printf("[mcp] write log failed: %v", err)
+		}
+	}()
 }
 
 // ──── Discover OAuth Metadata ────

@@ -70,34 +70,10 @@ services:
     restart: always
     networks:
       - internal
-    depends_on:
-      worker:
-        condition: service_healthy
-    healthcheck:
-      test: [CMD, wget, --spider, -q, "http://localhost:3000"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-          cpus: "0.25"
-
-  caddy:
-    image: caddy:2-alpine
-    restart: always
-    networks:
-      - internal
     ports:
       - 3000:3000
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
     depends_on:
       worker:
-        condition: service_healthy
-      web:
         condition: service_healthy
     healthcheck:
       test: [CMD, wget, --spider, -q, "http://localhost:3000"]

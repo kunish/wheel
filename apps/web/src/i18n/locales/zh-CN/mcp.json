@@ -53,7 +53,7 @@
     "stdioEnvs": "环境变量",
     "stdioEnvsPlaceholder": "KEY=VALUE，每行一个",
     "toolsToExecute": "允许的工具",
-    "toolsToExecutePlaceholder": "留空表示允许所有工具",
+    "toolsToExecutePlaceholder": "输入 * 表示允许所有工具；留空表示不允许任何工具",
     "toolsToAutoExec": "自动执行工具",
     "toolsToAutoExecPlaceholder": "无需确认即可执行的工具",
     "oauthClientId": "客户端 ID",
@@ -93,6 +93,7 @@
   "tools": {
     "title": "工具",
     "noTools": "未发现工具",
+    "noneAllowed": "未允许任何工具",
     "count_one": "{{count}} 个工具",
     "count_other": "{{count}} 个工具"
   },

@@ -6,6 +6,36 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
 
+	# API routes -> worker
+	handle /v1/* {
+		reverse_proxy worker:8787
+	}
+
+	handle /api/* {
+		reverse_proxy worker:8787
+	}
+
+	handle /mcp/sse* {
+		reverse_proxy worker:8787
+	}
+
+	# Backward compatibility: legacy SSE endpoint /mcp or /mcp/
+	@legacy_mcp_sse {
+		path /mcp /mcp/
+		header Accept *text/event-stream*
+	}
+	handle @legacy_mcp_sse {
+		reverse_proxy worker:8787
+	}
+
+	handle /mcp/message* {
+		reverse_proxy worker:8787
+	}
+
+	handle /docs* {
+		reverse_proxy worker:8787
+	}
+
 	root * /srv
 	file_server
 	try_files {path} /index.html

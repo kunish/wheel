@@ -211,6 +211,9 @@ func main() {
 
 	// ── MCP Gateway Manager ──
 	mcpManager := mcpgw.NewManager()
+	if err := dal.BackfillMCPToolsToExecuteAllowAll(context.Background(), database); err != nil {
+		log.Printf("[startup] MCP tools_to_execute backfill failed: %v", err)
+	}
 	if mcpClients, err := dal.ListMCPClients(context.Background(), database); err == nil {
 		for i := range mcpClients {
 			if !mcpClients[i].Enabled {
@@ -229,6 +232,18 @@ func main() {
 	// ── MCP Server (expose aggregated tools) ──
 	mcpSrv := mcpgw.NewServer(mcpManager)
 	mcpSrv.SyncTools()
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				mcpSrv.SyncTools()
+			}
+		}
+	}()
 
 	// ── Handlers ──
 	dlock := db.NewDistributedLock(database)

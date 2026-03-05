@@ -60,3 +60,13 @@ func DeleteMCPClient(ctx context.Context, db *bun.DB, id int) error {
 	_, err := db.NewDelete().Model((*mcp.MCPClient)(nil)).Where("id = ?", id).Exec(ctx)
 	return err
 }
+
+// BackfillMCPToolsToExecuteAllowAll migrates legacy empty tool filters to wildcard allow-all.
+// This keeps old MCP client behavior after introducing deny-by-default semantics.
+func BackfillMCPToolsToExecuteAllowAll(ctx context.Context, db *bun.DB) error {
+	_, err := db.NewUpdate().Table("mcp_clients").
+		Set("tools_to_execute = ?", mcp.StringListJSON{"*"}).
+		Where("tools_to_execute IS NULL OR tools_to_execute = '' OR tools_to_execute = '[]'").
+		Exec(ctx)
+	return err
+}

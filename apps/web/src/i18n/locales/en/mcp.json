@@ -53,7 +53,7 @@
     "stdioEnvs": "Environment Variables",
     "stdioEnvsPlaceholder": "KEY=VALUE, one per line",
     "toolsToExecute": "Allowed Tools",
-    "toolsToExecutePlaceholder": "Leave empty to allow all tools",
+    "toolsToExecutePlaceholder": "Use * to allow all tools; leave empty to allow none",
     "toolsToAutoExec": "Auto-Execute Tools",
     "toolsToAutoExecPlaceholder": "Tools that execute without confirmation",
     "oauthClientId": "Client ID",
@@ -93,6 +93,7 @@
   "tools": {
     "title": "Tools",
     "noTools": "No tools discovered",
+    "noneAllowed": "No tools allowed",
     "count_one": "{{count}} tool",
     "count_other": "{{count}} tools"
   },

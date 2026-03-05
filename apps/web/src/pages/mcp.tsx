@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
 import { getApiBaseUrl, listMCPClients } from "@/lib/api-client"
+import { resolveMcpServerUrl, resolveMcpToolExecuteUrl } from "@/lib/mcp-url"
 import MCPClientDialog from "./mcp/mcp-client-dialog"
 import { useMCPMutations } from "./mcp/use-mcp-mutations"
 
@@ -29,7 +30,7 @@ const EMPTY_FORM: MCPClientInput = {
   connectionString: "",
   authType: "none",
   headers: [],
-  toolsToExecute: [],
+  toolsToExecute: ["*"],
   toolsToAutoExec: [],
   enabled: true,
 }
@@ -42,6 +43,12 @@ export default function MCPPage() {
     queryFn: listMCPClients,
   })
   const clients = data?.data?.clients ?? []
+  const mcpServerUrl = resolveMcpServerUrl({
+    backendServerUrl: data?.data?.serverUrl,
+    apiBaseUrl: getApiBaseUrl(),
+    windowOrigin: window.location.origin,
+  })
+  const toolExecuteUrl = resolveMcpToolExecuteUrl(mcpServerUrl)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<MCPClientInput>({ ...EMPTY_FORM })
@@ -101,10 +108,15 @@ export default function MCPPage() {
       {isLoading ? (
         <p className="text-muted-foreground text-sm">{t("actions.loading", { ns: "common" })}</p>
       ) : clients.length === 0 ? (
-        <EmptyGuide t={t} onAdd={openCreate} />
+        <EmptyGuide
+          t={t}
+          onAdd={openCreate}
+          mcpServerUrl={mcpServerUrl}
+          toolExecuteUrl={toolExecuteUrl}
+        />
       ) : (
         <>
-          <EndpointCard />
+          <EndpointCard mcpServerUrl={mcpServerUrl} />
           <div className="flex flex-col gap-3">
             {clients.map((client) => (
               <ClientCard
@@ -166,10 +178,18 @@ function StateBadge({ state }: { state: MCPClientRecord["state"] }) {
   )
 }
 
-function ToolsPopover({ tools }: { tools: MCPClientRecord["tools"] }) {
+function ToolsPopover({
+  tools,
+  toolsToExecute,
+}: {
+  tools: MCPClientRecord["tools"]
+  toolsToExecute?: string[]
+}) {
   const { t } = useTranslation("mcp")
   if (!tools || tools.length === 0) {
-    return <span className="text-muted-foreground text-xs">{t("tools.noTools")}</span>
+    const noToolsLabel =
+      !toolsToExecute || toolsToExecute.length === 0 ? t("tools.noneAllowed") : t("tools.noTools")
+    return <span className="text-muted-foreground text-xs">{noToolsLabel}</span>
   }
   return (
     <Popover>
@@ -226,7 +246,7 @@ function ClientCard({
               {t(`connectionType.${client.connectionType}`)}
             </Badge>
             <StateBadge state={client.state} />
-            <ToolsPopover tools={client.tools} />
+            <ToolsPopover tools={client.tools} toolsToExecute={client.toolsToExecute} />
           </div>
           <Switch
             checked={client.enabled}
@@ -277,7 +297,17 @@ function ClientCard({
 
 // ── Empty State Guide ──
 
-function EmptyGuide({ t, onAdd }: { t: (key: string) => string; onAdd: () => void }) {
+function EmptyGuide({
+  t,
+  onAdd,
+  mcpServerUrl,
+  toolExecuteUrl,
+}: {
+  t: (key: string) => string
+  onAdd: () => void
+  mcpServerUrl: string
+  toolExecuteUrl: string
+}) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-5">
@@ -303,15 +333,13 @@ function EmptyGuide({ t, onAdd }: { t: (key: string) => string; onAdd: () => voi
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium">2. {t("guide.step2Title")}</span>
             <span className="text-muted-foreground text-sm">{t("guide.step2Desc")}</span>
-            <code className="bg-muted mt-1 rounded px-2 py-1 text-xs">{getMCPServerUrl()}</code>
+            <code className="bg-muted mt-1 rounded px-2 py-1 text-xs">{mcpServerUrl}</code>
           </div>
 
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium">3. {t("guide.step3Title")}</span>
             <span className="text-muted-foreground text-sm">{t("guide.step3Desc")}</span>
-            <code className="bg-muted mt-1 rounded px-2 py-1 text-xs">
-              POST {getApiBaseUrl() || ""}/v1/mcp/tool/execute
-            </code>
+            <code className="bg-muted mt-1 rounded px-2 py-1 text-xs">POST {toolExecuteUrl}</code>
           </div>
         </div>
 
@@ -326,14 +354,9 @@ function EmptyGuide({ t, onAdd }: { t: (key: string) => string; onAdd: () => voi
 
 // ── MCP Server Endpoint Card ──
 
-function getMCPServerUrl() {
-  const base = getApiBaseUrl() || window.location.origin
-  return `${base}/mcp/`
-}
-
-function EndpointCard() {
+function EndpointCard({ mcpServerUrl }: { mcpServerUrl: string }) {
   const { t } = useTranslation("mcp")
-  const url = getMCPServerUrl()
+  const url = mcpServerUrl
 
   function copyUrl() {
     navigator.clipboard.writeText(url)
