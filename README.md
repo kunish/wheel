@@ -148,6 +148,14 @@ export OPENAI_API_KEY=your-api-key
 opencode
 ```
 
+**Codex**
+
+```bash
+export OPENAI_BASE_URL=http://localhost:3000/v1
+export OPENAI_API_KEY=your-api-key
+codex --provider openai
+```
+
 **aider**
 
 ```bash

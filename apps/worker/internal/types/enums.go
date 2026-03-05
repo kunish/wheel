@@ -31,6 +31,7 @@ const (
 	OutboundHuggingFace OutboundType = 30
 	OutboundNovita      OutboundType = 31
 	OutboundSiliconFlow OutboundType = 32
+	OutboundCodex       OutboundType = 33 // Codex via CLIProxyAPI
 )
 
 // OutboundTypeName returns a human-readable name for the provider type.
@@ -80,6 +81,8 @@ func OutboundTypeName(t OutboundType) string {
 		return "novita"
 	case OutboundSiliconFlow:
 		return "siliconflow"
+	case OutboundCodex:
+		return "codex"
 	default:
 		return "unknown"
 	}
@@ -91,7 +94,8 @@ func IsOpenAICompatible(t OutboundType) bool {
 	case OutboundOpenAIChat, OutboundOpenAI, OutboundOpenAIResponses, OutboundOpenAIEmbedding,
 		OutboundGroq, OutboundMistral, OutboundDeepSeek, OutboundXAI,
 		OutboundCerebras, OutboundOpenRouter, OutboundPerplexity, OutboundTogether,
-		OutboundOllama, OutboundVLLM, OutboundHuggingFace, OutboundNovita, OutboundSiliconFlow:
+		OutboundOllama, OutboundVLLM, OutboundHuggingFace, OutboundNovita, OutboundSiliconFlow,
+		OutboundCodex:
 		return true
 	default:
 		return false
@@ -135,6 +139,8 @@ func DefaultBaseURL(t OutboundType) string {
 		return "https://api.novita.ai"
 	case OutboundSiliconFlow:
 		return "https://api.siliconflow.cn"
+	case OutboundCodex:
+		return "http://localhost:8317"
 	default:
 		return ""
 	}

@@ -28,7 +28,8 @@
     "29": "vLLM",
     "30": "Hugging Face",
     "31": "Novita AI",
-    "32": "SiliconFlow"
+    "32": "SiliconFlow",
+    "33": "Codex (CLIProxyAPI)"
   },
   "modeLabels": {
     "1": "RoundRobin",
