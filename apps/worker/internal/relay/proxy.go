@@ -27,6 +27,29 @@ func (e *ProxyError) Error() string {
 	return e.Message
 }
 
+// IsRetryableStatusCode reports whether a proxy status should be retried.
+func IsRetryableStatusCode(statusCode int) bool {
+	if statusCode <= 0 {
+		return true
+	}
+	if statusCode == 429 || statusCode == 408 || statusCode == 409 {
+		return true
+	}
+	if statusCode >= 500 {
+		return true
+	}
+	return false
+}
+
+// IsRetryableProxyError reports whether a proxy error should be retried.
+func IsRetryableProxyError(err error) bool {
+	pe, ok := err.(*ProxyError)
+	if !ok {
+		return false
+	}
+	return IsRetryableStatusCode(pe.StatusCode)
+}
+
 // ProxyResult holds the result of a non-streaming proxy call.
 type ProxyResult struct {
 	Response            map[string]any
@@ -117,6 +140,12 @@ func parseRetryDelay(resp *http.Response, body string) int64 {
 	if ra := resp.Header.Get("Retry-After"); ra != "" {
 		if secs, err := strconv.ParseFloat(ra, 64); err == nil && secs > 0 {
 			return int64(math.Ceil(secs * 1000))
+		}
+		if t, err := http.ParseTime(ra); err == nil {
+			delayMs := int64(math.Ceil(float64(time.Until(t)) / float64(time.Millisecond)))
+			if delayMs > 0 {
+				return delayMs
+			}
 		}
 	}
 
@@ -417,6 +446,13 @@ func ProxyStreaming(
 		} else {
 			processOpenAI(line, state, markFirstToken, w, flusher)
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		if ctx.Err() != nil {
+			return nil, &ProxyError{Message: "Client disconnected", StatusCode: 499}
+		}
+		return nil, &ProxyError{Message: fmt.Sprintf("failed to read stream: %v", err), StatusCode: 502}
 	}
 
 	return &StreamCompleteInfo{

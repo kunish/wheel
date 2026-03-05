@@ -191,6 +191,7 @@ func (h *RelayHandler) executeWithRetry(
 				keyId := selectedKey.ID
 				errMsg := proxyErr.Error()
 				attemptDuration := int(time.Since(attemptStart).Milliseconds())
+				pe, isProxyErr := proxyErr.(*relay.ProxyError)
 				attempts = append(attempts, attemptRecord{
 					ChannelID:    channel.ID,
 					ChannelKeyID: &keyId,
@@ -204,11 +205,28 @@ func (h *RelayHandler) executeWithRetry(
 				})
 				lastError = errMsg
 				h.Observer.EndAttemptSpan(attemptSpan, 0, attemptDuration, proxyErr)
-				h.Observer.RecordRetry(c.Request.Context(), channel.Name, targetModel)
 
+				streamID := ""
+				if result != nil {
+					streamID = result.StreamID
+					lastStreamId = streamID
+				}
+				strategy.CleanupOnFailure(h, params, streamID)
+
+				if isProxyErr && !relay.IsRetryableStatusCode(pe.StatusCode) {
+					return &retryOutcome{
+						Success:      false,
+						RateLimited:  false,
+						LastError:    lastError,
+						LastStreamID: lastStreamId,
+						Attempts:     attempts,
+					}
+				}
+
+				h.Observer.RecordRetry(c.Request.Context(), channel.Name, targetModel)
 				h.CircuitBreakers.RecordFailure(channel.ID, selectedKey.ID, targetModel, c.Request.Context(), h.DB)
 
-				if pe, ok := proxyErr.(*relay.ProxyError); ok && pe.StatusCode == 429 {
+				if isProxyErr && pe.StatusCode == 429 {
 					lastRetryAfterMs = int64(math.Max(float64(lastRetryAfterMs), float64(pe.RetryAfterMs)))
 					if lastRetryAfterMs == 0 {
 						lastRetryAfterMs = 1000
@@ -218,12 +236,6 @@ func (h *RelayHandler) executeWithRetry(
 					h.Cache.Delete("channels")
 				}
 
-				streamID := ""
-				if result != nil {
-					streamID = result.StreamID
-					lastStreamId = streamID
-				}
-				strategy.CleanupOnFailure(h, params, streamID)
 				continue
 			}
 

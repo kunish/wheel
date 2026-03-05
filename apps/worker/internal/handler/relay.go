@@ -481,6 +481,9 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 	if outcome.Success {
 		return
 	}
+	if c.Request.Context().Err() != nil {
+		return
+	}
 
 	// All retries exhausted — record error and respond
 	h.handleExhaustion(c, req, outcome, startTime)

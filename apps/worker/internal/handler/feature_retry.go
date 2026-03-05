@@ -58,14 +58,18 @@ func (h *RelayHandler) executeFeatureWithRetry(
 			}
 
 			if err := exec(channel, selectedKey, targetModel); err != nil {
-				if _, ok := err.(*relay.ProxyError); !ok {
+				pe, ok := err.(*relay.ProxyError)
+				if !ok {
+					return err
+				}
+				if !relay.IsRetryableStatusCode(pe.StatusCode) {
 					return err
 				}
 
 				lastErr = err
 				h.CircuitBreakers.RecordFailure(channel.ID, selectedKey.ID, targetModel, context.Background(), h.DB)
 
-				if pe, ok := err.(*relay.ProxyError); ok && pe.StatusCode == 429 {
+				if pe.StatusCode == 429 {
 					if h.DB != nil {
 						_ = dal.UpdateChannelKeyStatus(context.Background(), h.DB, selectedKey.ID, 429)
 					}
