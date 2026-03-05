@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,7 @@ type relayResult struct {
 	ThinkingContent     string
 	Response            map[string]any // non-streaming JSON response
 	StreamID            string         // streaming: the stream ID
+	ResponseHeaders     http.Header
 }
 
 // RelayStrategy abstracts the streaming/non-streaming proxy execution.
@@ -133,13 +135,14 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 		ResponseContent:     streamInfo.ResponseContent,
 		ThinkingContent:     streamInfo.ThinkingContent,
 		StreamID:            streamId,
+		ResponseHeaders:     streamInfo.UpstreamHeaders,
 	}, nil
 }
 
 func (s *streamStrategy) HandleSuccess(h *RelayHandler, p *relayAttemptParams, result *relayResult) {
 	go h.asyncRecordLog(
 		p.RequestModel, p.TargetModel, p.Channel, p.SelectedKey, p.ApiKeyID,
-		p.Body, p.UpstreamBodyForLog, result, p.Attempts, p.StartTime,
+		p.Body, p.Upstream.Headers, result.ResponseHeaders, p.UpstreamBodyForLog, result, p.Attempts, p.StartTime,
 	)
 	h.Observer.StreamEnded(p.C.Request.Context())
 }
@@ -179,13 +182,14 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 		CacheCreationTokens: result.CacheCreationTokens,
 		Response:            result.Response,
 		ResponseContent:     string(respJSON),
+		ResponseHeaders:     result.UpstreamHeaders,
 	}, nil
 }
 
 func (s *nonStreamStrategy) HandleSuccess(h *RelayHandler, p *relayAttemptParams, result *relayResult) {
 	go h.asyncRecordLog(
 		p.RequestModel, p.TargetModel, p.Channel, p.SelectedKey, p.ApiKeyID,
-		p.Body, p.UpstreamBodyForLog, result, p.Attempts, p.StartTime,
+		p.Body, p.Upstream.Headers, result.ResponseHeaders, p.UpstreamBodyForLog, result, p.Attempts, p.StartTime,
 	)
 
 	// Write response

@@ -11,8 +11,10 @@ export interface LogDetail {
   ftut: number
   useTime: number
   requestContent: string
+  requestHeaders: string
   upstreamContent: string | null
   responseContent: string
+  responseHeaders: string
   error: string
   attempts: Array<{
     channelId: number

@@ -62,8 +62,6 @@ export function useLogQuery() {
     setDetailId: detailState.setDetailId,
     detailStreamId: detailState.detailStreamId,
     setDetailStreamId: detailState.setDetailStreamId,
-    detailTab: detailState.detailTab,
-    setDetailTab: detailState.setDetailTab,
     streamingOverlay: detailState.streamingOverlay,
 
     // Streaming state

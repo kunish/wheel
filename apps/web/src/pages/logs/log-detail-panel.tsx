@@ -1,7 +1,7 @@
 import type { LogEntry } from "./columns"
 import type { LogDetail, StreamingOverlay } from "./types"
-import { Check, ChevronDown, ChevronUp, Copy, Loader2, Play } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { ChevronDown, ChevronUp, Copy, Loader2, Play } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router"
 import { toast } from "sonner"
@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useModelMeta } from "@/hooks/use-model-meta"
 import { formatCost, formatDuration } from "./columns"
 import { CodeBlock } from "./detail/code-block"
@@ -28,14 +27,12 @@ export function LogDetailSheet() {
   const {
     detailId,
     detailStreamId,
-    detailTab,
     detail,
     pendingStreams,
     streamingOverlay,
     logs,
     setDetailId,
     setDetailStreamId,
-    setDetailTab,
   } = useLogQueryContext()
 
   const onClose = useCallback(() => {
@@ -140,28 +137,18 @@ export function LogDetailSheet() {
               ftut: entry.ftut,
               useTime: entry.useTime,
               requestContent: entry._requestContent ?? "",
+              requestHeaders: "",
               upstreamContent: null,
               responseContent: "",
+              responseHeaders: "",
               error: entry.error,
               attempts: [],
               totalAttempts: entry.totalAttempts,
             }
-            return (
-              <DetailPanel
-                detail={streamingDetail}
-                activeTab={detailTab}
-                onTabChange={setDetailTab}
-                streamingOverlay={streamingOverlay}
-              />
-            )
+            return <DetailPanel detail={streamingDetail} streamingOverlay={streamingOverlay} />
           })()
         ) : detail ? (
-          <DetailPanel
-            detail={detail}
-            activeTab={detailTab}
-            onTabChange={setDetailTab}
-            streamingOverlay={streamingOverlay}
-          />
+          <DetailPanel detail={detail} streamingOverlay={streamingOverlay} />
         ) : (
           <div className="flex flex-col gap-4 px-4 py-4">
             <div className="flex flex-col gap-2">
@@ -183,49 +170,29 @@ export function LogDetailSheet() {
   )
 }
 
-function CopyableField({ label, value }: { label: string; value: string }) {
-  const { t } = useTranslation("logs")
-  const [copied, setCopied] = useState(false)
+function DetailField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="group min-w-0">
+    <div className="min-w-0">
       <p className="text-muted-foreground text-xs">{label}</p>
-      <div className="flex items-center gap-1">
-        <p className="truncate font-medium">{value}</p>
-        <button
-          className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={() => {
-            navigator.clipboard.writeText(value)
-            setCopied(true)
-            toast.success(t("toast.copied"))
-            setTimeout(() => setCopied(false), 2000)
-          }}
-        >
-          {copied ? (
-            <Check className="h-3 w-3" />
-          ) : (
-            <Copy className="text-muted-foreground h-3 w-3" />
-          )}
-        </button>
-      </div>
+      <p className="truncate font-medium">{value}</p>
     </div>
   )
 }
 
 function DetailPanel({
   detail,
-  activeTab,
-  onTabChange,
   streamingOverlay,
 }: {
   detail: LogDetail
-  activeTab: string
-  onTabChange: (tab: string) => void
   streamingOverlay: StreamingOverlay | null
 }) {
   const { t } = useTranslation("logs")
   const { replayResult, replaying, handleReplay } = useLogReplay()
+  const [retryExpanded, setRetryExpanded] = useState(false)
 
-  const setActiveTab = onTabChange
+  useEffect(() => {
+    setRetryExpanded(false)
+  }, [detail.id])
 
   const isTruncated =
     /\[truncated,?\s*\d+\s*chars\s*total\]/.test(detail.requestContent) ||
@@ -233,32 +200,8 @@ function DetailPanel({
     /\[image data omitted\]/.test(detail.requestContent)
 
   return (
-    <Tabs
-      value={activeTab}
-      onValueChange={setActiveTab}
-      className="flex min-h-0 min-w-0 flex-1 flex-col px-4"
-    >
-      <TabsList className="w-full shrink-0">
-        <TabsTrigger value="overview" className="flex-1">
-          {t("detail.overview")}
-        </TabsTrigger>
-        <TabsTrigger value="messages" className="flex-1">
-          {t("detail.messages")}
-        </TabsTrigger>
-        {detail.attempts && detail.attempts.length > 0 && (
-          <TabsTrigger value="retry" className="flex-1">
-            {t("detail.retry", { count: detail.attempts.length })}
-          </TabsTrigger>
-        )}
-        {replayResult !== null && (
-          <TabsTrigger value="replay" className="flex-1">
-            {t("detail.replay")}
-          </TabsTrigger>
-        )}
-      </TabsList>
-
-      {/* Overview Tab */}
-      <TabsContent value="overview" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4">
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
         <div className="flex flex-col gap-6 text-sm">
           {/* Model Flow */}
           <div className="bg-muted/30 rounded-xl border p-4">
@@ -285,36 +228,36 @@ function DetailPanel({
           </div>
 
           <div className="bg-muted/30 grid grid-cols-1 gap-4 rounded-xl border p-4 sm:grid-cols-2 md:grid-cols-3">
-            <CopyableField
+            <DetailField
               label={t("detail.field.time")}
               value={new Date(detail.time * 1000).toLocaleString(undefined, { hour12: false })}
             />
-            <CopyableField
+            <DetailField
               label={t("detail.field.channel")}
               value={`${detail.channelName || "—"} (ID: ${detail.channelId})`}
             />
-            <CopyableField
+            <DetailField
               label={t("detail.field.inputTokens")}
               value={detail.inputTokens.toLocaleString()}
             />
-            <CopyableField
+            <DetailField
               label={t("detail.field.outputTokens")}
               value={detail.outputTokens.toLocaleString()}
             />
-            <CopyableField
+            <DetailField
               label={t("detail.field.totalTokens")}
               value={(detail.inputTokens + detail.outputTokens).toLocaleString()}
             />
-            <CopyableField label={t("detail.field.cost")} value={formatCost(detail.cost)} />
-            <CopyableField
+            <DetailField label={t("detail.field.cost")} value={formatCost(detail.cost)} />
+            <DetailField
               label={t("detail.field.ttft")}
               value={detail.ftut > 0 ? formatDuration(detail.ftut) : "—"}
             />
-            <CopyableField
+            <DetailField
               label={t("detail.field.totalLatency")}
               value={formatDuration(detail.useTime)}
             />
-            <CopyableField
+            <DetailField
               label={t("detail.field.outputSpeed")}
               value={
                 detail.outputTokens > 0 && detail.useTime > 0
@@ -323,9 +266,96 @@ function DetailPanel({
               }
             />
             {detail.totalAttempts > 1 && (
-              <CopyableField label={t("detail.field.attempts")} value={`${detail.totalAttempts}`} />
+              <DetailField label={t("detail.field.attempts")} value={`${detail.totalAttempts}`} />
             )}
           </div>
+
+          {/* Retry Timeline */}
+          {detail.attempts && detail.attempts.length > 0 && (
+            <div className="border-border/80 border-t pt-2">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                  {t("detail.retry", { count: detail.attempts.length })}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => setRetryExpanded((prev) => !prev)}
+                >
+                  {retryExpanded ? t("messagesTab.collapse") : t("messagesTab.expand")}
+                  {retryExpanded ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+              {retryExpanded && (
+                <div className="border-border relative flex flex-col gap-3 border-l-2 pl-4">
+                  {detail.attempts.map((attempt) => (
+                    <div
+                      key={`${attempt.channelId}-${attempt.modelName}-${attempt.attemptNum}`}
+                      className="relative"
+                    >
+                      <div
+                        className={`border-background absolute top-1 -left-[calc(0.5rem+1px)] h-3 w-3 rounded-full border ${
+                          attempt.status === "success"
+                            ? "bg-green-500"
+                            : attempt.status === "circuit_break" || attempt.status === "skipped"
+                              ? "bg-yellow-500"
+                              : "bg-destructive"
+                        }`}
+                      />
+                      <div className="ml-2 rounded-md border p-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs">#{attempt.attemptNum}</span>
+                          {attempt.sticky && (
+                            <Badge variant="outline" className="text-xs">
+                              {t("retryTimeline.sticky")}
+                            </Badge>
+                          )}
+                          <Badge
+                            variant={
+                              attempt.status === "success"
+                                ? "default"
+                                : attempt.status === "circuit_break" || attempt.status === "skipped"
+                                  ? "secondary"
+                                  : "destructive"
+                            }
+                            className="text-xs"
+                          >
+                            {attempt.status === "success"
+                              ? t("retryTimeline.ok")
+                              : attempt.status === "circuit_break"
+                                ? t("retryTimeline.circuitBreak")
+                                : attempt.status === "skipped"
+                                  ? t("retryTimeline.skipped")
+                                  : t("retryTimeline.fail")}
+                          </Badge>
+                          <span className="text-muted-foreground text-xs">
+                            {formatDuration(attempt.duration)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs">
+                          <span className="text-muted-foreground">
+                            {t("retryTimeline.channel")}
+                          </span>{" "}
+                          {attempt.channelName}{" "}
+                          <span className="text-muted-foreground">{t("retryTimeline.model")}</span>{" "}
+                          <ModelBadge modelId={attempt.modelName} />
+                        </p>
+                        {attempt.msg && (
+                          <p className="text-destructive mt-1 text-xs break-all">{attempt.msg}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {detail.error && (
             <div className="bg-destructive/10 rounded-md p-3">
@@ -356,7 +386,7 @@ function DetailPanel({
               variant="outline"
               size="sm"
               className="w-fit gap-1.5"
-              onClick={() => handleReplay(detail.id, () => setActiveTab("replay"))}
+              onClick={() => handleReplay(detail.id)}
               disabled={replaying}
             >
               {replaying ? (
@@ -367,85 +397,25 @@ function DetailPanel({
               {t("detail.replayBtn")}
             </Button>
           </div>
-        </div>
-      </TabsContent>
 
-      {/* Messages Tab (conversation flow + raw JSON toggle) */}
-      <TabsContent value="messages" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
-        <MessagesTabContent detail={detail} streamingOverlay={streamingOverlay} />
-      </TabsContent>
-
-      {/* Retry Timeline Tab */}
-      {detail.attempts && detail.attempts.length > 0 && (
-        <TabsContent value="retry" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
-          <div className="border-border relative flex flex-col gap-3 border-l-2 pl-4">
-            {detail.attempts.map((attempt) => (
-              <div
-                key={`${attempt.channelId}-${attempt.modelName}-${attempt.attemptNum}`}
-                className="relative"
-              >
-                <div
-                  className={`border-background absolute top-1 -left-[calc(0.5rem+1px)] h-3 w-3 rounded-full border ${
-                    attempt.status === "success"
-                      ? "bg-green-500"
-                      : attempt.status === "circuit_break" || attempt.status === "skipped"
-                        ? "bg-yellow-500"
-                        : "bg-destructive"
-                  }`}
-                />
-                <div className="ml-2 rounded-md border p-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs">#{attempt.attemptNum}</span>
-                    {attempt.sticky && (
-                      <Badge variant="outline" className="text-xs">
-                        {t("retryTimeline.sticky")}
-                      </Badge>
-                    )}
-                    <Badge
-                      variant={
-                        attempt.status === "success"
-                          ? "default"
-                          : attempt.status === "circuit_break" || attempt.status === "skipped"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                      className="text-xs"
-                    >
-                      {attempt.status === "success"
-                        ? t("retryTimeline.ok")
-                        : attempt.status === "circuit_break"
-                          ? t("retryTimeline.circuitBreak")
-                          : attempt.status === "skipped"
-                            ? t("retryTimeline.skipped")
-                            : t("retryTimeline.fail")}
-                    </Badge>
-                    <span className="text-muted-foreground text-xs">
-                      {formatDuration(attempt.duration)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs">
-                    <span className="text-muted-foreground">{t("retryTimeline.channel")}</span>{" "}
-                    {attempt.channelName}{" "}
-                    <span className="text-muted-foreground">{t("retryTimeline.model")}</span>{" "}
-                    <ModelBadge modelId={attempt.modelName} />
-                  </p>
-                  {attempt.msg && (
-                    <p className="text-destructive mt-1 text-xs break-all">{attempt.msg}</p>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="border-border/80 border-t pt-2">
+            <p className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
+              {t("detail.messages")}
+            </p>
+            <MessagesTabContent detail={detail} streamingOverlay={streamingOverlay} />
           </div>
-        </TabsContent>
-      )}
 
-      {/* Replay Result Tab */}
-      {replayResult !== null && (
-        <TabsContent value="replay" className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6">
-          <CodeBlock label={t("detail.replayResult")} content={replayResult} />
-        </TabsContent>
-      )}
-    </Tabs>
+          {replayResult !== null && (
+            <div className="border-border/80 border-t pt-2">
+              <p className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
+                {t("detail.replay")}
+              </p>
+              <CodeBlock label={t("detail.replayResult")} content={replayResult} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -466,6 +436,7 @@ function ModelFlowNode({ modelId, channelId }: { modelId: string; channelId: num
       )}
       {showActualId && (
         <button
+          type="button"
           className="text-muted-foreground hover:text-foreground max-w-[200px] truncate text-left font-mono text-xs transition-colors"
           onClick={() => {
             navigator.clipboard.writeText(modelId)

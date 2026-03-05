@@ -164,7 +164,11 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
                 | undefined,
             ) => {
               if (!old?.data) return old
-              const newLogs = [data.log as LogEntry, ...old.data.logs].slice(0, f.pageSize)
+              const logFromEvent = {
+                ...(data.log as LogEntry),
+                ...(data.streamId ? { _streamId: data.streamId } : {}),
+              }
+              const newLogs = [logFromEvent, ...old.data.logs].slice(0, f.pageSize)
               return { ...old, data: { ...old.data, logs: newLogs, total: old.data.total + 1 } }
             },
           )

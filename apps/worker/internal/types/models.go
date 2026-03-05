@@ -130,24 +130,27 @@ type ChannelAttempt struct {
 
 // RelayLog records a single relay request with its outcome.
 type RelayLog struct {
-	bun.BaseModel    `bun:"table:relay_logs"`
-	ID               int         `bun:"id,pk,autoincrement"  json:"id"`
-	Time             int64       `bun:"time"                 json:"time"`
-	RequestModelName string      `bun:"request_model_name"   json:"requestModelName"`
-	ChannelID        int         `bun:"channel_id"           json:"channelId"`
-	ChannelName      string      `bun:"channel_name"         json:"channelName"`
-	ActualModelName  string      `bun:"actual_model_name"    json:"actualModelName"`
-	InputTokens      int         `bun:"input_tokens"         json:"inputTokens"`
-	OutputTokens     int         `bun:"output_tokens"        json:"outputTokens"`
-	FTUT             int         `bun:"ftut"                 json:"ftut"`
-	UseTime          int         `bun:"use_time"             json:"useTime"`
-	Cost             float64     `bun:"cost"                 json:"cost"`
-	RequestContent   string      `bun:"request_content"      json:"requestContent"`
-	UpstreamContent  *string     `bun:"upstream_content"     json:"upstreamContent,omitempty"`
-	ResponseContent  string      `bun:"response_content"     json:"responseContent"`
-	Error            string      `bun:"error"                json:"error"`
-	Attempts         AttemptList `bun:"attempts"             json:"attempts"`
-	TotalAttempts    int         `bun:"total_attempts"       json:"totalAttempts"`
+	bun.BaseModel      `bun:"table:relay_logs"`
+	ID                 int         `bun:"id,pk,autoincrement"  json:"id"`
+	Time               int64       `bun:"time"                 json:"time"`
+	RequestModelName   string      `bun:"request_model_name"   json:"requestModelName"`
+	ChannelID          int         `bun:"channel_id"           json:"channelId"`
+	ChannelName        string      `bun:"channel_name"         json:"channelName"`
+	ActualModelName    string      `bun:"actual_model_name"    json:"actualModelName"`
+	InputTokens        int         `bun:"input_tokens"         json:"inputTokens"`
+	OutputTokens       int         `bun:"output_tokens"        json:"outputTokens"`
+	FTUT               int         `bun:"ftut"                 json:"ftut"`
+	UseTime            int         `bun:"use_time"             json:"useTime"`
+	Cost               float64     `bun:"cost"                 json:"cost"`
+	RequestContent     string      `bun:"request_content"      json:"requestContent"`
+	RequestHeaders     string      `bun:"request_headers"      json:"requestHeaders"`
+	UpstreamContent    *string     `bun:"upstream_content"     json:"upstreamContent,omitempty"`
+	ResponseContent    string      `bun:"response_content"     json:"responseContent"`
+	ResponseHeaders    string      `bun:"response_headers"     json:"responseHeaders"`
+	Error              string      `bun:"error"                json:"error"`
+	Attempts           AttemptList `bun:"attempts"             json:"attempts"`
+	TotalAttempts      int         `bun:"total_attempts"       json:"totalAttempts"`
+	LastMessagePreview string      `bun:"-"                    json:"lastMessagePreview,omitempty"`
 }
 
 // User represents an admin user.

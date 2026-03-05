@@ -2,6 +2,10 @@ package dal
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/uptrace/bun"
 
@@ -101,7 +105,7 @@ func ListLogs(ctx context.Context, db *bun.DB, opts ListLogsOpts) ([]types.Relay
 	var logs []types.RelayLog
 	dataQ := db.NewSelect().TableExpr("relay_logs").
 		Column("id", "time", "request_model_name", "actual_model_name", "channel_id",
-			"channel_name", "input_tokens", "output_tokens", "ftut", "use_time", "cost", "error", "total_attempts").
+			"channel_name", "input_tokens", "output_tokens", "ftut", "use_time", "cost", "error", "total_attempts", "request_content").
 		OrderExpr("time DESC").
 		Limit(pageSize).Offset(offset)
 	dataQ = applyFilters(dataQ)
@@ -112,7 +116,104 @@ func ListLogs(ctx context.Context, db *bun.DB, opts ListLogsOpts) ([]types.Relay
 	if logs == nil {
 		logs = []types.RelayLog{}
 	}
+	for i := range logs {
+		logs[i].LastMessagePreview = extractLastMessagePreview(logs[i].RequestContent)
+		logs[i].RequestContent = ""
+	}
 	return logs, total, nil
+}
+
+type previewMessage struct {
+	Content   any   `json:"content"`
+	ToolCalls []any `json:"tool_calls"`
+}
+
+func extractLastMessagePreview(requestContent string) string {
+	requestContent = strings.TrimSpace(requestContent)
+	if requestContent == "" {
+		return ""
+	}
+
+	var body struct {
+		Messages []previewMessage `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(requestContent), &body); err == nil && len(body.Messages) > 0 {
+		return previewFromMessage(body.Messages[len(body.Messages)-1])
+	}
+
+	var direct []previewMessage
+	if err := json.Unmarshal([]byte(requestContent), &direct); err == nil && len(direct) > 0 {
+		return previewFromMessage(direct[len(direct)-1])
+	}
+
+	return ""
+}
+
+func previewFromMessage(msg previewMessage) string {
+	text, hasImage := extractMessageContentText(msg.Content)
+	text = normalizePreviewWhitespace(text)
+
+	if hasImage {
+		if text == "" {
+			text = "[image]"
+		} else {
+			text += " [image]"
+		}
+	}
+
+	if text == "" && len(msg.ToolCalls) > 0 {
+		if len(msg.ToolCalls) == 1 {
+			return "[1 tool call]"
+		}
+		return fmt.Sprintf("[%d tool calls]", len(msg.ToolCalls))
+	}
+
+	return truncatePreview(text, 140)
+}
+
+func extractMessageContentText(content any) (string, bool) {
+	switch v := content.(type) {
+	case string:
+		return v, false
+	case []any:
+		parts := make([]string, 0, len(v))
+		hasImage := false
+		for _, item := range v {
+			part, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if typ, _ := part["type"].(string); typ == "image_url" {
+				hasImage = true
+			}
+			if typ, _ := part["type"].(string); typ == "text" {
+				if text, _ := part["text"].(string); text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n"), hasImage
+	default:
+		return "", false
+	}
+}
+
+func normalizePreviewWhitespace(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func truncatePreview(s string, maxRunes int) string {
+	if maxRunes <= 0 || s == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:maxRunes]) + "..."
 }
 
 func DeleteLog(ctx context.Context, db *bun.DB, id int) error {

@@ -107,7 +107,9 @@
     "raw": "原始",
     "requestOriginal": "请求（原始）",
     "requestUpstream": "请求（上游）",
+    "requestHeaders": "请求头",
     "response": "响应",
+    "responseHeaders": "响应头",
     "noContent": "无内容",
     "showLess": "收起",
     "showAll": "展开全部（{{chars}} 字符）",
@@ -157,6 +159,7 @@
   "columns": {
     "time": "时间",
     "model": "模型",
+    "preview": "最后消息",
     "channel": "渠道",
     "input": "输入",
     "output": "输出",

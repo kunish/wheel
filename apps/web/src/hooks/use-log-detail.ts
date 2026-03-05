@@ -7,7 +7,6 @@ export function useLogDetail() {
   const [detailId, setDetailId] = useState<number | null>(null)
   const detailIdRef = useRef(detailId)
   detailIdRef.current = detailId
-  const [detailTab, setDetailTab] = useState("overview")
 
   const [detailStreamId, setDetailStreamId] = useState<string | null>(null)
   const detailStreamIdRef = useRef(detailStreamId)
@@ -41,8 +40,6 @@ export function useLogDetail() {
     detailStreamId,
     setDetailStreamId,
     detailStreamIdRef,
-    detailTab,
-    setDetailTab,
     streamingOverlay,
     setStreamingOverlay,
   }

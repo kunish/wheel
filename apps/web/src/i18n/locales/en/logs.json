@@ -107,7 +107,9 @@
     "raw": "Raw",
     "requestOriginal": "Request (Original)",
     "requestUpstream": "Request (Upstream)",
+    "requestHeaders": "Request Headers",
     "response": "Response",
+    "responseHeaders": "Response Headers",
     "noContent": "No content",
     "showLess": "Show less",
     "showAll": "Show all ({{chars}} chars)",
@@ -157,6 +159,7 @@
   "columns": {
     "time": "Time",
     "model": "Model",
+    "preview": "Last Message",
     "channel": "Channel",
     "input": "Input",
     "output": "Output",

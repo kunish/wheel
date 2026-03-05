@@ -9,7 +9,6 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { AlertCircle, ChevronLeft, ChevronRight, FileText, RefreshCw } from "lucide-react"
-import { AnimatePresence, motion } from "motion/react"
 import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
@@ -140,66 +139,53 @@ export function LogTable() {
             ))}
           </thead>
           <TableBody>
-            <AnimatePresence initial={false}>
-              {table.getRowModel().rows.map((row) => {
-                if (row.getIsGrouped()) {
-                  return (
-                    <motion.tr
-                      key={row.id}
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.2 }}
-                      className="bg-muted/30"
-                    >
-                      <TableCell colSpan={columns.length}>
-                        <button
-                          className="flex items-center gap-1.5 text-sm font-medium"
-                          onClick={row.getToggleExpandedHandler()}
-                        >
-                          <ChevronRight
-                            className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
-                          />
-                          {String(row.groupingValue)}
-                          <Badge variant="secondary" className="text-xs">
-                            {row.subRows.length}
-                          </Badge>
-                        </button>
-                      </TableCell>
-                    </motion.tr>
-                  )
-                }
-                const log = row.original
+            {table.getRowModel().rows.map((row) => {
+              if (row.getIsGrouped()) {
                 return (
-                  <motion.tr
-                    key={row.id}
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className={`hover:bg-muted/50 cursor-pointer border-b ${
-                      log._streaming
-                        ? "bg-muted/20"
-                        : log.error
-                          ? "border-l-destructive bg-destructive/5 border-l-2"
-                          : ""
-                    }`}
-                    onClick={() => onRowClick(log)}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        className={
-                          (cell.column.columnDef.meta as { className?: string })?.className
-                        }
+                  <TableRow key={row.id} className="bg-muted/30">
+                    <TableCell colSpan={columns.length}>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 text-sm font-medium"
+                        onClick={row.getToggleExpandedHandler()}
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </motion.tr>
+                        <ChevronRight
+                          className={`h-4 w-4 transition-transform ${row.getIsExpanded() ? "rotate-90" : ""}`}
+                        />
+                        {String(row.groupingValue)}
+                        <Badge variant="secondary" className="text-xs">
+                          {row.subRows.length}
+                        </Badge>
+                      </button>
+                    </TableCell>
+                  </TableRow>
                 )
-              })}
-            </AnimatePresence>
+              }
+              const log = row.original
+              const stableRowKey = log._streamId ? `stream-${log._streamId}` : `log-${log.id}`
+              return (
+                <TableRow
+                  key={stableRowKey}
+                  className={`hover:bg-muted/50 h-12 cursor-pointer border-b border-l-2 border-l-transparent ${
+                    log._streaming
+                      ? "bg-muted/20"
+                      : log.error
+                        ? "border-l-destructive bg-destructive/5"
+                        : ""
+                  }`}
+                  onClick={() => onRowClick(log)}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      className={(cell.column.columnDef.meta as { className?: string })?.className}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              )
+            })}
             {logs.length === 0 && !isLoading && (
               <TableRow>
                 <TableCell colSpan={columns.length} className="py-12 text-center">
@@ -282,6 +268,7 @@ function LogTableSkeleton({ rows = 8 }: { rows?: number }) {
         <TableRow>
           <TableHead>{t("columns.time")}</TableHead>
           <TableHead>{t("columns.model")}</TableHead>
+          <TableHead>{t("columns.preview")}</TableHead>
           <TableHead>{t("columns.channel")}</TableHead>
           <TableHead className="text-right">{t("columns.input")}</TableHead>
           <TableHead className="text-right">{t("columns.output")}</TableHead>
@@ -300,6 +287,9 @@ function LogTableSkeleton({ rows = 8 }: { rows?: number }) {
             </TableCell>
             <TableCell>
               <Skeleton className="h-5 w-28 rounded-full" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="h-4 w-56" />
             </TableCell>
             <TableCell>
               <Skeleton className="h-4 w-20" />

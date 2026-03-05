@@ -270,6 +270,7 @@ function ResponseChoiceBlock({
       {choice.thinkingContent && (
         <div className="border-border/50 border-t">
           <button
+            type="button"
             className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
             onClick={() => setThinkingOpen(!thinkingOpen)}
           >
@@ -443,6 +444,23 @@ function ResponseBlock({
           showIndex={showMultipleChoices}
         />
       ))}
+    </div>
+  )
+}
+
+function ResponseSummaryTop({ response }: { response: ParsedResponse }) {
+  if (
+    !response.usage &&
+    !response.id &&
+    !response.model &&
+    !response.created &&
+    !response.systemFingerprint
+  ) {
+    return null
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
       {response.usage && <UsageDetails usage={response.usage} />}
       <ResponseMetadata response={response} />
     </div>
@@ -517,6 +535,16 @@ function RequestParamsSummary({ params }: { params: ParsedRequestParams }) {
   )
 }
 
+function normalizeHeaderContent(raw: string): string {
+  const trimmed = raw?.trim()
+  if (!trimmed) return ""
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2)
+  } catch {
+    return trimmed
+  }
+}
+
 function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
   const { t } = useTranslation("logs")
   const [collapsed, setCollapsed] = useState(true)
@@ -542,7 +570,11 @@ function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
 
   return (
     <div className="bg-muted/30 rounded-xl border p-3 shadow-sm">
-      <button className="flex w-full items-center gap-2" onClick={() => setCollapsed(!collapsed)}>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2"
+        onClick={() => setCollapsed(!collapsed)}
+      >
         <Wrench className="text-muted-foreground h-3 w-3 shrink-0" />
         <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
           {t("messagesTab.tools")} ({tools.tools.length})
@@ -571,6 +603,7 @@ function ToolsDefinitionList({ tools }: { tools: ParsedRequestTools }) {
             return (
               <div key={tool.function.name} className="bg-background/60 rounded-md border">
                 <button
+                  type="button"
                   className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
                   onClick={() => toggleTool(i)}
                 >
@@ -630,6 +663,14 @@ export function MessagesTabContent({
     () => parseRequestTools(detail.requestContent),
     [detail.requestContent],
   )
+  const requestHeadersContent = useMemo(
+    () => normalizeHeaderContent(detail.requestHeaders),
+    [detail.requestHeaders],
+  )
+  const responseHeadersContent = useMemo(
+    () => normalizeHeaderContent(detail.responseHeaders),
+    [detail.responseHeaders],
+  )
 
   // Use streaming overlay content when available (real-time during SSE proxy),
   // otherwise fall back to the stored response content from the DB.
@@ -658,6 +699,7 @@ export function MessagesTabContent({
           </span>
           <div className="border-border flex items-center overflow-hidden rounded-lg border shadow-sm">
             <button
+              type="button"
               className={`flex items-center gap-1 px-3 py-1.5 text-xs font-bold transition-colors ${
                 viewMode === "conversation"
                   ? "bg-primary text-primary-foreground"
@@ -669,6 +711,7 @@ export function MessagesTabContent({
               {t("messagesTab.chat")}
             </button>
             <button
+              type="button"
               className={`border-border flex items-center gap-1 border-l px-3 py-1.5 text-xs font-bold transition-colors ${
                 viewMode === "raw" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
               }`}
@@ -680,6 +723,8 @@ export function MessagesTabContent({
           </div>
         </div>
       )}
+
+      {response && <ResponseSummaryTop response={response} />}
 
       {isStreamingOnly ? (
         <div className="flex flex-col gap-2">
@@ -696,9 +741,24 @@ export function MessagesTabContent({
         <div className="flex flex-col gap-2">
           {requestParams && <RequestParamsSummary params={requestParams} />}
           {requestTools && <ToolsDefinitionList tools={requestTools} />}
+          {requestHeadersContent && (
+            <CollapsibleCodeBlock
+              label={t("messagesTab.requestHeaders")}
+              content={requestHeadersContent}
+              defaultOpen={false}
+            />
+          )}
+          {responseHeadersContent && (
+            <CollapsibleCodeBlock
+              label={t("messagesTab.responseHeaders")}
+              content={responseHeadersContent}
+              defaultOpen={false}
+            />
+          )}
           {newTurnBoundary > 0 && (
             <>
               <button
+                type="button"
                 className="text-muted-foreground hover:text-foreground flex items-center gap-1 self-start text-[11px] font-bold tracking-wide uppercase"
                 onClick={() => setContextExpanded(!contextExpanded)}
               >
@@ -742,6 +802,20 @@ export function MessagesTabContent({
             <CollapsibleCodeBlock
               label={t("messagesTab.requestUpstream")}
               content={detail.upstreamContent}
+              defaultOpen={false}
+            />
+          )}
+          {requestHeadersContent && (
+            <CollapsibleCodeBlock
+              label={t("messagesTab.requestHeaders")}
+              content={requestHeadersContent}
+              defaultOpen={false}
+            />
+          )}
+          {responseHeadersContent && (
+            <CollapsibleCodeBlock
+              label={t("messagesTab.responseHeaders")}
+              content={responseHeadersContent}
               defaultOpen={false}
             />
           )}

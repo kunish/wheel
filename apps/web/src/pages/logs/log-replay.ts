@@ -8,7 +8,7 @@ export function useLogReplay() {
   const [replayResult, setReplayResult] = useState<string | null>(null)
   const [replaying, setReplaying] = useState(false)
 
-  const handleReplay = async (logId: number, onSuccess: () => void) => {
+  const handleReplay = async (logId: number, onSuccess?: () => void) => {
     setReplaying(true)
     try {
       const resp = await replayLog(logId)
@@ -46,7 +46,7 @@ export function useLogReplay() {
         if (!data.success) throw new Error(data.error ?? t("detail.replayFailed"))
         setReplayResult(JSON.stringify(data.data?.response, null, 2))
       }
-      onSuccess()
+      onSuccess?.()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("detail.replayFailed"))
     } finally {

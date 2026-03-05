@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,6 +21,8 @@ func (h *RelayHandler) asyncRecordLog(
 	key *types.ChannelKey,
 	apiKeyId int,
 	body map[string]any,
+	requestHeaders map[string]string,
+	responseHeaders http.Header,
 	upstreamBodyForLog *string,
 	result *relayResult,
 	attempts []attemptRecord,
@@ -31,6 +35,8 @@ func (h *RelayHandler) asyncRecordLog(
 		})
 
 	logBody := serializeForLog(body)
+	requestHeadersJSON := serializeRequestHeadersForLog(requestHeaders)
+	responseHeadersJSON := serializeResponseHeadersForLog(responseHeaders)
 
 	respContent := result.ResponseContent
 	if result.ThinkingContent != "" {
@@ -65,8 +71,10 @@ func (h *RelayHandler) asyncRecordLog(
 		UseTime:          int(time.Since(startTime).Milliseconds()),
 		Cost:             cost,
 		RequestContent:   logBody,
+		RequestHeaders:   requestHeadersJSON,
 		UpstreamContent:  upstreamBodyForLog,
 		ResponseContent:  respContent,
+		ResponseHeaders:  responseHeadersJSON,
 		Error:            "",
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
@@ -110,7 +118,9 @@ func (h *RelayHandler) asyncErrorLog(
 		ActualModelName:  model,
 		UseTime:          int(time.Since(startTime).Milliseconds()),
 		RequestContent:   logBody,
+		RequestHeaders:   "",
 		ResponseContent:  lastError,
+		ResponseHeaders:  "",
 		Error:            lastError,
 		Attempts:         attemptsVal,
 		TotalAttempts:    len(attempts),
@@ -122,6 +132,50 @@ func (h *RelayHandler) asyncErrorLog(
 func serializeForLog(body map[string]any) string {
 	result, _ := json.Marshal(body)
 	return string(result)
+}
+
+func serializeRequestHeadersForLog(headers map[string]string) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	cloned := make(map[string]string, len(headers))
+	for k, v := range headers {
+		if shouldRedactHeader(k) {
+			cloned[k] = "[REDACTED]"
+			continue
+		}
+		cloned[k] = v
+	}
+	b, _ := json.Marshal(cloned)
+	return string(b)
+}
+
+func serializeResponseHeadersForLog(headers http.Header) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	cloned := make(map[string][]string, len(headers))
+	for k, values := range headers {
+		if shouldRedactHeader(k) {
+			cloned[k] = []string{"[REDACTED]"}
+			continue
+		}
+		copied := make([]string, len(values))
+		copy(copied, values)
+		cloned[k] = copied
+	}
+	b, _ := json.Marshal(cloned)
+	return string(b)
+}
+
+func shouldRedactHeader(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case "authorization", "api-key", "x-api-key", "cookie", "set-cookie", "proxy-authorization":
+		return true
+	default:
+		return false
+	}
 }
 
 // apiError returns an error response in the correct format based on the request type.

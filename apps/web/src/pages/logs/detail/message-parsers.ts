@@ -241,6 +241,110 @@ export function parseResponseContent(content: string): ParsedResponse | null {
         raw: parsed,
       }
     }
+
+    // Anthropic-style response fallback:
+    // {
+    //   id, model, content:[{type:"text"|"thinking"|"tool_use", ...}], usage:{input_tokens,output_tokens,...}
+    // }
+    if (Array.isArray(parsed?.content)) {
+      const blocks = parsed.content as Array<Record<string, unknown>>
+      const textParts: string[] = []
+      const thinkingParts: string[] = []
+      const toolCalls: NonNullable<ParsedMessage["tool_calls"]> = []
+
+      for (const block of blocks) {
+        const type = block.type
+        if (type === "text" && typeof block.text === "string") {
+          textParts.push(block.text)
+          continue
+        }
+        if (type === "thinking" && typeof block.thinking === "string") {
+          thinkingParts.push(block.thinking)
+          continue
+        }
+        if (type === "tool_use") {
+          const name = typeof block.name === "string" ? block.name : "tool"
+          const id = typeof block.id === "string" ? block.id : `tool-${toolCalls.length + 1}`
+          let args = "{}"
+          if (block.input !== undefined) {
+            try {
+              args = JSON.stringify(block.input)
+            } catch {
+              args = String(block.input)
+            }
+          }
+          toolCalls.push({
+            id,
+            type: "function",
+            function: { name, arguments: args },
+          })
+        }
+      }
+
+      const usageRaw = parsed.usage as Record<string, unknown> | undefined
+      const prompt =
+        typeof usageRaw?.input_tokens === "number"
+          ? usageRaw.input_tokens
+          : typeof usageRaw?.input_tokens === "string"
+            ? Number(usageRaw.input_tokens)
+            : undefined
+      const completion =
+        typeof usageRaw?.output_tokens === "number"
+          ? usageRaw.output_tokens
+          : typeof usageRaw?.output_tokens === "string"
+            ? Number(usageRaw.output_tokens)
+            : undefined
+
+      const usage: ParsedResponseUsage | null =
+        prompt != null || completion != null
+          ? {
+              prompt_tokens: Number.isFinite(prompt as number) ? (prompt as number) : undefined,
+              completion_tokens: Number.isFinite(completion as number)
+                ? (completion as number)
+                : undefined,
+              total_tokens:
+                Number.isFinite(prompt as number) && Number.isFinite(completion as number)
+                  ? (prompt as number) + (completion as number)
+                  : undefined,
+              prompt_tokens_details: {
+                cached_tokens:
+                  typeof usageRaw?.cache_read_input_tokens === "number"
+                    ? usageRaw.cache_read_input_tokens
+                    : undefined,
+              },
+            }
+          : null
+
+      return {
+        choices: [
+          {
+            assistantContent: textParts.length > 0 ? textParts.join("\n\n") : null,
+            thinkingContent:
+              thinkingParts.length > 0 ? (thinkingParts.join("\n\n") as string) : thinking,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+            finishReason:
+              typeof parsed.stop_reason === "string"
+                ? parsed.stop_reason
+                : typeof parsed.stop_reason === "number"
+                  ? String(parsed.stop_reason)
+                  : null,
+            index: 0,
+          },
+        ],
+        id: typeof parsed.id === "string" ? parsed.id : null,
+        model: typeof parsed.model === "string" ? parsed.model : null,
+        created:
+          typeof parsed.created === "number"
+            ? parsed.created
+            : typeof parsed.created === "string"
+              ? Number(parsed.created)
+              : null,
+        systemFingerprint:
+          typeof parsed.system_fingerprint === "string" ? parsed.system_fingerprint : null,
+        usage,
+        raw: parsed,
+      }
+    }
   } catch {
     // Not valid JSON — likely plain text accumulated from a streaming response
     const text = rest || null

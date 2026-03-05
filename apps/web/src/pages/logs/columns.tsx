@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { deriveLastMessagePreview } from "./preview"
 
 export interface LogEntry {
   id: number
@@ -31,6 +32,7 @@ export interface LogEntry {
   _outputPrice?: number
   _estimatedInputTokens?: number
   _requestContent?: string
+  lastMessagePreview?: string
 }
 
 function formatDuration(ms: number): string {
@@ -65,7 +67,8 @@ function SortableHeader({
 }) {
   const sorted = column.getIsSorted()
   return (
-    <span
+    <button
+      type="button"
       className="inline-flex cursor-pointer items-center gap-1 select-none"
       onClick={column.getToggleSortingHandler()}
     >
@@ -77,7 +80,7 @@ function SortableHeader({
       ) : (
         <ArrowUpDown className="text-muted-foreground/50 h-3 w-3" />
       )}
-    </span>
+    </button>
   )
 }
 
@@ -91,13 +94,14 @@ function GroupableHeader({
 }) {
   const isGrouped = column.getIsGrouped()
   return (
-    <span
+    <button
+      type="button"
       className="inline-flex cursor-pointer items-center gap-1 select-none"
       onClick={column.getToggleGroupingHandler()}
     >
       {children}
       <Layers className={`h-3 w-3 ${isGrouped ? "text-foreground" : "text-muted-foreground/50"}`} />
-    </span>
+    </button>
   )
 }
 
@@ -146,6 +150,27 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
               </span>
             )}
           </div>
+        )
+      },
+    }),
+    columnHelper.display({
+      id: "preview",
+      header: t("columns.preview"),
+      cell: (info) => {
+        const row = info.row.original
+        const preview = row.lastMessagePreview || deriveLastMessagePreview(row._requestContent)
+        if (!preview) {
+          return <span className="text-muted-foreground text-xs">—</span>
+        }
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="block max-w-[320px] truncate text-xs">{preview}</span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-lg">
+              <p className="text-xs break-all whitespace-pre-wrap">{preview}</p>
+            </TooltipContent>
+          </Tooltip>
         )
       },
     }),
@@ -260,7 +285,7 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
         const row = info.row.original
         if (row._streaming) {
           return (
-            <Badge variant="outline" className="animate-pulse gap-1">
+            <Badge variant="outline" className="h-6 w-[88px] animate-pulse justify-center gap-1">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
               {t("columns.streaming")}
             </Badge>
@@ -269,7 +294,9 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
         return row.error ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="destructive">{t("columns.error")}</Badge>
+              <Badge variant="destructive" className="h-6 w-[88px] justify-center">
+                {t("columns.error")}
+              </Badge>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p className="text-xs break-all whitespace-pre-wrap">
@@ -278,7 +305,9 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
             </TooltipContent>
           </Tooltip>
         ) : (
-          <Badge variant="default">{t("columns.ok")}</Badge>
+          <Badge variant="default" className="h-6 w-[88px] justify-center">
+            {t("columns.ok")}
+          </Badge>
         )
       },
     }),
@@ -287,7 +316,9 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
       header: "",
       cell: (info) => {
         const row = info.row.original
-        if (row._streaming) return null
+        if (row._streaming) {
+          return <div className="h-8 w-8" aria-hidden="true" />
+        }
         return (
           <Button
             variant="ghost"

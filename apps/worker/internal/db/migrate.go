@@ -116,7 +116,9 @@ var initSchema = []string{
 		use_time INT DEFAULT 0 NOT NULL,
 		cost DOUBLE DEFAULT 0 NOT NULL,
 		request_content MEDIUMTEXT NOT NULL,
+		request_headers MEDIUMTEXT NOT NULL,
 		response_content MEDIUMTEXT NOT NULL,
+		response_headers MEDIUMTEXT NOT NULL,
 		error TEXT NOT NULL,
 		attempts MEDIUMTEXT NOT NULL,
 		total_attempts INT DEFAULT 0 NOT NULL,
@@ -225,7 +227,13 @@ var initIndexes = []string{
 // initAlters upgrades existing columns (idempotent).
 var initAlters = []string{
 	`ALTER TABLE relay_logs MODIFY COLUMN request_content MEDIUMTEXT NOT NULL`,
+	`ALTER TABLE relay_logs ADD COLUMN IF NOT EXISTS request_headers MEDIUMTEXT AFTER request_content`,
+	`UPDATE relay_logs SET request_headers = '' WHERE request_headers IS NULL`,
+	`ALTER TABLE relay_logs MODIFY COLUMN request_headers MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN response_content MEDIUMTEXT NOT NULL`,
+	`ALTER TABLE relay_logs ADD COLUMN IF NOT EXISTS response_headers MEDIUMTEXT AFTER response_content`,
+	`UPDATE relay_logs SET response_headers = '' WHERE response_headers IS NULL`,
+	`ALTER TABLE relay_logs MODIFY COLUMN response_headers MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN attempts MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN upstream_content MEDIUMTEXT`,
 	`ALTER TABLE model_profiles ADD COLUMN IF NOT EXISTS provider VARCHAR(255) NOT NULL DEFAULT ''`,

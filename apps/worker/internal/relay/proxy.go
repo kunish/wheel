@@ -71,6 +71,7 @@ type StreamCompleteInfo struct {
 	StatusCode          int
 	ResponseContent     string
 	ThinkingContent     string
+	UpstreamHeaders     http.Header
 }
 
 // ToResponseBody constructs a synthetic OpenAI chat completion response from accumulated stream data.
@@ -464,6 +465,7 @@ func ProxyStreaming(
 		StatusCode:          resp.StatusCode,
 		ResponseContent:     state.responseContent,
 		ThinkingContent:     state.thinkingContent,
+		UpstreamHeaders:     resp.Header.Clone(),
 	}, nil
 }
 
