@@ -26,7 +26,12 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const codexQuotaEndpoint = "https://chatgpt.com/backend-api/wham/usage"
+const (
+	codexQuotaEndpoint         = "https://chatgpt.com/backend-api/wham/usage"
+	codexQuotaFetchConcurrency = 4
+	codexModelSyncRetryWindow  = time.Second
+	codexModelSyncRetryDelay   = 100 * time.Millisecond
+)
 
 type codexAuthFile struct {
 	Name      string         `json:"name"`
@@ -495,7 +500,11 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 			response.FailedCount++
 		}
 		if response.SuccessCount > 0 {
-			h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
+			if err := codexruntime.MaterializeChannelAuthFiles(c.Request.Context(), h.DB, channel.ID); err != nil {
+				log.Printf("[codex] materialize channel %d auth files failed: %v", channel.ID, err)
+			} else {
+				h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
+			}
 		}
 	} else {
 		if err := h.ensureCodexManagementConfigured(); err != nil {
@@ -566,11 +575,6 @@ func (h *Handler) uploadCodexLocalAuthFile(ctx context.Context, channelID int, f
 		Content:   normalized,
 	}
 	if err := dal.CreateCodexAuthFile(ctx, h.DB, item); err != nil {
-		result.Status = "error"
-		result.Error = err.Error()
-		return result
-	}
-	if err := codexruntime.MaterializeOneAuthFile(item); err != nil {
 		result.Status = "error"
 		result.Error = err.Error()
 		return result
@@ -736,48 +740,71 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 
 	paged, total := filterAndPaginateAuthFiles(files, "codex", search, page, pageSize)
 
-	items := make([]codexQuotaItem, 0, len(paged))
-	for _, file := range paged {
-		item := codexQuotaItem{
-			Name:      file.Name,
-			Email:     file.Email,
-			AuthIndex: file.AuthIndex,
-		}
-		if file.AuthIndex == "" {
-			item.Error = "missing auth_index"
-			items = append(items, item)
-			continue
-		}
+	items := h.collectCodexQuotaItems(c.Request.Context(), paged, codexQuotaFetchConcurrency, func(ctx context.Context, file codexAuthFile) (codexQuotaWindow, codexQuotaWindow, string, error) {
 		accountID := stringFromMap(file.Raw, "account_id", "accountId")
 		if accountID == "" {
 			accountID = extractCodexAccountID(file.Raw)
 		}
-		if accountID == "" {
-			item.Error = "missing chatgpt account id"
-			items = append(items, item)
-			continue
-		}
-
-		var weekly codexQuotaWindow
-		var codeReview codexQuotaWindow
-		var planType string
 		if h.codexCapabilities().LocalEnabled {
-			weekly, codeReview, planType, err = h.fetchLocalCodexQuota(c.Request.Context(), file.Raw)
-		} else {
-			weekly, codeReview, planType, err = h.fetchCodexQuota(c, file.AuthIndex, accountID)
+			return h.fetchLocalCodexQuota(ctx, file.Raw)
 		}
-		if err != nil {
-			item.Error = err.Error()
-			items = append(items, item)
-			continue
-		}
-		item.PlanType = planType
-		item.Weekly = weekly
-		item.CodeReview = codeReview
-		items = append(items, item)
-	}
+		return h.fetchCodexQuota(ctx, file.AuthIndex, accountID)
+	})
 
 	successJSON(c, gin.H{"items": items, "total": total, "page": page, "pageSize": pageSize})
+}
+
+func (h *Handler) collectCodexQuotaItems(ctx context.Context, files []codexAuthFile, concurrency int, fetch func(context.Context, codexAuthFile) (codexQuotaWindow, codexQuotaWindow, string, error)) []codexQuotaItem {
+	items := make([]codexQuotaItem, len(files))
+	if concurrency <= 1 {
+		for i, file := range files {
+			items[i] = buildCodexQuotaItem(ctx, file, fetch)
+		}
+		return items
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for i, file := range files {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, file codexAuthFile) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			items[i] = buildCodexQuotaItem(ctx, file, fetch)
+		}(i, file)
+	}
+	wg.Wait()
+	return items
+}
+
+func buildCodexQuotaItem(ctx context.Context, file codexAuthFile, fetch func(context.Context, codexAuthFile) (codexQuotaWindow, codexQuotaWindow, string, error)) codexQuotaItem {
+	item := codexQuotaItem{
+		Name:      file.Name,
+		Email:     file.Email,
+		AuthIndex: file.AuthIndex,
+	}
+	if file.AuthIndex == "" {
+		item.Error = "missing auth_index"
+		return item
+	}
+	accountID := stringFromMap(file.Raw, "account_id", "accountId")
+	if accountID == "" {
+		accountID = extractCodexAccountID(file.Raw)
+	}
+	if accountID == "" {
+		item.Error = "missing chatgpt account id"
+		return item
+	}
+	weekly, codeReview, planType, err := fetch(ctx, file)
+	if err != nil {
+		item.Error = err.Error()
+		return item
+	}
+	item.PlanType = planType
+	item.Weekly = weekly
+	item.CodeReview = codeReview
+	return item
 }
 
 // validateCodexChannel verifies the channel exists and is type Codex (33).
@@ -962,6 +989,11 @@ func (h *Handler) collectCodexChannelModels(ctx context.Context, channelID int, 
 	if err := h.ensureCodexManagementConfigured(); err != nil {
 		return nil, err
 	}
+	localMode := h.codexCapabilities().LocalEnabled
+	var retryUntil time.Time
+	if localMode {
+		retryUntil = time.Now().Add(codexModelSyncRetryWindow)
+	}
 	models := make([]string, 0)
 	seen := make(map[string]struct{})
 	var firstErr error
@@ -971,12 +1003,8 @@ func (h *Handler) collectCodexChannelModels(ctx context.Context, channelID int, 
 			continue
 		}
 		query := url.Values{"name": []string{managedAuthRelativeName(channelID, file.Name)}}
-		var out struct {
-			Models []struct {
-				ID string `json:"id"`
-			} `json:"models"`
-		}
-		if err := h.codexManagementCallContext(ctx, http.MethodGet, "/auth-files/models", query, nil, &out); err != nil {
+		out, err := h.listCodexAuthFileModelsWithRetry(ctx, query, retryUntil)
+		if err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -999,6 +1027,44 @@ func (h *Handler) collectCodexChannelModels(ctx context.Context, channelID int, 
 		return nil, firstErr
 	}
 	return models, nil
+}
+
+func (h *Handler) listCodexAuthFileModelsWithRetry(ctx context.Context, query url.Values, retryUntil time.Time) (struct {
+	Models []struct {
+		ID string `json:"id"`
+	} `json:"models"`
+}, error) {
+	var out struct {
+		Models []struct {
+			ID string `json:"id"`
+		} `json:"models"`
+	}
+
+	for {
+		err := h.codexManagementCallContext(ctx, http.MethodGet, "/auth-files/models", query, nil, &out)
+		shouldRetry := !retryUntil.IsZero() && time.Now().Before(retryUntil)
+		if err == nil && (len(out.Models) > 0 || !shouldRetry) {
+			return out, nil
+		}
+		if err != nil && !shouldRetry {
+			return out, err
+		}
+		if !shouldRetry {
+			return out, nil
+		}
+
+		timer := time.NewTimer(codexModelSyncRetryDelay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return out, ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return out, nil
 }
 
 func (h *Handler) persistCodexChannelModels(ctx context.Context, channelID int, models []string) error {
@@ -1037,7 +1103,7 @@ func (h *Handler) bestEffortSyncCodexChannelModels(ctx context.Context, channelI
 	}
 }
 
-func (h *Handler) fetchCodexQuota(c *gin.Context, authIndex string, accountID string) (codexQuotaWindow, codexQuotaWindow, string, error) {
+func (h *Handler) fetchCodexQuota(ctx context.Context, authIndex string, accountID string) (codexQuotaWindow, codexQuotaWindow, string, error) {
 	req := map[string]any{
 		"authIndex": authIndex,
 		"method":    "GET",
@@ -1054,7 +1120,7 @@ func (h *Handler) fetchCodexQuota(c *gin.Context, authIndex string, accountID st
 		StatusCode int    `json:"status_code"`
 		Body       string `json:"body"`
 	}
-	if err := h.codexManagementCall(c, http.MethodPost, "/api-call", nil, req, &out); err != nil {
+	if err := h.codexManagementCallContext(ctx, http.MethodPost, "/api-call", nil, req, &out); err != nil {
 		return codexQuotaWindow{}, codexQuotaWindow{}, "", err
 	}
 	if out.StatusCode < 200 || out.StatusCode >= 300 {
@@ -1084,7 +1150,7 @@ func (h *Handler) fetchLocalCodexQuota(ctx context.Context, raw map[string]any) 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "wheel/codex-quota")
 
-	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	resp, err := h.doCodexQuotaRequest(req)
 	if err != nil {
 		return codexQuotaWindow{}, codexQuotaWindow{}, "", fmt.Errorf("request codex quota: %w", err)
 	}
@@ -1097,6 +1163,13 @@ func (h *Handler) fetchLocalCodexQuota(ctx context.Context, raw map[string]any) 
 		return codexQuotaWindow{}, codexQuotaWindow{}, "", fmt.Errorf("quota request returned status %d", resp.StatusCode)
 	}
 	return parseCodexQuotaBody(string(body))
+}
+
+func (h *Handler) doCodexQuotaRequest(req *http.Request) (*http.Response, error) {
+	if h != nil && h.codexQuotaDo != nil {
+		return h.codexQuotaDo(req)
+	}
+	return (&http.Client{Timeout: 60 * time.Second}).Do(req)
 }
 
 func parseCodexQuotaBody(body string) (codexQuotaWindow, codexQuotaWindow, string, error) {

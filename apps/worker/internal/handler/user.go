@@ -24,6 +24,7 @@ type Handler struct {
 	Config          *config.Config
 	CircuitBreakers *relay.CircuitBreakerManager
 	DLock           *db.DistributedLock
+	codexQuotaDo    func(*http.Request) (*http.Response, error)
 }
 
 // JSON helpers
