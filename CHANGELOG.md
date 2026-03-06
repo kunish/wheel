@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.2](https://github.com/kunish/wheel/compare/v1.22.1...v1.22.2) (2026-03-06)
+
+
+### Bug Fixes
+
+* preserve codex runtime management key on auth refresh ([a9faf5b](https://github.com/kunish/wheel/commit/a9faf5bb9f2dcfea6148b425275674d56eb645b0))
+
 ## [1.22.1](https://github.com/kunish/wheel/compare/v1.22.0...v1.22.1) (2026-03-06)
 
 
