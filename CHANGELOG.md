@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.21.0](https://github.com/kunish/wheel/compare/v1.20.0...v1.21.0) (2026-03-06)
+
+
+### Features
+
+* add Codex (CLIProxyAPI) provider support ([e5b237f](https://github.com/kunish/wheel/commit/e5b237f3020e612e70f69d4499107c1389ff41d6))
+* add codex runtime and auth upload flow ([a9eeb63](https://github.com/kunish/wheel/commit/a9eeb631680086399875dd74b574d5c0171609ec))
+
 ## [1.20.0](https://github.com/kunish/wheel/compare/v1.19.2...v1.20.0) (2026-03-05)
 
 
