@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.3](https://github.com/kunish/wheel/compare/v1.22.2...v1.22.3) (2026-03-06)
+
+
+### Bug Fixes
+
+* vendor CLIProxyAPIPlus for worker runtime ([13e936d](https://github.com/kunish/wheel/commit/13e936df0de2263531a03c6ea696fef68fe63dd3))
+
 ## [1.22.2](https://github.com/kunish/wheel/compare/v1.22.1...v1.22.2) (2026-03-06)
 
 
