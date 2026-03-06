@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.22.0](https://github.com/kunish/wheel/compare/v1.21.0...v1.22.0) (2026-03-06)
+
+
+### Features
+
+* expand runtime channels and log observability ([bd1d809](https://github.com/kunish/wheel/commit/bd1d8094b69ba6726b45449a8f90bc05f603a4af))
+
+
+### Bug Fixes
+
+* stabilize Codex auth sync and quota loading ([b1cccc7](https://github.com/kunish/wheel/commit/b1cccc76f6dbde5620adb3d47f3ced3d2afc5ac8))
+
 ## [1.21.0](https://github.com/kunish/wheel/compare/v1.20.0...v1.21.0) (2026-03-06)
 
 
