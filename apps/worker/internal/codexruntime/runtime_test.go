@@ -40,6 +40,25 @@ func TestMaterializeChannelAuthFiles_PreservesExistingFilesOnWriteFailure(t *tes
 	}
 }
 
+func TestEnsureManagedConfig_PreservesExistingManagementKeyWhenEmptyKeyPassed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	if err := EnsureManagedConfig("secret-key"); err != nil {
+		t.Fatalf("EnsureManagedConfig(secret-key) error = %v", err)
+	}
+	if err := EnsureManagedConfig(""); err != nil {
+		t.Fatalf("EnsureManagedConfig(empty) error = %v", err)
+	}
+
+	content, err := os.ReadFile(ManagedConfigPath())
+	if err != nil {
+		t.Fatalf("ReadFile(config) error = %v", err)
+	}
+	if !strings.Contains(string(content), "secret-key: secret-key") {
+		t.Fatalf("expected management key to be preserved, config = %s", string(content))
+	}
+}
+
 func TestMaterializeAuthFiles_PreservesExistingFilesOnWriteFailure(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

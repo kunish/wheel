@@ -50,6 +50,9 @@ func EnsureManagedConfig(managementKey string) error {
 	if err := os.MkdirAll(authDir, 0o700); err != nil {
 		return fmt.Errorf("create managed auth dir: %w", err)
 	}
+	if strings.TrimSpace(managementKey) == "" {
+		managementKey = existingManagedConfigKey(configPath)
+	}
 	content := fmt.Sprintf("host: 127.0.0.1\nport: %d\nauth-dir: %s\n", managedPort, authDir)
 	if managementKey != "" {
 		content += fmt.Sprintf("remote-management:\n  secret-key: %s\n", managementKey)
@@ -58,6 +61,33 @@ func EnsureManagedConfig(managementKey string) error {
 		return fmt.Errorf("write managed codex runtime config: %w", err)
 	}
 	return nil
+}
+
+func existingManagedConfigKey(configPath string) string {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+
+	inRemoteManagement := false
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+			inRemoteManagement = trimmed == "remote-management:"
+			continue
+		}
+		if !inRemoteManagement {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "secret-key:") {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, "secret-key:"))
+		}
+	}
+
+	return ""
 }
 
 func MaterializeAuthFiles(ctx context.Context, db *bun.DB) error {
