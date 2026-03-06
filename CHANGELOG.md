@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.1](https://github.com/kunish/wheel/compare/v1.22.0...v1.22.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* remove local CLIProxyAPI replace from worker module ([4ffb192](https://github.com/kunish/wheel/commit/4ffb1926bfee29173fe04c2441bc2dd629ab2e30))
+
 ## [1.22.0](https://github.com/kunish/wheel/compare/v1.21.0...v1.22.0) (2026-03-06)
 
 
