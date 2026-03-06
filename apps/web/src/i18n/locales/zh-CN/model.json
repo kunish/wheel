@@ -29,7 +29,7 @@
     "30": "Hugging Face",
     "31": "Novita AI",
     "32": "SiliconFlow",
-    "33": "Codex (CLIProxyAPI)"
+    "33": "Codex"
   },
   "modeLabels": {
     "1": "轮询",
@@ -201,6 +201,39 @@
       "editPrice": "编辑 {{name}} 的价格",
       "deletePrice": "删除 {{name}} 的价格"
     }
+  },
+  "codex": {
+    "authFiles": "认证文件",
+    "quota": "Codex 配额",
+    "remainingQuota": "Codex 剩余配额",
+    "weekly": "周配额",
+    "codeReview": "代码审查",
+    "noAuthFiles": "未找到认证文件。点击「通过 OAuth 导入」添加账号，然后点击「同步密钥」导入。",
+    "noEmail": "无邮箱",
+    "refresh": "刷新",
+    "syncKeys": "同步密钥",
+    "syncSuccess": "已从认证文件同步 {{count}} 个密钥",
+    "statusUpdated": "认证文件状态已更新",
+    "authDeleted": "认证文件已删除",
+    "modelsFor": "{{name}} 的模型",
+    "keyManagedByAuthFiles": "密钥由已导入的认证文件管理。在渠道详情中使用「同步密钥」将其导入为密钥。",
+    "importOAuth": "通过 OAuth 导入",
+    "oauthHint": "点击下方链接打开 OAuth 登录页面。登录完成后，此对话框将自动检测结果。",
+    "saveChannelFirst": "请先保存渠道，然后使用「通过 OAuth 导入」添加账号。",
+    "oauthStarting": "正在启动 OAuth 流程...",
+    "oauthWaiting": "等待 OAuth 登录完成...",
+    "oauthSuccess": "OAuth 登录成功！认证文件已导入。",
+    "oauthError": "OAuth 登录失败：{{error}}",
+    "oauthCopyLink": "复制链接",
+    "oauthOpenLink": "打开登录页面",
+    "oauthLinkCopied": "链接已复制到剪贴板",
+    "oauthTimeout": "OAuth 登录超时，请重试。",
+    "importFile": "上传认证文件",
+    "uploadingFile": "正在上传认证文件...",
+    "uploadSummarySuccess": "已成功上传 {{successCount}} 个认证文件",
+    "uploadSummaryPartial": "共上传 {{total}} 个认证文件，成功 {{successCount}} 个，失败 {{failedCount}} 个",
+    "uploadSummaryError": "上传失败，共 {{failedCount}} 个认证文件未导入",
+    "invalidJsonFile": "请选择 .json 认证文件"
   },
   "routingRules": {
     "title": "路由规则",

@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -23,6 +24,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/kunish/wheel/apps/worker/internal/cache"
+	"github.com/kunish/wheel/apps/worker/internal/codexruntime"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/db"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
@@ -54,6 +56,9 @@ func main() {
 
 	// ── Ensure a default API key exists for new installations ──
 	dal.EnsureDefaultApiKey(context.Background(), database)
+	if err := codexruntime.MaterializeAuthFiles(context.Background(), database); err != nil {
+		log.Fatalf("Failed to materialize managed Codex auth files: %v", err)
+	}
 
 	// ── Cache (created early so startup can populate it) ──
 	kv := cache.New()
@@ -154,6 +159,23 @@ func main() {
 	// Use a cancellable context for background services
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	codexRuntimeErrCh, err := initEmbeddedCodexRuntime(ctx, cfg, log.Default(), func(cfg *config.Config) (codexRuntimeService, error) {
+		return codexruntime.NewFromConfig(cfg)
+	})
+	if err != nil {
+		log.Fatalf("[startup] embedded Codex runtime failed: %v", err)
+	}
+	if codexRuntimeErrCh != nil {
+		go func() {
+			err := <-codexRuntimeErrCh
+			if err == nil || errors.Is(err, context.Canceled) {
+				return
+			}
+			log.Printf("[codex-runtime] embedded service exited with error, shutting down worker: %v", err)
+			stop()
+		}()
+	}
 
 	logWriterDone := make(chan struct{})
 	go func() {

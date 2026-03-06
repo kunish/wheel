@@ -28,6 +28,18 @@ var initSchema = []string{
 		total_cost DOUBLE DEFAULT 0 NOT NULL,
 		remark TEXT NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS codex_auth_files (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		channel_id INT NOT NULL,
+		name VARCHAR(255) NOT NULL,
+		provider VARCHAR(64) NOT NULL,
+		email VARCHAR(255) NOT NULL DEFAULT '',
+		disabled BOOLEAN DEFAULT false NOT NULL,
+		content MEDIUMTEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		UNIQUE KEY uk_codex_auth_files_channel_name (channel_id, name)
+	)`,
 	`CREATE TABLE IF NOT EXISTS channels (
 		id INT PRIMARY KEY AUTO_INCREMENT,
 		name TEXT NOT NULL,
@@ -222,6 +234,7 @@ var initIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_mcp_logs_client_id ON mcp_logs(client_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_model_limits_model ON model_limits(model)`,
 	`CREATE INDEX IF NOT EXISTS idx_virtual_keys_api_key_id ON virtual_keys(api_key_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_codex_auth_files_channel_id ON codex_auth_files(channel_id)`,
 }
 
 // initAlters upgrades existing columns (idempotent).

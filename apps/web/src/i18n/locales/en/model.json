@@ -29,7 +29,7 @@
     "30": "Hugging Face",
     "31": "Novita AI",
     "32": "SiliconFlow",
-    "33": "Codex (CLIProxyAPI)"
+    "33": "Codex"
   },
   "modeLabels": {
     "1": "RoundRobin",
@@ -201,6 +201,39 @@
       "editPrice": "Edit price for {{name}}",
       "deletePrice": "Delete price for {{name}}"
     }
+  },
+  "codex": {
+    "authFiles": "Auth Files",
+    "quota": "Codex Quota",
+    "remainingQuota": "Codex Remaining Quota",
+    "weekly": "Weekly",
+    "codeReview": "Code Review",
+    "noAuthFiles": "No auth files found. Click \"Import via OAuth\" to add accounts, then \"Sync Keys\" to import.",
+    "noEmail": "No email",
+    "refresh": "Refresh",
+    "syncKeys": "Sync Keys",
+    "syncSuccess": "{{count}} keys synced from auth files",
+    "statusUpdated": "Auth file status updated",
+    "authDeleted": "Auth file deleted",
+    "modelsFor": "Models for {{name}}",
+    "keyManagedByAuthFiles": "Keys are managed from imported auth files. Use \"Sync Keys\" in channel detail to import them as keys.",
+    "importOAuth": "Import via OAuth",
+    "oauthHint": "Click the link below to open the OAuth login page. After completing login, this dialog will automatically detect the result.",
+    "saveChannelFirst": "Please save the channel first, then use \"Import via OAuth\" to add accounts.",
+    "oauthStarting": "Starting OAuth flow...",
+    "oauthWaiting": "Waiting for OAuth login to complete...",
+    "oauthSuccess": "OAuth login successful! Auth file has been imported.",
+    "oauthError": "OAuth login failed: {{error}}",
+    "oauthCopyLink": "Copy Link",
+    "oauthOpenLink": "Open Login Page",
+    "oauthLinkCopied": "Link copied to clipboard",
+    "oauthTimeout": "OAuth login timed out. Please try again.",
+    "importFile": "Upload Auth File",
+    "uploadingFile": "Uploading auth file...",
+    "uploadSummarySuccess": "Uploaded {{successCount}} auth file(s) successfully",
+    "uploadSummaryPartial": "Uploaded {{successCount}} of {{total}} auth file(s); {{failedCount}} failed",
+    "uploadSummaryError": "Failed to upload {{failedCount}} auth file(s)",
+    "invalidJsonFile": "Please choose a .json auth file"
   },
   "routingRules": {
     "title": "Routing Rules",

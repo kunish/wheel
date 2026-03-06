@@ -27,11 +27,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { EMPTY_CHANNEL_FORM } from "./channel-dialog"
-import { parseModels } from "./types"
+import { CodexChannelDetail } from "./codex-channel-detail"
 
 // ─── Inline delete confirmation ────────────────
 // Re-uses ConfirmDeleteDialog from the shared component
 
+import { parseModels } from "./types"
 import { useChannelMutations } from "./use-channel-mutations"
 
 const ChannelDialog = lazy(() => import("./channel-dialog"))
@@ -436,6 +437,7 @@ function DraggableChannel({
                 />
               )}
             </div>
+            {channel.type === 33 && <CodexChannelDetail channelId={channel.id} />}
           </CardContent>
         </div>
       </div>

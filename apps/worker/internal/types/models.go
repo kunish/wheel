@@ -34,6 +34,21 @@ type ChannelKey struct {
 	Remark           string  `bun:"remark"              json:"remark"`
 }
 
+// CodexAuthFile represents a Wheel-managed Codex auth record.
+// The JSON content is the source of truth and is materialized to runtime files for the embedded Codex runtime.
+type CodexAuthFile struct {
+	bun.BaseModel `bun:"table:codex_auth_files"`
+	ID            int       `bun:"id,pk,autoincrement" json:"id"`
+	ChannelID     int       `bun:"channel_id,notnull"  json:"channelId"`
+	Name          string    `bun:"name,notnull"        json:"name"`
+	Provider      string    `bun:"provider,notnull"    json:"provider"`
+	Email         string    `bun:"email"               json:"email,omitempty"`
+	Disabled      bool      `bun:"disabled,default:false" json:"disabled"`
+	Content       string    `bun:"content,notnull"     json:"content"`
+	CreatedAt     time.Time `bun:"created_at,nullzero,default:current_timestamp" json:"createdAt"`
+	UpdatedAt     time.Time `bun:"updated_at,nullzero,default:current_timestamp" json:"updatedAt"`
+}
+
 // Channel represents an upstream provider channel.
 type Channel struct {
 	bun.BaseModel `bun:"table:channels"`

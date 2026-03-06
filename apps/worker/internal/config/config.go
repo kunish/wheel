@@ -15,6 +15,10 @@ type Config struct {
 	AdminUsername string
 	AdminPassword string
 
+	// Internal runtime state, not loaded from user-facing env vars.
+	CodexRuntimeManagementURL string
+	CodexRuntimeManagementKey string
+
 	// Observability
 	MetricsEnabled      bool
 	OtelEnabled         bool
@@ -26,17 +30,19 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:                getEnv("PORT", "8787"),
-		DBDSN:               getEnv("DB_DSN", "root:@tcp(127.0.0.1:4000)/wheel?parseTime=true&charset=utf8mb4"),
-		JWTSecret:           getEnv("JWT_SECRET", "change-me-in-production"),
-		AdminUsername:       getEnv("ADMIN_USERNAME", "admin"),
-		AdminPassword:       getEnv("ADMIN_PASSWORD", "admin"),
-		MetricsEnabled:      getEnv("METRICS_ENABLED", "") == "true",
-		OtelEnabled:         getEnv("OTEL_ENABLED", "") == "true",
-		OtelEndpoint:        getEnv("OTEL_EXPORTER_ENDPOINT", "localhost:4317"),
-		OtelServiceName:     getEnv("OTEL_SERVICE_NAME", "wheel-gateway"),
-		OtelMetricsPush:     getEnv("OTEL_METRICS_PUSH", "") == "true",
-		OtelMetricsEndpoint: getEnv("OTEL_METRICS_ENDPOINT", ""),
+		Port:                      getEnv("PORT", "8787"),
+		DBDSN:                     getEnv("DB_DSN", "root:@tcp(127.0.0.1:4000)/wheel?parseTime=true&charset=utf8mb4"),
+		JWTSecret:                 getEnv("JWT_SECRET", "change-me-in-production"),
+		AdminUsername:             getEnv("ADMIN_USERNAME", "admin"),
+		AdminPassword:             getEnv("ADMIN_PASSWORD", "admin"),
+		CodexRuntimeManagementURL: "http://127.0.0.1:8317",
+		CodexRuntimeManagementKey: "",
+		MetricsEnabled:            getEnv("METRICS_ENABLED", "") == "true",
+		OtelEnabled:               getEnv("OTEL_ENABLED", "") == "true",
+		OtelEndpoint:              getEnv("OTEL_EXPORTER_ENDPOINT", "localhost:4317"),
+		OtelServiceName:           getEnv("OTEL_SERVICE_NAME", "wheel-gateway"),
+		OtelMetricsPush:           getEnv("OTEL_METRICS_PUSH", "") == "true",
+		OtelMetricsEndpoint:       getEnv("OTEL_METRICS_ENDPOINT", ""),
 	}
 }
 

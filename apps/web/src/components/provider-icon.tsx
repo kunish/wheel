@@ -29,7 +29,7 @@ const PROVIDER_LOGO_MAP: Record<number, string> = {
   30: "huggingface", // Hugging Face
   31: "novita", // Novita AI
   32: "siliconflow", // SiliconFlow
-  33: "openai", // Codex (CLIProxyAPI)
+  33: "openai", // Codex
 }
 
 function getProviderLogoUrl(channelType: number): string | null {

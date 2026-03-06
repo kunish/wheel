@@ -53,6 +53,17 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.GET("/channel/last-sync-time", h.LastSyncTime)
 	admin.POST("/channel/reorder", h.ReorderChannels)
 
+	// Codex channel management (auth files + quota)
+	admin.GET("/channel/:id/codex/auth-files", h.ListCodexAuthFiles)
+	admin.POST("/channel/:id/codex/auth-files", h.UploadCodexAuthFile)
+	admin.PATCH("/channel/:id/codex/auth-files/status", h.PatchCodexAuthFileStatus)
+	admin.DELETE("/channel/:id/codex/auth-files", h.DeleteCodexAuthFile)
+	admin.GET("/channel/:id/codex/models", h.GetCodexAuthFileModels)
+	admin.GET("/channel/:id/codex/quota", h.ListCodexQuota)
+	admin.POST("/channel/:id/codex/sync-keys", h.SyncCodexKeys)
+	admin.POST("/channel/:id/codex/oauth/start", h.StartCodexOAuth)
+	admin.GET("/channel/:id/codex/oauth/status", h.GetCodexOAuthStatus)
+
 	// Group routes
 	admin.GET("/group/list", h.ListGroups)
 	admin.POST("/group/create", h.CreateGroup)

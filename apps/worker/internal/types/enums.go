@@ -31,7 +31,7 @@ const (
 	OutboundHuggingFace OutboundType = 30
 	OutboundNovita      OutboundType = 31
 	OutboundSiliconFlow OutboundType = 32
-	OutboundCodex       OutboundType = 33 // Codex via CLIProxyAPI
+	OutboundCodex       OutboundType = 33 // Codex via embedded runtime
 )
 
 // OutboundTypeName returns a human-readable name for the provider type.

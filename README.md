@@ -156,6 +156,14 @@ export OPENAI_API_KEY=your-api-key
 codex --provider openai
 ```
 
+### Codex（内嵌运行时）
+
+Wheel 会在 worker 进程内自动启动嵌入式 Codex 运行时，并通过 `Codex` 渠道处理认证文件、OAuth 导入、模型查询和配额读取。
+
+默认情况下不需要额外配置本地 auth 目录、管理密钥或独立运行时进程。认证数据由 Wheel 数据库托管，运行时文件由 Wheel 自动生成到受管目录。
+
+完整说明见 `docs/codex-runtime.md`。
+
 **aider**
 
 ```bash

@@ -1,5 +1,18 @@
-import { Download, Eye, EyeOff, Loader2, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Loader2,
+  LogIn,
+  Upload,
+  X,
+  XCircle,
+} from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -19,7 +32,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  getCodexAuthUploadToastState,
+  getCodexOAuthStatus,
+  listCodexAuthFiles,
+  startCodexOAuth,
+  uploadCodexAuthFile,
+} from "@/lib/api"
 import { fetchChannelModelsPreview } from "@/lib/api-client"
+import { codexUploadRefreshQueryKeys } from "./codex-query-keys"
 
 export interface ChannelFormData {
   id?: number
@@ -185,6 +206,260 @@ function FetchModelsButton({
   )
 }
 
+// ─── Codex OAuth Import Button + Native OAuth Dialog ──────────────────
+
+function CodexOAuthButton({ channelId }: { channelId?: number }) {
+  const { t } = useTranslation("model")
+  const queryClient = useQueryClient()
+  const capabilitiesQuery = useQuery({
+    queryKey: ["codex-auth-capabilities", channelId],
+    queryFn: () => listCodexAuthFiles(channelId!, { provider: "codex", page: 1, pageSize: 1 }),
+    enabled: !!channelId,
+  })
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [oauthUrl, setOauthUrl] = useState("")
+  const [_oauthState, setOauthState] = useState("")
+  const [oauthStatus, setOauthStatus] = useState<
+    "idle" | "starting" | "waiting" | "success" | "error"
+  >("idle")
+  const [oauthError, setOauthError] = useState("")
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => stopPolling()
+  }, [stopPolling])
+
+  const handleStartOAuth = useCallback(async () => {
+    if (!channelId) return
+    setOauthStatus("starting")
+    setOauthError("")
+    setOauthUrl("")
+    setOauthState("")
+    try {
+      const res = await startCodexOAuth(channelId)
+      const { url, state } = res.data
+      setOauthUrl(url)
+      setOauthState(state)
+      setOauthStatus("waiting")
+
+      const startTime = Date.now()
+      pollRef.current = setInterval(async () => {
+        if (Date.now() - startTime > 5 * 60 * 1000) {
+          stopPolling()
+          setOauthStatus("error")
+          setOauthError(t("codex.oauthTimeout"))
+          return
+        }
+        try {
+          const statusRes = await getCodexOAuthStatus(channelId, state)
+          const { status, error } = statusRes.data
+          if (status === "ok") {
+            stopPolling()
+            setOauthStatus("success")
+            for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
+              void queryClient.invalidateQueries({ queryKey })
+            }
+          } else if (status === "error") {
+            stopPolling()
+            setOauthStatus("error")
+            setOauthError(error || "Unknown error")
+          }
+        } catch {
+          // Network error — keep trying
+        }
+      }, 3000)
+    } catch (err) {
+      setOauthStatus("error")
+      setOauthError(err instanceof Error ? err.message : "Failed to start OAuth")
+    }
+  }, [channelId, queryClient, stopPolling, t])
+
+  const handleDialogChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        stopPolling()
+        setOauthStatus("idle")
+        setOauthUrl("")
+        setOauthState("")
+        setOauthError("")
+      }
+      setPanelOpen(open)
+    },
+    [stopPolling],
+  )
+
+  function handleClick() {
+    if (!channelId) {
+      toast.info(t("codex.saveChannelFirst"))
+      return
+    }
+    setPanelOpen(true)
+    void handleStartOAuth()
+  }
+
+  const oauthEnabled = capabilitiesQuery.data?.data.capabilities.oauthEnabled
+  if (channelId && (capabilitiesQuery.isLoading || oauthEnabled === false)) {
+    return null
+  }
+
+  return (
+    <>
+      <Button type="button" variant="outline" size="sm" className="w-fit" onClick={handleClick}>
+        <LogIn className="mr-1.5 h-3.5 w-3.5" />
+        {t("codex.importOAuth")}
+      </Button>
+      <Dialog open={panelOpen} onOpenChange={handleDialogChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("codex.importOAuth")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-muted-foreground text-xs">{t("codex.oauthHint")}</p>
+
+            {oauthStatus === "starting" && (
+              <div className="flex items-center gap-2 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{t("codex.oauthStarting")}</span>
+              </div>
+            )}
+
+            {oauthStatus === "waiting" && oauthUrl && (
+              <div className="space-y-3">
+                <div className="rounded-md border p-3">
+                  <p className="mb-2 text-xs font-medium break-all">{oauthUrl}</p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(oauthUrl)
+                        toast.success(t("codex.oauthLinkCopied"))
+                      }}
+                    >
+                      <Copy className="mr-1 h-3 w-3" />
+                      {t("codex.oauthCopyLink")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => window.open(oauthUrl, "_blank")}
+                    >
+                      <ExternalLink className="mr-1 h-3 w-3" />
+                      {t("codex.oauthOpenLink")}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{t("codex.oauthWaiting")}</span>
+                </div>
+              </div>
+            )}
+
+            {oauthStatus === "success" && (
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <Check className="h-4 w-4" />
+                <span>{t("codex.oauthSuccess")}</span>
+              </div>
+            )}
+
+            {oauthStatus === "error" && (
+              <div className="flex items-center gap-2 text-sm text-red-600">
+                <XCircle className="h-4 w-4" />
+                <span>{t("codex.oauthError", { error: oauthError })}</span>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function CodexAuthFileUploadButton({ channelId }: { channelId?: number }) {
+  const { t } = useTranslation("model")
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const handleUploadFile = useCallback(
+    async (fileList: FileList | null | undefined) => {
+      if (!channelId) {
+        toast.info(t("codex.saveChannelFirst"))
+        return
+      }
+      const files = Array.from(fileList ?? [])
+      if (files.length === 0) {
+        return
+      }
+      if (files.some((file) => !file.name.toLowerCase().endsWith(".json"))) {
+        toast.error(t("codex.invalidJsonFile"))
+        return
+      }
+
+      setUploading(true)
+      try {
+        const res = await uploadCodexAuthFile(channelId, files)
+        if (res.data.successCount > 0) {
+          for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
+            void queryClient.invalidateQueries({ queryKey })
+          }
+        }
+
+        const toastState = getCodexAuthUploadToastState(res.data)
+        toast[toastState.level](t(toastState.key, toastState.values))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t("codex.invalidJsonFile"))
+      } finally {
+        setUploading(false)
+      }
+    },
+    [channelId, queryClient, t],
+  )
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-fit"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+      >
+        {uploading ? (
+          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Upload className="mr-1.5 h-3.5 w-3.5" />
+        )}
+        {uploading ? t("codex.uploadingFile") : t("codex.importFile")}
+      </Button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".json"
+        className="hidden"
+        onChange={(e) => {
+          void handleUploadFile(e.target.files)
+          e.currentTarget.value = ""
+        }}
+      />
+    </>
+  )
+}
+
 // ─── Channel Dialog ────────────────────────────
 
 interface ChannelDialogProps {
@@ -254,7 +529,18 @@ export default function ChannelDialog({
             <Label>{t("channelDialog.providerType")}</Label>
             <Select
               value={String(form.type)}
-              onValueChange={(v) => setForm({ ...form, type: Number(v) })}
+              onValueChange={(v) => {
+                const newType = Number(v)
+                const update: Partial<ChannelFormData> = { type: newType }
+                // Auto-fill placeholder key for Codex channels
+                if (
+                  newType === 33 &&
+                  (!form.keys[0]?.channelKey || form.keys[0].channelKey === "")
+                ) {
+                  update.keys = [{ channelKey: "managed-by-auth-files", remark: "" }]
+                }
+                setForm({ ...form, ...update })
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -286,33 +572,46 @@ export default function ChannelDialog({
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>{t("channelDialog.apiKey")}</Label>
-            <div className="relative">
-              <Input
-                type={showKey ? "text" : "password"}
-                placeholder="sk-..."
-                value={form.keys[0]?.channelKey ?? ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    keys: [{ channelKey: e.target.value, remark: form.keys[0]?.remark ?? "" }],
-                  })
-                }
-                className="pr-9"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
-                onClick={() => setShowKey(!showKey)}
-                aria-label={showKey ? t("channelDialog.hideApiKey") : t("channelDialog.showApiKey")}
-              >
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
+          {form.type === 33 ? (
+            <div className="flex flex-col gap-2">
+              <Label>{t("channelDialog.apiKey")}</Label>
+              <p className="text-muted-foreground text-xs">{t("codex.keyManagedByAuthFiles")}</p>
+              <div className="flex flex-wrap gap-2">
+                <CodexOAuthButton channelId={form.id} />
+                <CodexAuthFileUploadButton channelId={form.id} />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Label>{t("channelDialog.apiKey")}</Label>
+              <div className="relative">
+                <Input
+                  type={showKey ? "text" : "password"}
+                  placeholder="sk-..."
+                  value={form.keys[0]?.channelKey ?? ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      keys: [{ channelKey: e.target.value, remark: form.keys[0]?.remark ?? "" }],
+                    })
+                  }
+                  className="pr-9"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2"
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={
+                    showKey ? t("channelDialog.hideApiKey") : t("channelDialog.showApiKey")
+                  }
+                >
+                  {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
