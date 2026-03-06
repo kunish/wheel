@@ -29,7 +29,8 @@
     "30": "Hugging Face",
     "31": "Novita AI",
     "32": "SiliconFlow",
-    "33": "Codex"
+    "33": "Codex",
+    "34": "GitHub Copilot"
   },
   "modeLabels": {
     "1": "RoundRobin",

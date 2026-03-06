@@ -42,6 +42,14 @@
   },
   "totalCount": "{{count}} total",
   "newLogs": "{{count}} new",
+  "stats": {
+    "totalRequests": "Total Requests",
+    "successRate": "Success Rate",
+    "avgLatency": "Avg Latency",
+    "totalTokens": "Total Tokens",
+    "totalCost": "Total Cost",
+    "tokenSpeed": "Token Speed"
+  },
   "searchPlaceholder": "Search logs...",
   "filter": {
     "allChannels": "All Channels",
@@ -72,9 +80,16 @@
     "messages": "Messages",
     "retry": "Retry ({{count}})",
     "replay": "Replay",
+    "section": {
+      "timings": "Timings",
+      "requestDetails": "Request Details"
+    },
     "field": {
       "time": "Time",
+      "startTime": "Start Timestamp",
+      "endTime": "End Timestamp",
       "channel": "Channel",
+      "type": "Type",
       "inputTokens": "Input Tokens",
       "outputTokens": "Output Tokens",
       "totalTokens": "Total Tokens",
@@ -83,6 +98,20 @@
       "totalLatency": "Total Latency",
       "outputSpeed": "Output Speed",
       "attempts": "Attempts"
+    },
+    "type": {
+      "chat": "Chat",
+      "chatStream": "Chat Stream",
+      "responses": "Responses",
+      "responsesStream": "Responses Stream",
+      "embedding": "Embedding",
+      "speech": "Speech",
+      "speechStream": "Speech Stream",
+      "transcription": "Transcription",
+      "transcriptionStream": "Transcription Stream",
+      "imageGeneration": "Image Generation",
+      "moderation": "Moderation",
+      "unknown": "Unknown"
     },
     "truncatedNotice": "Request content was truncated during storage. Replay may produce different results.",
     "replayBtn": "Replay",

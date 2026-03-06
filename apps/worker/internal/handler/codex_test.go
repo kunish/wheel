@@ -103,6 +103,42 @@ func TestFilterAndPaginateAuthFiles(t *testing.T) {
 	}
 }
 
+func TestFilterAndPaginateAuthFiles_CopilotProviderAlias(t *testing.T) {
+	files := []codexAuthFile{
+		{Name: "copilot.json", Provider: "github-copilot"},
+	}
+
+	items, total := filterAndPaginateAuthFiles(files, "copilot", "", 1, 20)
+	if total != 1 {
+		t.Fatalf("total = %d, want 1", total)
+	}
+	if len(items) != 1 || items[0].Name != "copilot.json" {
+		t.Fatalf("page result unexpected: %+v", items)
+	}
+}
+
+func TestParseCodexAuthContent_NormalizesGitHubCopilotProvider(t *testing.T) {
+	provider, email, disabled, normalized, raw, err := parseCodexAuthContent([]byte(`{"type":"github-copilot","email":"copilot@example.com"}`))
+	if err != nil {
+		t.Fatalf("parseCodexAuthContent() error = %v", err)
+	}
+	if provider != "copilot" {
+		t.Fatalf("provider = %q, want copilot", provider)
+	}
+	if email != "copilot@example.com" {
+		t.Fatalf("email = %q, want copilot@example.com", email)
+	}
+	if disabled {
+		t.Fatal("disabled = true, want false")
+	}
+	if got := stringFromMap(raw, "type"); got != "github-copilot" {
+		t.Fatalf("raw type = %q, want github-copilot", got)
+	}
+	if !strings.Contains(normalized, "github-copilot") {
+		t.Fatalf("normalized = %q, want to keep github-copilot type", normalized)
+	}
+}
+
 func TestCodexManagementUploadFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -335,7 +371,7 @@ func TestCollectCodexChannelModels(t *testing.T) {
 	defer server.Close()
 
 	h := &Handler{Config: &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}}
-	models, err := h.collectCodexChannelModels(t.Context(), 7, []codexAuthFile{
+	models, err := h.collectCodexChannelModels(t.Context(), 7, types.OutboundCodex, []codexAuthFile{
 		{Name: "first.json", Provider: "codex"},
 		{Name: "second.json", Provider: "codex"},
 	})
@@ -343,6 +379,29 @@ func TestCollectCodexChannelModels(t *testing.T) {
 		t.Fatalf("collectCodexChannelModels() error = %v", err)
 	}
 	if got, want := strings.Join(models, ","), "gpt-5,gpt-4.1,o3"; got != want {
+		t.Fatalf("models = %q, want %q", got, want)
+	}
+}
+
+func TestCollectCodexChannelModels_CopilotProviderAlias(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v0/management/auth-files/models" {
+			t.Fatalf("path = %s, want /v0/management/auth-files/models", r.URL.Path)
+		}
+		if name := r.URL.Query().Get("name"); name != "channel-7--copilot.json" {
+			t.Fatalf("unexpected auth file query name: %s", name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"id":"gpt-5.2"}]}`))
+	}))
+	defer server.Close()
+
+	h := &Handler{Config: &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}}
+	models, err := h.collectCodexChannelModels(t.Context(), 7, types.OutboundCopilot, []codexAuthFile{{Name: "copilot.json", Provider: "github-copilot"}})
+	if err != nil {
+		t.Fatalf("collectCodexChannelModels() error = %v", err)
+	}
+	if got, want := strings.Join(models, ","), "gpt-5.2"; got != want {
 		t.Fatalf("models = %q, want %q", got, want)
 	}
 }
@@ -371,7 +430,7 @@ func TestCollectCodexChannelModels_RetriesEmptyModelsUntilRuntimeCatchesUp(t *te
 
 	h, _ := newCodexUploadTestHandler(t)
 	h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
-	models, err := h.collectCodexChannelModels(t.Context(), 7, []codexAuthFile{{Name: "first.json", Provider: "codex"}})
+	models, err := h.collectCodexChannelModels(t.Context(), 7, types.OutboundCodex, []codexAuthFile{{Name: "first.json", Provider: "codex"}})
 	if err != nil {
 		t.Fatalf("collectCodexChannelModels() error = %v", err)
 	}
@@ -603,6 +662,8 @@ func TestUploadCodexAuthFileBatch(t *testing.T) {
 	expectCodexAuthFileInsert(mock, nil)
 	expectCodexAuthFileInsert(mock, errors.New("duplicate auth file"))
 	expectCodexAuthFileListForSync(mock, 7, []string{"valid.json"})
+	expectCodexChannelTypeLookup(mock, 7, types.OutboundCodex)
+	expectCodexAuthFileListForSync(mock, 7, []string{"valid.json"})
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -671,6 +732,8 @@ func TestUploadCodexAuthFileSingleFileCompatibility(t *testing.T) {
 	expectCodexChannelLookups(mock, 9)
 	expectCodexAuthFileInsert(mock, nil)
 	expectCodexAuthFileListForSync(mock, 9, []string{"single.json"})
+	expectCodexChannelTypeLookup(mock, 9, types.OutboundCodex)
+	expectCodexAuthFileListForSync(mock, 9, []string{"single.json"})
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -727,6 +790,7 @@ func TestUploadCodexAuthFileBatch_LocalMaterializesAfterLoop(t *testing.T) {
 		expectCodexAuthFileInsert(mock, nil)
 	}
 	expectCodexAuthFileListForSync(mock, 11, []string{"first.json", "second.json", "third.json", "fourth.json", "fifth.json"})
+	expectCodexChannelTypeLookup(mock, 11, types.OutboundCodex)
 	expectCodexAuthFileListForSync(mock, 11, []string{"first.json", "second.json", "third.json", "fourth.json", "fifth.json"})
 
 	authDir := codexruntime.ManagedAuthDir()
@@ -814,6 +878,58 @@ func TestUploadCodexAuthFileBatch_LocalMaterializesAfterLoop(t *testing.T) {
 		if result.Status != "ok" || result.Error != "" {
 			t.Fatalf("result %d = %+v, want ok", i, result)
 		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestUploadCodexAuthFileBatch_DoesNotDependOnTempMultipartFiles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("TMPDIR", "/path/that/does/not/exist")
+
+	h, mock := newCodexUploadTestHandler(t)
+	expectCodexChannelLookups(mock, 11)
+	expectCodexAuthFileInsert(mock, nil)
+	expectCodexAuthFileInsert(mock, nil)
+	expectCodexAuthFileListForSync(mock, 11, []string{"one.json", "two.json"})
+	expectCodexChannelTypeLookup(mock, 11, types.OutboundCodex)
+	expectCodexAuthFileListForSync(mock, 11, []string{"one.json", "two.json"})
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	mustWriteMultipartFile(t, writer, "files", "one.json", `{"type":"codex","email":"one@example.com","access_token":"token-1"}`)
+	mustWriteMultipartFile(t, writer, "files", "two.json", `{"type":"codex","email":"two@example.com","access_token":"token-2"}`)
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	c, router := gin.CreateTestContext(rec)
+	router.MaxMultipartMemory = 1
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/channel/11/codex/auth-files", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	c.Request = req
+	c.Params = gin.Params{{Key: "id", Value: "11"}}
+
+	h.UploadCodexAuthFile(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Total        int `json:"total"`
+			SuccessCount int `json:"successCount"`
+			FailedCount  int `json:"failedCount"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success || resp.Data.Total != 2 || resp.Data.SuccessCount != 2 || resp.Data.FailedCount != 0 {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)
@@ -917,6 +1033,15 @@ func newCodexUploadTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 func expectCodexChannelLookups(mock sqlmock.Sqlmock, channelID int) {
 	channelRows := sqlmock.NewRows([]string{"id", "name", "type", "enabled", "base_urls", "model", "fetched_model", "custom_model", "proxy", "auto_sync", "auto_group", "custom_header", "param_override", "channel_proxy", "order"}).
 		AddRow(channelID, "Codex", types.OutboundCodex, true, "[]", "[]", "[]", "", false, false, 0, "[]", nil, nil, 0)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT `channel`.`id`, `channel`.`name`, `channel`.`type`, `channel`.`enabled`, `channel`.`base_urls`, `channel`.`model`, `channel`.`fetched_model`, `channel`.`custom_model`, `channel`.`proxy`, `channel`.`auto_sync`, `channel`.`auto_group`, `channel`.`custom_header`, `channel`.`param_override`, `channel`.`channel_proxy`, `channel`.`order` FROM `channels` AS `channel` WHERE (id = ") + "[0-9]+" + regexp.QuoteMeta(")")).
+		WillReturnRows(channelRows)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT `channel_key`.`id`, `channel_key`.`channel_id`, `channel_key`.`enabled`, `channel_key`.`channel_key`, `channel_key`.`status_code`, `channel_key`.`last_use_timestamp`, `channel_key`.`total_cost`, `channel_key`.`remark` FROM `channel_keys` AS `channel_key` WHERE (channel_id = ") + "[0-9]+" + regexp.QuoteMeta(")")).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "channel_id", "enabled", "channel_key", "status_code", "last_use_timestamp", "total_cost", "remark"}))
+}
+
+func expectCodexChannelTypeLookup(mock sqlmock.Sqlmock, channelID int, channelType types.OutboundType) {
+	channelRows := sqlmock.NewRows([]string{"id", "name", "type", "enabled", "base_urls", "model", "fetched_model", "custom_model", "proxy", "auto_sync", "auto_group", "custom_header", "param_override", "channel_proxy", "order"}).
+		AddRow(channelID, "Codex", channelType, true, "[]", "[]", "[]", "", false, false, 0, "[]", nil, nil, 0)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT `channel`.`id`, `channel`.`name`, `channel`.`type`, `channel`.`enabled`, `channel`.`base_urls`, `channel`.`model`, `channel`.`fetched_model`, `channel`.`custom_model`, `channel`.`proxy`, `channel`.`auto_sync`, `channel`.`auto_group`, `channel`.`custom_header`, `channel`.`param_override`, `channel`.`channel_proxy`, `channel`.`order` FROM `channels` AS `channel` WHERE (id = ") + "[0-9]+" + regexp.QuoteMeta(")")).
 		WillReturnRows(channelRows)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT `channel_key`.`id`, `channel_key`.`channel_id`, `channel_key`.`enabled`, `channel_key`.`channel_key`, `channel_key`.`status_code`, `channel_key`.`last_use_timestamp`, `channel_key`.`total_cost`, `channel_key`.`remark` FROM `channel_keys` AS `channel_key` WHERE (channel_id = ") + "[0-9]+" + regexp.QuoteMeta(")")).

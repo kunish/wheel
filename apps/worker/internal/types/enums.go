@@ -32,6 +32,7 @@ const (
 	OutboundNovita      OutboundType = 31
 	OutboundSiliconFlow OutboundType = 32
 	OutboundCodex       OutboundType = 33 // Codex via embedded runtime
+	OutboundCopilot     OutboundType = 34 // GitHub Copilot via embedded runtime
 )
 
 // OutboundTypeName returns a human-readable name for the provider type.
@@ -83,6 +84,8 @@ func OutboundTypeName(t OutboundType) string {
 		return "siliconflow"
 	case OutboundCodex:
 		return "codex"
+	case OutboundCopilot:
+		return "copilot"
 	default:
 		return "unknown"
 	}
@@ -95,7 +98,7 @@ func IsOpenAICompatible(t OutboundType) bool {
 		OutboundGroq, OutboundMistral, OutboundDeepSeek, OutboundXAI,
 		OutboundCerebras, OutboundOpenRouter, OutboundPerplexity, OutboundTogether,
 		OutboundOllama, OutboundVLLM, OutboundHuggingFace, OutboundNovita, OutboundSiliconFlow,
-		OutboundCodex:
+		OutboundCodex, OutboundCopilot:
 		return true
 	default:
 		return false
@@ -140,6 +143,8 @@ func DefaultBaseURL(t OutboundType) string {
 	case OutboundSiliconFlow:
 		return "https://api.siliconflow.cn"
 	case OutboundCodex:
+		return "http://localhost:8317"
+	case OutboundCopilot:
 		return "http://localhost:8317"
 	default:
 		return ""

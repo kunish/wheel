@@ -437,7 +437,13 @@ function DraggableChannel({
                 />
               )}
             </div>
-            {channel.type === 33 && <CodexChannelDetail channelId={channel.id} />}
+            {(channel.type === 33 || channel.type === 34) && (
+              <CodexChannelDetail
+                channelId={channel.id}
+                channelType={channel.type}
+                modelCount={modelNames.length}
+              />
+            )}
           </CardContent>
         </div>
       </div>

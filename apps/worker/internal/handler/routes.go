@@ -64,6 +64,17 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/channel/:id/codex/oauth/start", h.StartCodexOAuth)
 	admin.GET("/channel/:id/codex/oauth/status", h.GetCodexOAuthStatus)
 
+	// Copilot channel management (reuses Codex handlers via CLIProxyAPI runtime)
+	admin.GET("/channel/:id/copilot/auth-files", h.ListCodexAuthFiles)
+	admin.POST("/channel/:id/copilot/auth-files", h.UploadCodexAuthFile)
+	admin.PATCH("/channel/:id/copilot/auth-files/status", h.PatchCodexAuthFileStatus)
+	admin.DELETE("/channel/:id/copilot/auth-files", h.DeleteCodexAuthFile)
+	admin.GET("/channel/:id/copilot/models", h.GetCodexAuthFileModels)
+	admin.GET("/channel/:id/copilot/quota", h.ListCodexQuota)
+	admin.POST("/channel/:id/copilot/sync-keys", h.SyncCodexKeys)
+	admin.POST("/channel/:id/copilot/oauth/start", h.StartCodexOAuth)
+	admin.GET("/channel/:id/copilot/oauth/status", h.GetCodexOAuthStatus)
+
 	// Group routes
 	admin.GET("/group/list", h.ListGroups)
 	admin.POST("/group/create", h.CreateGroup)

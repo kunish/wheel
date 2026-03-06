@@ -75,6 +75,11 @@ type codexOAuthSession struct {
 	Existing  map[string]struct{}
 }
 
+type codexUploadFile struct {
+	Name    string
+	Content []byte
+}
+
 type codexAuthUploadResult struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
@@ -140,7 +145,7 @@ func (h *Handler) listLocalAuthFiles(authDir string) ([]codexAuthFile, error) {
 		}
 		entry := codexAuthFile{
 			Name:      rel,
-			Provider:  strings.ToLower(stringFromMap(raw, "provider", "type")),
+			Provider:  canonicalRuntimeProvider(stringFromMap(raw, "provider", "type")),
 			Type:      strings.ToLower(stringFromMap(raw, "type", "provider")),
 			Email:     stringFromMap(raw, "email"),
 			Disabled:  boolFromMap(raw, "disabled"),
@@ -248,9 +253,9 @@ func (h *Handler) listManagedCodexAuthFiles(ctx context.Context, channelID int) 
 		if err := json.Unmarshal([]byte(item.Content), &raw); err != nil {
 			continue
 		}
-		provider := strings.ToLower(strings.TrimSpace(item.Provider))
+		provider := canonicalRuntimeProvider(item.Provider)
 		if provider == "" {
-			provider = strings.ToLower(stringFromMap(raw, "type", "provider"))
+			provider = canonicalRuntimeProvider(stringFromMap(raw, "type", "provider"))
 		}
 		if provider == "" {
 			provider = "codex"
@@ -273,9 +278,9 @@ func parseCodexAuthContent(content []byte) (provider string, email string, disab
 	if err = json.Unmarshal(content, &raw); err != nil {
 		return "", "", false, "", nil, fmt.Errorf("invalid auth file json")
 	}
-	provider = strings.ToLower(strings.TrimSpace(stringFromMap(raw, "type", "provider")))
+	provider = canonicalRuntimeProvider(stringFromMap(raw, "type", "provider"))
 	if provider == "" {
-		provider = "codex"
+		provider = "codex" // default; overridden for copilot channels at upload time
 		raw["type"] = provider
 	}
 	email = strings.TrimSpace(stringFromMap(raw, "email"))
@@ -475,23 +480,23 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 		return
 	}
 
-	fileHeaders, err := collectCodexUploadFiles(c)
+	files, err := collectCodexUploadFiles(c)
 	if err != nil {
 		errorJSON(c, http.StatusBadRequest, "failed to parse multipart form")
 		return
 	}
-	if len(fileHeaders) == 0 {
+	if len(files) == 0 {
 		errorJSON(c, http.StatusBadRequest, "file is required")
 		return
 	}
 
 	response := codexAuthUploadResponse{
-		Total:   len(fileHeaders),
-		Results: make([]codexAuthUploadResult, 0, len(fileHeaders)),
+		Total:   len(files),
+		Results: make([]codexAuthUploadResult, 0, len(files)),
 	}
 	if h.codexCapabilities().LocalEnabled {
-		for _, fileHeader := range fileHeaders {
-			result := h.uploadCodexLocalAuthFile(c.Request.Context(), channel.ID, fileHeader)
+		for _, file := range files {
+			result := h.uploadCodexLocalAuthFile(c.Request.Context(), channel.ID, file)
 			response.Results = append(response.Results, result)
 			if result.Status == "ok" {
 				response.SuccessCount++
@@ -511,8 +516,8 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 			errorJSON(c, http.StatusBadRequest, err.Error())
 			return
 		}
-		for _, fileHeader := range fileHeaders {
-			result := h.uploadCodexManagedAuthFile(c.Request.Context(), fileHeader)
+		for _, file := range files {
+			result := h.uploadCodexManagedAuthFile(c.Request.Context(), file)
 			response.Results = append(response.Results, result)
 			if result.Status == "ok" {
 				response.SuccessCount++
@@ -524,42 +529,48 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 	successJSON(c, response)
 }
 
-func collectCodexUploadFiles(c *gin.Context) ([]*multipart.FileHeader, error) {
-	form, err := c.MultipartForm()
+func collectCodexUploadFiles(c *gin.Context) ([]codexUploadFile, error) {
+	reader, err := c.Request.MultipartReader()
 	if err != nil {
 		return nil, err
 	}
-	if form == nil || form.File == nil {
-		return nil, nil
+
+	files := make([]codexUploadFile, 0, 1)
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+
+		if part.FormName() != "files" && part.FormName() != "file" {
+			_ = part.Close()
+			continue
+		}
+
+		filename := filepath.Base(part.FileName())
+		if filename == "" {
+			_ = part.Close()
+			continue
+		}
+
+		content, err := io.ReadAll(part)
+		_ = part.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read uploaded file")
+		}
+
+		files = append(files, codexUploadFile{Name: filename, Content: content})
 	}
-	files := make([]*multipart.FileHeader, 0, len(form.File["files"])+len(form.File["file"]))
-	files = append(files, form.File["files"]...)
-	files = append(files, form.File["file"]...)
+
 	return files, nil
 }
 
-func readUploadedCodexAuthFile(fileHeader *multipart.FileHeader) ([]byte, error) {
-	file, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("failed to open uploaded file")
-	}
-	defer file.Close()
-
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read uploaded file")
-	}
-	return content, nil
-}
-
-func (h *Handler) uploadCodexLocalAuthFile(ctx context.Context, channelID int, fileHeader *multipart.FileHeader) codexAuthUploadResult {
-	result := codexAuthUploadResult{Name: filepath.Base(fileHeader.Filename)}
-	content, err := readUploadedCodexAuthFile(fileHeader)
-	if err != nil {
-		result.Status = "error"
-		result.Error = err.Error()
-		return result
-	}
+func (h *Handler) uploadCodexLocalAuthFile(ctx context.Context, channelID int, file codexUploadFile) codexAuthUploadResult {
+	result := codexAuthUploadResult{Name: file.Name}
+	content := file.Content
 	provider, email, disabled, normalized, _, err := parseCodexAuthContent(content)
 	if err != nil {
 		result.Status = "error"
@@ -583,16 +594,11 @@ func (h *Handler) uploadCodexLocalAuthFile(ctx context.Context, channelID int, f
 	return result
 }
 
-func (h *Handler) uploadCodexManagedAuthFile(ctx context.Context, fileHeader *multipart.FileHeader) codexAuthUploadResult {
-	result := codexAuthUploadResult{Name: filepath.Base(fileHeader.Filename)}
-	content, err := readUploadedCodexAuthFile(fileHeader)
-	if err != nil {
-		result.Status = "error"
-		result.Error = err.Error()
-		return result
-	}
+func (h *Handler) uploadCodexManagedAuthFile(ctx context.Context, file codexUploadFile) codexAuthUploadResult {
+	result := codexAuthUploadResult{Name: file.Name}
+	content := file.Content
 	var out map[string]any
-	if err := h.codexManagementUploadFile(ctx, fileHeader.Filename, content, &out); err != nil {
+	if err := h.codexManagementUploadFile(ctx, file.Name, content, &out); err != nil {
 		result.Status = "error"
 		result.Error = err.Error()
 		return result
@@ -707,7 +713,6 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	_ = channel
 
 	search := strings.TrimSpace(c.Query("search"))
 	page := parsePositiveInt(c.Query("page"), 1)
@@ -715,6 +720,8 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 	if pageSize > 50 {
 		pageSize = 50
 	}
+
+	providerFilter := runtimeProviderFilter(channel.Type)
 
 	var files []codexAuthFile
 	if h.codexCapabilities().LocalEnabled {
@@ -738,7 +745,20 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 		files = parseAuthFiles(resp.Files)
 	}
 
-	paged, total := filterAndPaginateAuthFiles(files, "codex", search, page, pageSize)
+	paged, total := filterAndPaginateAuthFiles(files, providerFilter, search, page, pageSize)
+
+	if channel.Type == types.OutboundCopilot {
+		items := make([]codexQuotaItem, len(paged))
+		for i, file := range paged {
+			items[i] = codexQuotaItem{
+				Name:      file.Name,
+				Email:     file.Email,
+				AuthIndex: file.AuthIndex,
+			}
+		}
+		successJSON(c, gin.H{"items": items, "total": total, "page": page, "pageSize": pageSize})
+		return
+	}
 
 	items := h.collectCodexQuotaItems(c.Request.Context(), paged, codexQuotaFetchConcurrency, func(ctx context.Context, file codexAuthFile) (codexQuotaWindow, codexQuotaWindow, string, error) {
 		accountID := stringFromMap(file.Raw, "account_id", "accountId")
@@ -807,7 +827,36 @@ func buildCodexQuotaItem(ctx context.Context, file codexAuthFile, fetch func(con
 	return item
 }
 
-// validateCodexChannel verifies the channel exists and is type Codex (33).
+// isRuntimeChannel returns true if the channel type uses the embedded CLIProxyAPI runtime.
+func isRuntimeChannel(t types.OutboundType) bool {
+	return t == types.OutboundCodex || t == types.OutboundCopilot
+}
+
+// runtimeProviderFilter returns the auth file provider filter for the given runtime channel type.
+func runtimeProviderFilter(t types.OutboundType) string {
+	switch t {
+	case types.OutboundCopilot:
+		return "copilot"
+	default:
+		return "codex"
+	}
+}
+
+func canonicalRuntimeProvider(provider string) string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	switch provider {
+	case "github-copilot", "github", "copilot":
+		return "copilot"
+	default:
+		return provider
+	}
+}
+
+func runtimeProviderMatches(channelType types.OutboundType, provider string) bool {
+	return canonicalRuntimeProvider(provider) == runtimeProviderFilter(channelType)
+}
+
+// validateCodexChannel verifies the channel exists and is a runtime-managed type (Codex or Copilot).
 // On failure it writes an error response and returns nil.
 func (h *Handler) validateCodexChannel(c *gin.Context) (*types.Channel, error) {
 	idStr := c.Param("id")
@@ -825,9 +874,9 @@ func (h *Handler) validateCodexChannel(c *gin.Context) (*types.Channel, error) {
 		errorJSON(c, http.StatusNotFound, "channel not found")
 		return nil, fmt.Errorf("channel not found")
 	}
-	if channel.Type != types.OutboundCodex {
-		errorJSON(c, http.StatusBadRequest, "channel is not a Codex channel")
-		return nil, fmt.Errorf("not a codex channel")
+	if !isRuntimeChannel(channel.Type) {
+		errorJSON(c, http.StatusBadRequest, "channel is not a Codex/Copilot channel")
+		return nil, fmt.Errorf("not a runtime channel")
 	}
 	return channel, nil
 }
@@ -949,10 +998,10 @@ func (h *Handler) SyncCodexKeys(c *gin.Context) {
 		}
 		files = parseAuthFiles(resp.Files)
 	}
-	// Filter to codex provider only
+	// Filter to matching provider only
 	var codexFiles []codexAuthFile
 	for _, f := range files {
-		if strings.EqualFold(f.Provider, "codex") && !f.Disabled {
+		if runtimeProviderMatches(channel.Type, f.Provider) && !f.Disabled {
 			codexFiles = append(codexFiles, f)
 		}
 	}
@@ -985,10 +1034,11 @@ func (h *Handler) SyncCodexKeys(c *gin.Context) {
 	successJSON(c, gin.H{"synced": len(keys), "authFiles": len(codexFiles)})
 }
 
-func (h *Handler) collectCodexChannelModels(ctx context.Context, channelID int, files []codexAuthFile) ([]string, error) {
+func (h *Handler) collectCodexChannelModels(ctx context.Context, channelID int, channelType types.OutboundType, files []codexAuthFile) ([]string, error) {
 	if err := h.ensureCodexManagementConfigured(); err != nil {
 		return nil, err
 	}
+	providerFilter := runtimeProviderFilter(channelType)
 	localMode := h.codexCapabilities().LocalEnabled
 	var retryUntil time.Time
 	if localMode {
@@ -999,7 +1049,7 @@ func (h *Handler) collectCodexChannelModels(ctx context.Context, channelID int, 
 	var firstErr error
 	successCount := 0
 	for _, file := range files {
-		if file.Disabled || !strings.EqualFold(file.Provider, "codex") {
+		if file.Disabled || canonicalRuntimeProvider(file.Provider) != providerFilter {
 			continue
 		}
 		query := url.Values{"name": []string{managedAuthRelativeName(channelID, file.Name)}}
@@ -1082,11 +1132,19 @@ func (h *Handler) syncCodexChannelModels(ctx context.Context, channelID int) err
 	if h == nil || h.DB == nil {
 		return nil
 	}
+	// Look up channel type for provider filtering
+	channel, err := dal.GetChannel(ctx, h.DB, channelID)
+	if err != nil {
+		return err
+	}
+	if channel == nil {
+		return fmt.Errorf("channel %d not found", channelID)
+	}
 	files, err := h.listManagedCodexAuthFiles(ctx, channelID)
 	if err != nil {
 		return err
 	}
-	models, err := h.collectCodexChannelModels(ctx, channelID, files)
+	models, err := h.collectCodexChannelModels(ctx, channelID, channel.Type, files)
 	if err != nil {
 		return err
 	}
@@ -1354,7 +1412,7 @@ func parseAuthFiles(files []map[string]any) []codexAuthFile {
 		}
 		entry := codexAuthFile{
 			Name:      stringFromMap(raw, "name"),
-			Provider:  strings.ToLower(stringFromMap(raw, "provider")),
+			Provider:  canonicalRuntimeProvider(stringFromMap(raw, "provider", "type")),
 			Type:      strings.ToLower(stringFromMap(raw, "type")),
 			Email:     stringFromMap(raw, "email"),
 			Disabled:  boolFromMap(raw, "disabled"),
@@ -1379,14 +1437,14 @@ func parseAuthFiles(files []map[string]any) []codexAuthFile {
 }
 
 func filterAndPaginateAuthFiles(files []codexAuthFile, provider string, search string, page int, pageSize int) ([]codexAuthFile, int) {
-	provider = strings.ToLower(strings.TrimSpace(provider))
+	provider = canonicalRuntimeProvider(provider)
 	search = strings.ToLower(strings.TrimSpace(search))
 
 	filtered := make([]codexAuthFile, 0, len(files))
 	for _, file := range files {
-		p := strings.ToLower(strings.TrimSpace(file.Provider))
+		p := canonicalRuntimeProvider(file.Provider)
 		if p == "" {
-			p = strings.ToLower(strings.TrimSpace(file.Type))
+			p = canonicalRuntimeProvider(file.Type)
 		}
 		if provider != "" && p != provider {
 			continue

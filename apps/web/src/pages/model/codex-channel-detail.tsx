@@ -28,6 +28,7 @@ import {
   listCodexAuthFiles,
   listCodexQuota,
   patchCodexAuthFileStatus,
+  runtimeProviderFilter,
   startCodexOAuth,
   syncCodexKeys,
   uploadCodexAuthFile,
@@ -41,32 +42,39 @@ import {
 
 interface CodexChannelDetailProps {
   channelId: number
+  channelType?: number
+  modelCount?: number
 }
 
-export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
+export function CodexChannelDetail({
+  channelId,
+  channelType,
+  modelCount = 0,
+}: CodexChannelDetailProps) {
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
   const [modelsDialogFile, setModelsDialogFile] = useState<CodexAuthFile | null>(null)
 
   const authQuery = useQuery({
     queryKey: codexAuthFilesQueryKey(channelId),
-    queryFn: () => listCodexAuthFiles(channelId, { provider: "codex" }),
+    queryFn: () =>
+      listCodexAuthFiles(channelId, { provider: runtimeProviderFilter(channelType), channelType }),
   })
 
   const quotaQuery = useQuery({
     queryKey: codexQuotaQueryKey(channelId),
-    queryFn: () => listCodexQuota(channelId),
+    queryFn: () => listCodexQuota(channelId, { channelType }),
   })
 
   const modelsQuery = useQuery({
     queryKey: ["codex-auth-models", channelId, modelsDialogFile?.name],
-    queryFn: () => getCodexAuthFileModels(channelId, modelsDialogFile?.name || ""),
+    queryFn: () => getCodexAuthFileModels(channelId, modelsDialogFile?.name || "", channelType),
     enabled: !!modelsDialogFile,
   })
 
   const toggleMut = useMutation({
     mutationFn: (input: { name: string; disabled: boolean }) =>
-      patchCodexAuthFileStatus(channelId, input),
+      patchCodexAuthFileStatus(channelId, input, channelType),
     onSuccess: () => {
       for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
         void queryClient.invalidateQueries({ queryKey })
@@ -77,7 +85,7 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
   })
 
   const deleteMut = useMutation({
-    mutationFn: (name: string) => deleteCodexAuthFile(channelId, { name }),
+    mutationFn: (name: string) => deleteCodexAuthFile(channelId, { name }, channelType),
     onSuccess: () => {
       for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
         void queryClient.invalidateQueries({ queryKey })
@@ -88,7 +96,7 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
   })
 
   const syncMut = useMutation({
-    mutationFn: () => syncCodexKeys(channelId),
+    mutationFn: () => syncCodexKeys(channelId, channelType),
     onSuccess: (res) => {
       for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
         void queryClient.invalidateQueries({ queryKey })
@@ -99,7 +107,7 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
   })
 
   const uploadMut = useMutation({
-    mutationFn: (files: File[]) => uploadCodexAuthFile(channelId, files),
+    mutationFn: (files: File[]) => uploadCodexAuthFile(channelId, files, channelType),
     onSuccess: (res) => {
       if (res.data.successCount > 0) {
         for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
@@ -141,7 +149,7 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
     setOauthUrl("")
     setOauthState("")
     try {
-      const res = await startCodexOAuth(channelId)
+      const res = await startCodexOAuth(channelId, channelType)
       const { url, state } = res.data
       setOauthUrl(url)
       setOauthState(state)
@@ -158,7 +166,7 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
           return
         }
         try {
-          const statusRes = await getCodexOAuthStatus(channelId, state)
+          const statusRes = await getCodexOAuthStatus(channelId, state, channelType)
           const { status, error } = statusRes.data
           if (status === "ok") {
             stopPolling()
@@ -180,7 +188,7 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
       setOauthStatus("error")
       setOauthError(err instanceof Error ? err.message : "Failed to start OAuth")
     }
-  }, [channelId, queryClient, stopPolling, t])
+  }, [channelId, channelType, queryClient, stopPolling, t])
 
   const handleOauthDialogChange = useCallback(
     (open: boolean) => {
@@ -199,6 +207,16 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
   const authFiles = authQuery.data?.data.files ?? []
   const quotaItems = quotaQuery.data?.data.items ?? []
   const capabilities = authQuery.data?.data.capabilities
+
+  const handleRefresh = useCallback(() => {
+    if (modelCount === 0 && authFiles.length > 0) {
+      syncMut.mutate()
+      return
+    }
+    void queryClient.invalidateQueries({ queryKey: codexAuthFilesQueryKey(channelId) })
+    void queryClient.invalidateQueries({ queryKey: codexQuotaQueryKey(channelId) })
+    void queryClient.invalidateQueries({ queryKey: channelsQueryKey })
+  }, [authFiles.length, channelId, modelCount, queryClient, syncMut])
 
   const handleUploadFile = useCallback(
     (fileList: FileList | null | undefined) => {
@@ -233,11 +251,8 @@ export function CodexChannelDetail({ channelId }: CodexChannelDetailProps) {
               variant="outline"
               size="sm"
               className="h-7 text-xs"
-              onClick={() => {
-                void queryClient.invalidateQueries({ queryKey: codexAuthFilesQueryKey(channelId) })
-                void queryClient.invalidateQueries({ queryKey: codexQuotaQueryKey(channelId) })
-                void queryClient.invalidateQueries({ queryKey: channelsQueryKey })
-              }}
+              onClick={handleRefresh}
+              disabled={syncMut.isPending}
             >
               <RefreshCw className="mr-1 h-3 w-3" />
               {t("codex.refresh")}

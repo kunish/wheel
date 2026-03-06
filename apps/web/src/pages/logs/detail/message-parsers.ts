@@ -29,6 +29,20 @@ export interface ParsedRequestParams {
   user?: string
 }
 
+export type LoggedRequestType =
+  | "chat"
+  | "chatStream"
+  | "responses"
+  | "responsesStream"
+  | "embedding"
+  | "speech"
+  | "speechStream"
+  | "transcription"
+  | "transcriptionStream"
+  | "imageGeneration"
+  | "moderation"
+  | "unknown"
+
 export interface ParsedRequestTools {
   tools: Array<{
     type: string
@@ -157,6 +171,51 @@ export function parseRequestParams(content: string): ParsedRequestParams | null 
     return hasAny ? result : null
   } catch {
     return null
+  }
+}
+
+export function detectLoggedRequestType(content: string): LoggedRequestType {
+  try {
+    const parsed = JSON.parse(content)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "unknown"
+
+    const body = parsed as Record<string, unknown>
+    const stream = body.stream === true
+    const hasMessages = Array.isArray(body.messages)
+    const hasResponsesMarkers =
+      body.instructions !== undefined ||
+      body.parallel_tool_calls !== undefined ||
+      body.previous_response_id !== undefined ||
+      body.reasoning !== undefined ||
+      body.max_output_tokens !== undefined ||
+      body.store !== undefined ||
+      body.text !== undefined
+    const hasEmbeddingMarkers = body.dimensions !== undefined || body.encoding_format !== undefined
+    const hasSpeechMarkers =
+      body.voice !== undefined ||
+      body.audio !== undefined ||
+      (Array.isArray(body.modalities) && body.modalities.includes("audio"))
+    const hasTranscriptionMarkers =
+      body.file !== undefined ||
+      body.language !== undefined ||
+      body.timestamp_granularities !== undefined
+    const hasImageMarkers =
+      body.prompt !== undefined &&
+      (body.size !== undefined || body.quality !== undefined || body.style !== undefined)
+    const hasModerationMarkers = body.input !== undefined && body.model === "omni-moderation-latest"
+
+    if (hasMessages) return stream ? "chatStream" : "chat"
+    if (hasSpeechMarkers) return stream ? "speechStream" : "speech"
+    if (hasTranscriptionMarkers) return stream ? "transcriptionStream" : "transcription"
+    if (hasEmbeddingMarkers) return "embedding"
+    if (hasImageMarkers) return "imageGeneration"
+    if (hasModerationMarkers) return "moderation"
+    if (hasResponsesMarkers) return stream ? "responsesStream" : "responses"
+    if (body.input !== undefined) return stream ? "responsesStream" : "responses"
+
+    return "unknown"
+  } catch {
+    return "unknown"
   }
 }
 

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { LogEntry } from "./columns"
 import type { LogDetail, StreamingOverlay } from "./types"
 import { ChevronDown, ChevronUp, Copy, Loader2, Play } from "lucide-react"
@@ -13,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useModelMeta } from "@/hooks/use-model-meta"
 import { formatCost, formatDuration } from "./columns"
 import { CodeBlock } from "./detail/code-block"
+import { detectLoggedRequestType } from "./detail/message-parsers"
 import { MessagesTabContent } from "./detail/messages-tab"
 import { useLogQueryContext } from "./log-query-context"
 import { useLogReplay } from "./log-replay"
@@ -145,10 +147,16 @@ export function LogDetailSheet() {
               attempts: [],
               totalAttempts: entry.totalAttempts,
             }
-            return <DetailPanel detail={streamingDetail} streamingOverlay={streamingOverlay} />
+            return (
+              <DetailPanel
+                detail={streamingDetail}
+                streamingOverlay={streamingOverlay}
+                isStreaming={true}
+              />
+            )
           })()
         ) : detail ? (
-          <DetailPanel detail={detail} streamingOverlay={streamingOverlay} />
+          <DetailPanel detail={detail} streamingOverlay={streamingOverlay} isStreaming={false} />
         ) : (
           <div className="flex flex-col gap-4 px-4 py-4">
             <div className="flex flex-col gap-2">
@@ -170,25 +178,56 @@ export function LogDetailSheet() {
   )
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function DetailField({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
       <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="truncate font-medium">{value}</p>
+      <div className="mt-1 min-w-0 truncate font-medium">{value}</div>
     </div>
   )
+}
+
+function formatDetailTimestamp(timestampMs: number | null): string {
+  if (timestampMs === null) return "—"
+  return new Date(timestampMs).toLocaleString(undefined, { hour12: false })
+}
+
+function getRequestTypeTone(type: ReturnType<typeof detectLoggedRequestType>): string {
+  switch (type) {
+    case "chat":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
+    case "chatStream":
+      return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+    case "responses":
+      return "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200"
+    case "responsesStream":
+      return "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-200"
+    case "embedding":
+      return "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200"
+    default:
+      return "bg-muted text-foreground"
+  }
 }
 
 function DetailPanel({
   detail,
   streamingOverlay,
+  isStreaming,
 }: {
   detail: LogDetail
   streamingOverlay: StreamingOverlay | null
+  isStreaming: boolean
 }) {
   const { t } = useTranslation("logs")
   const { replayResult, replaying, handleReplay } = useLogReplay()
   const [retryExpanded, setRetryExpanded] = useState(false)
+
+  const requestType = useMemo(
+    () => detectLoggedRequestType(detail.requestContent),
+    [detail.requestContent],
+  )
+  const endTimestampMs = isStreaming ? detail.time * 1000 + detail.useTime : detail.time * 1000
+  const startTimestampMs = isStreaming ? detail.time * 1000 : endTimestampMs - detail.useTime
 
   useEffect(() => {
     setRetryExpanded(false)
@@ -227,47 +266,77 @@ function DetailPanel({
             </div>
           </div>
 
-          <div className="bg-muted/30 grid grid-cols-1 gap-4 rounded-xl border p-4 sm:grid-cols-2 md:grid-cols-3">
-            <DetailField
-              label={t("detail.field.time")}
-              value={new Date(detail.time * 1000).toLocaleString(undefined, { hour12: false })}
-            />
-            <DetailField
-              label={t("detail.field.channel")}
-              value={`${detail.channelName || "—"} (ID: ${detail.channelId})`}
-            />
-            <DetailField
-              label={t("detail.field.inputTokens")}
-              value={detail.inputTokens.toLocaleString()}
-            />
-            <DetailField
-              label={t("detail.field.outputTokens")}
-              value={detail.outputTokens.toLocaleString()}
-            />
-            <DetailField
-              label={t("detail.field.totalTokens")}
-              value={(detail.inputTokens + detail.outputTokens).toLocaleString()}
-            />
-            <DetailField label={t("detail.field.cost")} value={formatCost(detail.cost)} />
-            <DetailField
-              label={t("detail.field.ttft")}
-              value={detail.ftut > 0 ? formatDuration(detail.ftut) : "—"}
-            />
-            <DetailField
-              label={t("detail.field.totalLatency")}
-              value={formatDuration(detail.useTime)}
-            />
-            <DetailField
-              label={t("detail.field.outputSpeed")}
-              value={
-                detail.outputTokens > 0 && detail.useTime > 0
-                  ? `${(detail.outputTokens / (detail.useTime / 1000)).toFixed(1)} tok/s`
-                  : "—"
-              }
-            />
-            {detail.totalAttempts > 1 && (
-              <DetailField label={t("detail.field.attempts")} value={`${detail.totalAttempts}`} />
-            )}
+          <div className="bg-muted/30 space-y-4 rounded-xl border p-4">
+            <div>
+              <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                {t("detail.section.timings")}
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <DetailField
+                  label={t("detail.field.startTime")}
+                  value={formatDetailTimestamp(startTimestampMs)}
+                />
+                <DetailField
+                  label={t("detail.field.endTime")}
+                  value={formatDetailTimestamp(endTimestampMs)}
+                />
+                <DetailField
+                  label={t("detail.field.totalLatency")}
+                  value={formatDuration(detail.useTime)}
+                />
+              </div>
+            </div>
+
+            <div className="border-border/70 border-t pt-4">
+              <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                {t("detail.section.requestDetails")}
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <DetailField
+                  label={t("detail.field.channel")}
+                  value={`${detail.channelName || "—"} (ID: ${detail.channelId})`}
+                />
+                <DetailField
+                  label={t("detail.field.type")}
+                  value={
+                    <Badge variant="outline" className={getRequestTypeTone(requestType)}>
+                      {t(`detail.type.${requestType}`)}
+                    </Badge>
+                  }
+                />
+                <DetailField
+                  label={t("detail.field.inputTokens")}
+                  value={detail.inputTokens.toLocaleString()}
+                />
+                <DetailField
+                  label={t("detail.field.outputTokens")}
+                  value={detail.outputTokens.toLocaleString()}
+                />
+                <DetailField
+                  label={t("detail.field.totalTokens")}
+                  value={(detail.inputTokens + detail.outputTokens).toLocaleString()}
+                />
+                <DetailField label={t("detail.field.cost")} value={formatCost(detail.cost)} />
+                <DetailField
+                  label={t("detail.field.ttft")}
+                  value={detail.ftut > 0 ? formatDuration(detail.ftut) : "—"}
+                />
+                <DetailField
+                  label={t("detail.field.outputSpeed")}
+                  value={
+                    detail.outputTokens > 0 && detail.useTime > 0
+                      ? `${(detail.outputTokens / (detail.useTime / 1000)).toFixed(1)} tok/s`
+                      : "—"
+                  }
+                />
+                {detail.totalAttempts > 1 && (
+                  <DetailField
+                    label={t("detail.field.attempts")}
+                    value={`${detail.totalAttempts}`}
+                  />
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Retry Timeline */}

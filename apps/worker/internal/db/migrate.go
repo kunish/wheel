@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 )
 
 // initSchema contains TiDB/MySQL-compatible DDL for all tables.
@@ -241,11 +242,9 @@ var initIndexes = []string{
 var initAlters = []string{
 	`ALTER TABLE relay_logs MODIFY COLUMN request_content MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs ADD COLUMN IF NOT EXISTS request_headers MEDIUMTEXT AFTER request_content`,
-	`UPDATE relay_logs SET request_headers = '' WHERE request_headers IS NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN request_headers MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN response_content MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs ADD COLUMN IF NOT EXISTS response_headers MEDIUMTEXT AFTER response_content`,
-	`UPDATE relay_logs SET response_headers = '' WHERE response_headers IS NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN response_headers MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN attempts MEDIUMTEXT NOT NULL`,
 	`ALTER TABLE relay_logs MODIFY COLUMN upstream_content MEDIUMTEXT`,
@@ -263,6 +262,8 @@ var initAlters = []string{
 	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
 }
 
+const relayLogsBackfillBatchSize = 1000
+
 // Migrate ensures all tables exist, then applies any pending Drizzle migration files.
 func Migrate(db *sql.DB) error {
 	// 1. Create all tables
@@ -272,6 +273,16 @@ func Migrate(db *sql.DB) error {
 		}
 	}
 	for _, ddl := range initAlters {
+		if ddl == `ALTER TABLE relay_logs MODIFY COLUMN request_headers MEDIUMTEXT NOT NULL` {
+			if err := backfillNullTextColumnInBatches(db, "relay_logs", "request_headers", "", relayLogsBackfillBatchSize); err != nil {
+				return fmt.Errorf("alter schema: %w\nDDL: backfill relay_logs.request_headers", err)
+			}
+		}
+		if ddl == `ALTER TABLE relay_logs MODIFY COLUMN response_headers MEDIUMTEXT NOT NULL` {
+			if err := backfillNullTextColumnInBatches(db, "relay_logs", "response_headers", "", relayLogsBackfillBatchSize); err != nil {
+				return fmt.Errorf("alter schema: %w\nDDL: backfill relay_logs.response_headers", err)
+			}
+		}
 		if _, err := db.Exec(ddl); err != nil {
 			return fmt.Errorf("alter schema: %w\nDDL: %s", err, ddl)
 		}
@@ -284,4 +295,49 @@ func Migrate(db *sql.DB) error {
 
 	log.Println("[migration] Schema ready")
 	return nil
+}
+
+func backfillNullTextColumnInBatches(db *sql.DB, table string, column string, fillValue string, batchSize int) error {
+	if db == nil || batchSize <= 0 {
+		return nil
+	}
+
+	selectSQL := fmt.Sprintf("SELECT id FROM %s WHERE %s IS NULL ORDER BY id LIMIT %d", table, column, batchSize)
+	for {
+		rows, err := db.Query(selectSQL)
+		if err != nil {
+			return err
+		}
+
+		ids := make([]int64, 0, batchSize)
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+		updateSQL := fmt.Sprintf("UPDATE %s SET %s = ? WHERE id IN (%s)", table, column, placeholders)
+		args := make([]any, 0, len(ids)+1)
+		args = append(args, fillValue)
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		if _, err := db.Exec(updateSQL, args...); err != nil {
+			return err
+		}
+	}
 }

@@ -1,3 +1,12 @@
+export interface LogStats {
+  totalRequests: number
+  successRate: number
+  averageLatency: number
+  totalTokens: number
+  totalCost: number
+  tokenSpeed: number
+}
+
 export interface LogDetail {
   id: number
   time: number

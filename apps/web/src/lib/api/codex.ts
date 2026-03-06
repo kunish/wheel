@@ -1,5 +1,21 @@
 import { ApiError, apiFetch, apiRawFetch } from "./client"
 
+/**
+ * Returns the API URL prefix for runtime-managed channels (Codex / Copilot).
+ * Copilot channels (type 34) use `/copilot/` routes, everything else uses `/codex/`.
+ */
+function runtimePrefix(channelType?: number): string {
+  return channelType === 34 ? "copilot" : "codex"
+}
+
+/**
+ * Returns the auth-file provider filter string for runtime-managed channels.
+ * Copilot channels filter by "copilot", Codex channels filter by "codex".
+ */
+export function runtimeProviderFilter(channelType?: number): string {
+  return channelType === 34 ? "copilot" : "codex"
+}
+
 export interface CodexAuthFile {
   name: string
   provider: string
@@ -92,8 +108,10 @@ export function listCodexAuthFiles(
     search?: string
     page?: number
     pageSize?: number
+    channelType?: number
   },
 ) {
+  const prefix = runtimePrefix(params?.channelType)
   const query = new URLSearchParams()
   if (params?.provider) query.set("provider", params.provider)
   if (params?.search) query.set("search", params.search)
@@ -109,34 +127,42 @@ export function listCodexAuthFiles(
       pageSize: number
       capabilities: CodexCapabilities
     }
-  }>(`/api/v1/channel/${channelId}/codex/auth-files${suffix ? `?${suffix}` : ""}`)
+  }>(`/api/v1/channel/${channelId}/${prefix}/auth-files${suffix ? `?${suffix}` : ""}`)
 }
 
 export function patchCodexAuthFileStatus(
   channelId: number,
   input: { name: string; disabled: boolean },
+  channelType?: number,
 ) {
+  const prefix = runtimePrefix(channelType)
   return apiFetch<{ success: boolean; data: { status: string; disabled: boolean } }>(
-    `/api/v1/channel/${channelId}/codex/auth-files/status`,
+    `/api/v1/channel/${channelId}/${prefix}/auth-files/status`,
     { method: "PATCH", body: input },
   )
 }
 
-export function deleteCodexAuthFile(channelId: number, input: { name?: string; all?: boolean }) {
+export function deleteCodexAuthFile(
+  channelId: number,
+  input: { name?: string; all?: boolean },
+  channelType?: number,
+) {
+  const prefix = runtimePrefix(channelType)
   const query = new URLSearchParams()
   if (input.name) query.set("name", input.name)
   if (input.all) query.set("all", "true")
   const suffix = query.toString()
   return apiFetch<{ success: boolean; data: { status: string; deleted?: number } }>(
-    `/api/v1/channel/${channelId}/codex/auth-files${suffix ? `?${suffix}` : ""}`,
+    `/api/v1/channel/${channelId}/${prefix}/auth-files${suffix ? `?${suffix}` : ""}`,
     { method: "DELETE" },
   )
 }
 
-export async function uploadCodexAuthFile(channelId: number, files: File[]) {
+export async function uploadCodexAuthFile(channelId: number, files: File[], channelType?: number) {
+  const prefix = runtimePrefix(channelType)
   const formData = buildCodexAuthUploadFormData(files)
 
-  const resp = await apiRawFetch(`/api/v1/channel/${channelId}/codex/auth-files`, {
+  const resp = await apiRawFetch(`/api/v1/channel/${channelId}/${prefix}/auth-files`, {
     method: "POST",
     body: formData,
   })
@@ -153,10 +179,11 @@ export async function uploadCodexAuthFile(channelId: number, files: File[]) {
   return resp.json() as Promise<{ success: boolean; data: CodexAuthUploadBatchResult }>
 }
 
-export function getCodexAuthFileModels(channelId: number, name: string) {
+export function getCodexAuthFileModels(channelId: number, name: string, channelType?: number) {
+  const prefix = runtimePrefix(channelType)
   const query = new URLSearchParams({ name })
   return apiFetch<{ success: boolean; data: { models: Array<Record<string, unknown>> } }>(
-    `/api/v1/channel/${channelId}/codex/models?${query.toString()}`,
+    `/api/v1/channel/${channelId}/${prefix}/models?${query.toString()}`,
   )
 }
 
@@ -166,8 +193,10 @@ export function listCodexQuota(
     search?: string
     page?: number
     pageSize?: number
+    channelType?: number
   },
 ) {
+  const prefix = runtimePrefix(params?.channelType)
   const query = new URLSearchParams()
   if (params?.search) query.set("search", params.search)
   if (params?.page) query.set("page", String(params.page))
@@ -176,26 +205,29 @@ export function listCodexQuota(
   return apiFetch<{
     success: boolean
     data: { items: CodexQuotaItem[]; total: number; page: number; pageSize: number }
-  }>(`/api/v1/channel/${channelId}/codex/quota${suffix ? `?${suffix}` : ""}`)
+  }>(`/api/v1/channel/${channelId}/${prefix}/quota${suffix ? `?${suffix}` : ""}`)
 }
 
-export function syncCodexKeys(channelId: number) {
+export function syncCodexKeys(channelId: number, channelType?: number) {
+  const prefix = runtimePrefix(channelType)
   return apiFetch<{ success: boolean; data: { synced: number; authFiles: number } }>(
-    `/api/v1/channel/${channelId}/codex/sync-keys`,
+    `/api/v1/channel/${channelId}/${prefix}/sync-keys`,
     { method: "POST" },
   )
 }
 
-export function startCodexOAuth(channelId: number) {
+export function startCodexOAuth(channelId: number, channelType?: number) {
+  const prefix = runtimePrefix(channelType)
   return apiFetch<{ success: boolean; data: { url: string; state: string } }>(
-    `/api/v1/channel/${channelId}/codex/oauth/start`,
+    `/api/v1/channel/${channelId}/${prefix}/oauth/start`,
     { method: "POST" },
   )
 }
 
-export function getCodexOAuthStatus(channelId: number, state: string) {
+export function getCodexOAuthStatus(channelId: number, state: string, channelType?: number) {
+  const prefix = runtimePrefix(channelType)
   const query = new URLSearchParams({ state })
   return apiFetch<{ success: boolean; data: { status: string; error?: string } }>(
-    `/api/v1/channel/${channelId}/codex/oauth/status?${query.toString()}`,
+    `/api/v1/channel/${channelId}/${prefix}/oauth/status?${query.toString()}`,
   )
 }

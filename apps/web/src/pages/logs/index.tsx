@@ -8,6 +8,7 @@ import { AuditLogTab } from "./audit-log-tab"
 import { LogDetailSheet } from "./log-detail-panel"
 import { LogFilterBar } from "./log-filter-bar"
 import { LogQueryProvider, useLogQueryContext } from "./log-query-context"
+import { LogStatsCards } from "./log-stats-cards"
 import { LogTable, PaginationControls } from "./log-table"
 import { McpLogTab } from "./mcp-log-tab"
 
@@ -23,6 +24,7 @@ function LogsPageContent() {
   const { t } = useTranslation("logs")
   const {
     total,
+    stats,
     pendingCount,
     pendingStreams,
     isPaused,
@@ -52,6 +54,11 @@ function LogsPageContent() {
         </TabsList>
 
         <TabsContent value="requests" className="flex min-h-0 flex-1 flex-col pt-4">
+          {/* Stats cards */}
+          <div className="shrink-0 pb-4">
+            <LogStatsCards stats={stats} />
+          </div>
+
           {/* Request logs header: count + pagination + filters */}
           <div className="bg-background shrink-0 space-y-4 pb-4">
             <div className="flex items-center justify-between">

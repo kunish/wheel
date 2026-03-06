@@ -42,6 +42,14 @@
   },
   "totalCount": "共 {{count}} 条",
   "newLogs": "{{count}} 条新日志",
+  "stats": {
+    "totalRequests": "总请求数",
+    "successRate": "成功率",
+    "avgLatency": "平均延迟",
+    "totalTokens": "总 Token",
+    "totalCost": "总费用",
+    "tokenSpeed": "Token 速度"
+  },
   "searchPlaceholder": "搜索日志...",
   "filter": {
     "allChannels": "全部渠道",
@@ -72,9 +80,16 @@
     "messages": "消息",
     "retry": "重试 ({{count}})",
     "replay": "重放",
+    "section": {
+      "timings": "时间信息",
+      "requestDetails": "请求详情"
+    },
     "field": {
       "time": "时间",
+      "startTime": "开始时间",
+      "endTime": "结束时间",
       "channel": "渠道",
+      "type": "类型",
       "inputTokens": "输入 Token",
       "outputTokens": "输出 Token",
       "totalTokens": "总 Token",
@@ -83,6 +98,20 @@
       "totalLatency": "总耗时",
       "outputSpeed": "输出速度",
       "attempts": "尝试次数"
+    },
+    "type": {
+      "chat": "Chat",
+      "chatStream": "Chat Stream",
+      "responses": "Responses",
+      "responsesStream": "Responses Stream",
+      "embedding": "Embedding",
+      "speech": "Speech",
+      "speechStream": "Speech Stream",
+      "transcription": "Transcription",
+      "transcriptionStream": "Transcription Stream",
+      "imageGeneration": "Image Generation",
+      "moderation": "Moderation",
+      "unknown": "未知"
     },
     "truncatedNotice": "请求内容在存储时被截断，重放可能产生不同的结果。",
     "replayBtn": "重放",

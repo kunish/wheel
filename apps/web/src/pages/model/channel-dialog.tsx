@@ -1,3 +1,4 @@
+import type { Dispatch, SetStateAction } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Check,
@@ -33,14 +34,18 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  createChannel,
   getCodexAuthUploadToastState,
   getCodexOAuthStatus,
+  listChannels,
   listCodexAuthFiles,
+  runtimeProviderFilter,
   startCodexOAuth,
   uploadCodexAuthFile,
 } from "@/lib/api"
 import { fetchChannelModelsPreview } from "@/lib/api-client"
-import { codexUploadRefreshQueryKeys } from "./codex-query-keys"
+import { ensureCodexChannelId, mergeRuntimeChannelModels } from "./codex-channel-draft"
+import { channelsQueryKey, codexUploadRefreshQueryKeys } from "./codex-query-keys"
 
 export interface ChannelFormData {
   id?: number
@@ -208,12 +213,28 @@ function FetchModelsButton({
 
 // ─── Codex OAuth Import Button + Native OAuth Dialog ──────────────────
 
-function CodexOAuthButton({ channelId }: { channelId?: number }) {
+function CodexOAuthButton({
+  channelId,
+  channelType,
+  ensureChannelId,
+  onRuntimeChannelHydrated,
+}: {
+  channelId?: number
+  channelType?: number
+  ensureChannelId?: () => Promise<number>
+  onRuntimeChannelHydrated?: (channelId: number) => Promise<void>
+}) {
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
   const capabilitiesQuery = useQuery({
     queryKey: ["codex-auth-capabilities", channelId],
-    queryFn: () => listCodexAuthFiles(channelId!, { provider: "codex", page: 1, pageSize: 1 }),
+    queryFn: () =>
+      listCodexAuthFiles(channelId!, {
+        provider: runtimeProviderFilter(channelType),
+        page: 1,
+        pageSize: 1,
+        channelType,
+      }),
     enabled: !!channelId,
   })
   const [panelOpen, setPanelOpen] = useState(false)
@@ -236,50 +257,53 @@ function CodexOAuthButton({ channelId }: { channelId?: number }) {
     return () => stopPolling()
   }, [stopPolling])
 
-  const handleStartOAuth = useCallback(async () => {
-    if (!channelId) return
-    setOauthStatus("starting")
-    setOauthError("")
-    setOauthUrl("")
-    setOauthState("")
-    try {
-      const res = await startCodexOAuth(channelId)
-      const { url, state } = res.data
-      setOauthUrl(url)
-      setOauthState(state)
-      setOauthStatus("waiting")
+  const handleStartOAuth = useCallback(
+    async (resolvedChannelId: number) => {
+      setOauthStatus("starting")
+      setOauthError("")
+      setOauthUrl("")
+      setOauthState("")
+      try {
+        const res = await startCodexOAuth(resolvedChannelId, channelType)
+        const { url, state } = res.data
+        setOauthUrl(url)
+        setOauthState(state)
+        setOauthStatus("waiting")
 
-      const startTime = Date.now()
-      pollRef.current = setInterval(async () => {
-        if (Date.now() - startTime > 5 * 60 * 1000) {
-          stopPolling()
-          setOauthStatus("error")
-          setOauthError(t("codex.oauthTimeout"))
-          return
-        }
-        try {
-          const statusRes = await getCodexOAuthStatus(channelId, state)
-          const { status, error } = statusRes.data
-          if (status === "ok") {
-            stopPolling()
-            setOauthStatus("success")
-            for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-              void queryClient.invalidateQueries({ queryKey })
-            }
-          } else if (status === "error") {
+        const startTime = Date.now()
+        pollRef.current = setInterval(async () => {
+          if (Date.now() - startTime > 5 * 60 * 1000) {
             stopPolling()
             setOauthStatus("error")
-            setOauthError(error || "Unknown error")
+            setOauthError(t("codex.oauthTimeout"))
+            return
           }
-        } catch {
-          // Network error — keep trying
-        }
-      }, 3000)
-    } catch (err) {
-      setOauthStatus("error")
-      setOauthError(err instanceof Error ? err.message : "Failed to start OAuth")
-    }
-  }, [channelId, queryClient, stopPolling, t])
+          try {
+            const statusRes = await getCodexOAuthStatus(resolvedChannelId, state, channelType)
+            const { status, error } = statusRes.data
+            if (status === "ok") {
+              stopPolling()
+              setOauthStatus("success")
+              for (const queryKey of codexUploadRefreshQueryKeys(resolvedChannelId)) {
+                void queryClient.invalidateQueries({ queryKey })
+              }
+              await onRuntimeChannelHydrated?.(resolvedChannelId)
+            } else if (status === "error") {
+              stopPolling()
+              setOauthStatus("error")
+              setOauthError(error || "Unknown error")
+            }
+          } catch {
+            // Network error — keep trying
+          }
+        }, 3000)
+      } catch (err) {
+        setOauthStatus("error")
+        setOauthError(err instanceof Error ? err.message : "Failed to start OAuth")
+      }
+    },
+    [channelType, onRuntimeChannelHydrated, queryClient, stopPolling, t],
+  )
 
   const handleDialogChange = useCallback(
     (open: boolean) => {
@@ -295,13 +319,22 @@ function CodexOAuthButton({ channelId }: { channelId?: number }) {
     [stopPolling],
   )
 
-  function handleClick() {
-    if (!channelId) {
+  async function handleClick() {
+    let resolvedChannelId = channelId
+    if (!resolvedChannelId && ensureChannelId) {
+      try {
+        resolvedChannelId = await ensureChannelId()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t("codex.saveChannelFirst"))
+        return
+      }
+    }
+    if (!resolvedChannelId) {
       toast.info(t("codex.saveChannelFirst"))
       return
     }
     setPanelOpen(true)
-    void handleStartOAuth()
+    void handleStartOAuth(resolvedChannelId)
   }
 
   const oauthEnabled = capabilitiesQuery.data?.data.capabilities.oauthEnabled
@@ -387,7 +420,17 @@ function CodexOAuthButton({ channelId }: { channelId?: number }) {
   )
 }
 
-function CodexAuthFileUploadButton({ channelId }: { channelId?: number }) {
+function CodexAuthFileUploadButton({
+  channelId,
+  channelType,
+  ensureChannelId,
+  onRuntimeChannelHydrated,
+}: {
+  channelId?: number
+  channelType?: number
+  ensureChannelId?: () => Promise<number>
+  onRuntimeChannelHydrated?: (channelId: number) => Promise<void>
+}) {
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -395,10 +438,6 @@ function CodexAuthFileUploadButton({ channelId }: { channelId?: number }) {
 
   const handleUploadFile = useCallback(
     async (fileList: FileList | null | undefined) => {
-      if (!channelId) {
-        toast.info(t("codex.saveChannelFirst"))
-        return
-      }
       const files = Array.from(fileList ?? [])
       if (files.length === 0) {
         return
@@ -410,11 +449,21 @@ function CodexAuthFileUploadButton({ channelId }: { channelId?: number }) {
 
       setUploading(true)
       try {
-        const res = await uploadCodexAuthFile(channelId, files)
+        let resolvedChannelId = channelId
+        if (!resolvedChannelId && ensureChannelId) {
+          resolvedChannelId = await ensureChannelId()
+        }
+        if (!resolvedChannelId) {
+          toast.info(t("codex.saveChannelFirst"))
+          return
+        }
+
+        const res = await uploadCodexAuthFile(resolvedChannelId, files, channelType)
         if (res.data.successCount > 0) {
-          for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
+          for (const queryKey of codexUploadRefreshQueryKeys(resolvedChannelId)) {
             void queryClient.invalidateQueries({ queryKey })
           }
+          await onRuntimeChannelHydrated?.(resolvedChannelId)
         }
 
         const toastState = getCodexAuthUploadToastState(res.data)
@@ -425,7 +474,7 @@ function CodexAuthFileUploadButton({ channelId }: { channelId?: number }) {
         setUploading(false)
       }
     },
-    [channelId, queryClient, t],
+    [channelId, channelType, ensureChannelId, onRuntimeChannelHydrated, queryClient, t],
   )
 
   return (
@@ -466,7 +515,7 @@ interface ChannelDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   form: ChannelFormData
-  setForm: (f: ChannelFormData) => void
+  setForm: Dispatch<SetStateAction<ChannelFormData>>
   onSave: () => void
   isPending: boolean
 }
@@ -480,7 +529,49 @@ export default function ChannelDialog({
   isPending,
 }: ChannelDialogProps) {
   const { t } = useTranslation("model")
+  const queryClient = useQueryClient()
   const [showKey, setShowKey] = useState(false)
+  const pendingCodexChannelIdRef = useRef<Promise<number> | null>(null)
+
+  const ensureChannelIdForCodex = useCallback(async () => {
+    if (form.id) {
+      return form.id
+    }
+    if (!pendingCodexChannelIdRef.current) {
+      pendingCodexChannelIdRef.current = (async () => {
+        const channelId = await ensureCodexChannelId({
+          form,
+          saveChannel: createChannel,
+        })
+        setForm({ ...form, id: channelId })
+        await queryClient.invalidateQueries({ queryKey: channelsQueryKey })
+        toast.success(t("toast.channelCreated"))
+        return channelId
+      })().finally(() => {
+        pendingCodexChannelIdRef.current = null
+      })
+    }
+
+    return pendingCodexChannelIdRef.current
+  }, [form, queryClient, setForm, t])
+
+  const hydrateRuntimeChannelModels = useCallback(
+    async (channelId: number) => {
+      await queryClient.invalidateQueries({ queryKey: channelsQueryKey })
+      const refreshed = await queryClient.fetchQuery({
+        queryKey: channelsQueryKey,
+        queryFn: listChannels,
+      })
+      const channel = (refreshed.data?.channels as ChannelFormData[] | undefined)?.find(
+        (item) => item.id === channelId,
+      )
+      if (!channel) {
+        return
+      }
+      setForm((current) => mergeRuntimeChannelModels(current, channel))
+    },
+    [queryClient, setForm],
+  )
 
   const typeLabels = useMemo(
     () => ({
@@ -507,6 +598,7 @@ export default function ChannelDialog({
       31: t("typeLabels.31"),
       32: t("typeLabels.32"),
       33: t("typeLabels.33"),
+      34: t("typeLabels.34"),
     }),
     [t],
   )
@@ -532,9 +624,9 @@ export default function ChannelDialog({
               onValueChange={(v) => {
                 const newType = Number(v)
                 const update: Partial<ChannelFormData> = { type: newType }
-                // Auto-fill placeholder key for Codex channels
+                // Auto-fill placeholder key for Codex/Copilot channels
                 if (
-                  newType === 33 &&
+                  (newType === 33 || newType === 34) &&
                   (!form.keys[0]?.channelKey || form.keys[0].channelKey === "")
                 ) {
                   update.keys = [{ channelKey: "managed-by-auth-files", remark: "" }]
@@ -572,13 +664,23 @@ export default function ChannelDialog({
             />
           </div>
 
-          {form.type === 33 ? (
+          {form.type === 33 || form.type === 34 ? (
             <div className="flex flex-col gap-2">
               <Label>{t("channelDialog.apiKey")}</Label>
               <p className="text-muted-foreground text-xs">{t("codex.keyManagedByAuthFiles")}</p>
               <div className="flex flex-wrap gap-2">
-                <CodexOAuthButton channelId={form.id} />
-                <CodexAuthFileUploadButton channelId={form.id} />
+                <CodexOAuthButton
+                  channelId={form.id}
+                  channelType={form.type}
+                  ensureChannelId={ensureChannelIdForCodex}
+                  onRuntimeChannelHydrated={hydrateRuntimeChannelModels}
+                />
+                <CodexAuthFileUploadButton
+                  channelId={form.id}
+                  channelType={form.type}
+                  ensureChannelId={ensureChannelIdForCodex}
+                  onRuntimeChannelHydrated={hydrateRuntimeChannelModels}
+                />
               </div>
             </div>
           ) : (

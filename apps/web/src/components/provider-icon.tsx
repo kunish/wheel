@@ -30,6 +30,7 @@ const PROVIDER_LOGO_MAP: Record<number, string> = {
   31: "novita", // Novita AI
   32: "siliconflow", // SiliconFlow
   33: "openai", // Codex
+  34: "github", // GitHub Copilot
 }
 
 function getProviderLogoUrl(channelType: number): string | null {

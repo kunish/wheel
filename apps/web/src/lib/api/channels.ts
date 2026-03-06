@@ -15,12 +15,16 @@ export interface ChannelInput {
   paramOverride: string
 }
 
+export interface SavedChannel {
+  id: number
+}
+
 export function listChannels() {
   return apiFetch<{ success: boolean; data: { channels: unknown[] } }>("/api/v1/channel/list")
 }
 
 export function createChannel(data: ChannelInput) {
-  return apiFetch<{ success: boolean; data: unknown }>("/api/v1/channel/create", {
+  return apiFetch<{ success: boolean; data: SavedChannel }>("/api/v1/channel/create", {
     method: "POST",
     body: data,
   })
