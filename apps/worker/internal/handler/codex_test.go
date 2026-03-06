@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,8 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
@@ -343,6 +347,254 @@ func TestCollectCodexChannelModels(t *testing.T) {
 	}
 }
 
+func TestCollectCodexChannelModels_RetriesEmptyModelsUntilRuntimeCatchesUp(t *testing.T) {
+	var mu sync.Mutex
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v0/management/auth-files/models" {
+			t.Fatalf("path = %s, want /v0/management/auth-files/models", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+
+		mu.Lock()
+		callCount++
+		currentCall := callCount
+		mu.Unlock()
+
+		if currentCall == 1 {
+			_, _ = w.Write([]byte(`{"models":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[{"id":"gpt-5"},{"id":"o3"}]}`))
+	}))
+	defer server.Close()
+
+	h, _ := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+	models, err := h.collectCodexChannelModels(t.Context(), 7, []codexAuthFile{{Name: "first.json", Provider: "codex"}})
+	if err != nil {
+		t.Fatalf("collectCodexChannelModels() error = %v", err)
+	}
+	if got, want := strings.Join(models, ","), "gpt-5,o3"; got != want {
+		t.Fatalf("models = %q, want %q", got, want)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if callCount < 2 {
+		t.Fatalf("callCount = %d, want at least 2", callCount)
+	}
+}
+
+func TestCollectCodexQuotaItems_PreservesInputOrderWhenFetchCompletesOutOfOrder(t *testing.T) {
+	files := []codexAuthFile{
+		{
+			Name:      "first.json",
+			Provider:  "codex",
+			Email:     "first@example.com",
+			AuthIndex: "auth-first",
+			Raw: map[string]any{
+				"account_id": "acct-first",
+			},
+		},
+		{
+			Name:      "second.json",
+			Provider:  "codex",
+			Email:     "second@example.com",
+			AuthIndex: "auth-second",
+			Raw: map[string]any{
+				"account_id": "acct-second",
+			},
+		},
+	}
+
+	started := make(chan string, len(files))
+	releaseFirst := make(chan struct{})
+	secondFinished := make(chan struct{})
+	var mu sync.Mutex
+	completionOrder := make([]string, 0, len(files))
+	itemsCh := make(chan []codexQuotaItem, 1)
+
+	h := &Handler{}
+	go func() {
+		itemsCh <- h.collectCodexQuotaItems(context.Background(), files, 2, func(_ context.Context, file codexAuthFile) (codexQuotaWindow, codexQuotaWindow, string, error) {
+			started <- file.Name
+			if file.Name == "first.json" {
+				<-releaseFirst
+			}
+
+			mu.Lock()
+			completionOrder = append(completionOrder, file.Name)
+			mu.Unlock()
+			if file.Name == "second.json" {
+				close(secondFinished)
+			}
+
+			return codexQuotaWindow{UsedPercent: float64(len(file.Name))}, codexQuotaWindow{}, file.Name + "-plan", nil
+		})
+	}()
+
+	firstStarted := <-started
+	secondStarted := <-started
+	startedNames := []string{firstStarted, secondStarted}
+	slices.Sort(startedNames)
+	if !slices.Equal(startedNames, []string{"first.json", "second.json"}) {
+		close(releaseFirst)
+		t.Fatalf("unexpected fetch start set: %q, %q", firstStarted, secondStarted)
+	}
+	<-secondFinished
+	close(releaseFirst)
+
+	items := <-itemsCh
+	if got, want := completionOrder, []string{"second.json", "first.json"}; !slices.Equal(got, want) {
+		t.Fatalf("completion order = %v, want %v", got, want)
+	}
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d, want 2", len(items))
+	}
+	if got := []string{items[0].Name, items[1].Name}; !slices.Equal(got, []string{"first.json", "second.json"}) {
+		t.Fatalf("item order = %v, want [first.json second.json]", got)
+	}
+	if got := []string{items[0].PlanType, items[1].PlanType}; !slices.Equal(got, []string{"first.json-plan", "second.json-plan"}) {
+		t.Fatalf("plan types = %v, want stable mapping", got)
+	}
+}
+
+func TestListCodexQuota_UsesBoundedConcurrencyAndPreservesOrder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	h, mock := newCodexUploadTestHandler(t)
+	expectCodexChannelLookups(mock, 21)
+	expectCodexAuthFileListForQuota(mock, 21, []types.CodexAuthFile{
+		{ChannelID: 21, Name: "alpha.json", Provider: "codex", Email: "alpha@example.com", Content: `{"type":"codex","access_token":"token-alpha","account_id":"acct-alpha"}`},
+		{ChannelID: 21, Name: "beta.json", Provider: "codex", Email: "beta@example.com", Content: `{"type":"codex","access_token":"token-beta","account_id":"acct-beta"}`},
+		{ChannelID: 21, Name: "charlie.json", Provider: "codex", Email: "charlie@example.com", Content: `{"type":"codex","access_token":"token-charlie","account_id":"acct-charlie"}`},
+		{ChannelID: 21, Name: "delta.json", Provider: "codex", Email: "delta@example.com", Content: `{"type":"codex","access_token":"token-delta","account_id":"acct-delta"}`},
+		{ChannelID: 21, Name: "echo.json", Provider: "codex", Email: "echo@example.com", Content: `{"type":"codex","access_token":"token-echo","account_id":"acct-echo"}`},
+		{ChannelID: 21, Name: "gamma.json", Provider: "codex", Email: "gamma@example.com", Content: `{"type":"codex","access_token":"token-gamma","account_id":"acct-gamma"}`},
+	})
+
+	var mu sync.Mutex
+	inFlight := 0
+	maxConcurrent := 0
+	entered := make(chan string, 6)
+	release := make(chan struct{})
+	h.codexQuotaDo = func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.String() != codexQuotaEndpoint {
+			t.Fatalf("url = %s, want %s", r.URL.String(), codexQuotaEndpoint)
+		}
+
+		mu.Lock()
+		inFlight++
+		if inFlight > maxConcurrent {
+			maxConcurrent = inFlight
+		}
+		mu.Unlock()
+
+		accountID := r.Header.Get("Chatgpt-Account-Id")
+		entered <- accountID
+		<-release
+
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+
+		if got := r.Header.Get("Authorization"); got == "" {
+			t.Fatal("missing Authorization header")
+		}
+
+		body := `{"plan_type":"pro","rate_limit":{"allowed":true,"limit_reached":false,"secondary_window":{"used_percent":25,"limit_window_seconds":604800}},"additional_rate_limits":[{"metered_feature":"review","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":5,"limit_window_seconds":604800}}}]}`
+		statusCode := http.StatusOK
+		if accountID == "acct-beta" {
+			statusCode = http.StatusInternalServerError
+			body = `{}`
+		}
+
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/21/codex/quota?pageSize=6", nil)
+	c.Params = gin.Params{{Key: "id", Value: "21"}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ListCodexQuota(c)
+	}()
+
+	for range codexQuotaFetchConcurrency {
+		select {
+		case <-entered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for initial quota requests")
+		}
+	}
+	select {
+	case accountID := <-entered:
+		close(release)
+		t.Fatalf("started request beyond concurrency limit before release: %s", accountID)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for ListCodexQuota to finish")
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if maxConcurrent != codexQuotaFetchConcurrency {
+		t.Fatalf("max concurrent fetches = %d, want %d", maxConcurrent, codexQuotaFetchConcurrency)
+	}
+
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items []codexQuotaItem `json:"items"`
+			Total int              `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("success = false, body = %s", rec.Body.String())
+	}
+	if resp.Data.Total != 6 {
+		t.Fatalf("total = %d, want 6", resp.Data.Total)
+	}
+	if len(resp.Data.Items) != 6 {
+		t.Fatalf("len(items) = %d, want 6", len(resp.Data.Items))
+	}
+	if got := []string{resp.Data.Items[0].Name, resp.Data.Items[1].Name, resp.Data.Items[2].Name, resp.Data.Items[3].Name, resp.Data.Items[4].Name, resp.Data.Items[5].Name}; !slices.Equal(got, []string{"alpha.json", "beta.json", "charlie.json", "delta.json", "echo.json", "gamma.json"}) {
+		t.Fatalf("item order = %v, want stable input order", got)
+	}
+	if resp.Data.Items[0].PlanType != "pro" || resp.Data.Items[0].Error != "" {
+		t.Fatalf("unexpected first item: %+v", resp.Data.Items[0])
+	}
+	if resp.Data.Items[1].Error != "quota request returned status 500" {
+		t.Fatalf("unexpected second item error: %+v", resp.Data.Items[1])
+	}
+	for i := 2; i < len(resp.Data.Items); i++ {
+		if resp.Data.Items[i].PlanType != "pro" || resp.Data.Items[i].Error != "" {
+			t.Fatalf("unexpected item %d: %+v", i, resp.Data.Items[i])
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestUploadCodexAuthFileBatch(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -465,6 +717,185 @@ func TestUploadCodexAuthFileSingleFileCompatibility(t *testing.T) {
 	}
 }
 
+func TestUploadCodexAuthFileBatch_LocalMaterializesAfterLoop(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	h, mock := newCodexUploadTestHandler(t)
+	expectCodexChannelLookups(mock, 11)
+	for range 5 {
+		expectCodexAuthFileInsert(mock, nil)
+	}
+	expectCodexAuthFileListForSync(mock, 11, []string{"first.json", "second.json", "third.json", "fourth.json", "fifth.json"})
+	expectCodexAuthFileListForSync(mock, 11, []string{"first.json", "second.json", "third.json", "fourth.json", "fifth.json"})
+
+	authDir := codexruntime.ManagedAuthDir()
+	configPath := codexruntime.ManagedConfigPath()
+	configDir := filepath.Dir(configPath)
+	firstMaterializedPath := filepath.Join(authDir, codexruntime.ManagedAuthFileName(11, "first.json"))
+
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("seed"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	locked := make(chan struct{}, 1)
+	stopWatcher := make(chan struct{})
+	watcherDone := make(chan struct{})
+	go func() {
+		defer close(watcherDone)
+		for {
+			select {
+			case <-stopWatcher:
+				return
+			default:
+			}
+			if _, err := os.Stat(firstMaterializedPath); err == nil {
+				_ = os.Chmod(configPath, 0o400)
+				locked <- struct{}{}
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		close(stopWatcher)
+		<-watcherDone
+		_ = os.Chmod(configPath, 0o600)
+	})
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	mustWriteMultipartFile(t, writer, "files", "first.json", `{"type":"codex","email":"first@example.com","access_token":"token"}`)
+	mustWriteMultipartFile(t, writer, "files", "second.json", `{"type":"codex","email":"second@example.com","access_token":"token"}`)
+	mustWriteMultipartFile(t, writer, "files", "third.json", `{"type":"codex","email":"third@example.com","access_token":"token"}`)
+	mustWriteMultipartFile(t, writer, "files", "fourth.json", `{"type":"codex","email":"fourth@example.com","access_token":"token"}`)
+	mustWriteMultipartFile(t, writer, "files", "fifth.json", `{"type":"codex","email":"fifth@example.com","access_token":"token"}`)
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/channel/11/codex/auth-files", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	c.Request = req
+	c.Params = gin.Params{{Key: "id", Value: "11"}}
+
+	h.UploadCodexAuthFile(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Total        int `json:"total"`
+			SuccessCount int `json:"successCount"`
+			FailedCount  int `json:"failedCount"`
+			Results      []struct {
+				Name   string `json:"name"`
+				Status string `json:"status"`
+				Error  string `json:"error"`
+			} `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("success = false, body = %s", rec.Body.String())
+	}
+	if resp.Data.Total != 5 || resp.Data.SuccessCount != 5 || resp.Data.FailedCount != 0 {
+		t.Fatalf("unexpected counts: %+v", resp.Data)
+	}
+	for i, result := range resp.Data.Results {
+		if result.Status != "ok" || result.Error != "" {
+			t.Fatalf("result %d = %+v, want ok", i, result)
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestUploadCodexAuthFileBatch_MaterializeFailurePreservesPerFileResults(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	h, mock := newCodexUploadTestHandler(t)
+	expectCodexChannelLookups(mock, 12)
+	expectCodexAuthFileInsert(mock, nil)
+	expectCodexAuthFileInsert(mock, nil)
+
+	configPath := codexruntime.ManagedConfigPath()
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("seed"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	if err := os.Chmod(configPath, 0o400); err != nil {
+		t.Fatalf("chmod config: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(configPath, 0o600)
+	})
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	mustWriteMultipartFile(t, writer, "files", "first.json", `{"type":"codex","email":"first@example.com","access_token":"token"}`)
+	mustWriteMultipartFile(t, writer, "files", "second.json", `{"type":"codex","email":"second@example.com","access_token":"token"}`)
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/channel/12/codex/auth-files", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	c.Request = req
+	c.Params = gin.Params{{Key: "id", Value: "12"}}
+
+	h.UploadCodexAuthFile(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Total        int `json:"total"`
+			SuccessCount int `json:"successCount"`
+			FailedCount  int `json:"failedCount"`
+			Results      []struct {
+				Name   string `json:"name"`
+				Status string `json:"status"`
+				Error  string `json:"error"`
+			} `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("success = false, body = %s", rec.Body.String())
+	}
+	if resp.Data.Total != 2 || resp.Data.SuccessCount != 2 || resp.Data.FailedCount != 0 {
+		t.Fatalf("unexpected counts: %+v", resp.Data)
+	}
+	for i, result := range resp.Data.Results {
+		if result.Status != "ok" || result.Error != "" {
+			t.Fatalf("result %d = %+v, want ok without materialize error leakage", i, result)
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func newCodexUploadTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	t.Helper()
 
@@ -499,6 +930,15 @@ func expectCodexAuthFileInsert(mock sqlmock.Sqlmock, err error) {
 		return
 	}
 	exec.WillReturnResult(sqlmock.NewResult(1, 1))
+}
+
+func expectCodexAuthFileListForQuota(mock sqlmock.Sqlmock, channelID int, files []types.CodexAuthFile) {
+	rows := sqlmock.NewRows([]string{"id", "channel_id", "name", "provider", "email", "disabled", "content", "created_at", "updated_at"})
+	for i, file := range files {
+		rows.AddRow(i+1, channelID, file.Name, file.Provider, file.Email, file.Disabled, file.Content, "2026-03-06 00:00:00", "2026-03-06 00:00:00")
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT `codex_auth_file`.`id`, `codex_auth_file`.`channel_id`, `codex_auth_file`.`name`, `codex_auth_file`.`provider`, `codex_auth_file`.`email`, `codex_auth_file`.`disabled`, `codex_auth_file`.`content`, `codex_auth_file`.`created_at`, `codex_auth_file`.`updated_at` FROM `codex_auth_files` AS `codex_auth_file` WHERE (channel_id = ") + "[0-9]+" + regexp.QuoteMeta(") ORDER BY name ASC")).
+		WillReturnRows(rows)
 }
 
 func expectCodexAuthFileListForSync(mock sqlmock.Sqlmock, channelID int, names []string) {
