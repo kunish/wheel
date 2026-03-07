@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/kunish/wheel/compare/v1.23.0...v1.24.0) (2026-03-07)
+
+
+### Features
+
+* improve runtime channel auth and quota UX ([ef4f6e4](https://github.com/kunish/wheel/commit/ef4f6e4a8cb0aeed47e3d43cdc8198c3483ccb2f))
+
 ## [1.23.0](https://github.com/kunish/wheel/compare/v1.22.5...v1.23.0) (2026-03-07)
 
 
