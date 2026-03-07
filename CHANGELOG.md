@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.4](https://github.com/kunish/wheel/compare/v1.22.3...v1.22.4) (2026-03-07)
+
+
+### Bug Fixes
+
+* stage vendored worker module metadata in docker build ([2d9edff](https://github.com/kunish/wheel/commit/2d9edff16dc53b653f535bacf5d19245170e9875))
+
 ## [1.22.3](https://github.com/kunish/wheel/compare/v1.22.2...v1.22.3) (2026-03-06)
 
 
