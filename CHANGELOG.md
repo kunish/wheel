@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.5](https://github.com/kunish/wheel/compare/v1.22.4...v1.22.5) (2026-03-07)
+
+
+### Bug Fixes
+
+* include vendored cliproxy sdk in worker runtime ([706de3a](https://github.com/kunish/wheel/commit/706de3a94ce0647cf53adaf1de65417a2d3f4bbf))
+
 ## [1.22.4](https://github.com/kunish/wheel/compare/v1.22.3...v1.22.4) (2026-03-07)
 
 
