@@ -84,6 +84,14 @@ export interface CodexAuthUploadToastState {
   }
 }
 
+export interface CodexAuthBatchScope {
+  names?: string[]
+  allMatching?: boolean
+  search?: string
+  provider?: string
+  excludeNames?: string[]
+}
+
 export function buildCodexAuthUploadFormData(files: File[]) {
   const formData = new FormData()
   for (const file of files) {
@@ -151,6 +159,18 @@ export function patchCodexAuthFileStatus(
   )
 }
 
+export function patchCodexAuthFileStatusBatch(
+  channelId: number,
+  input: CodexAuthBatchScope & { disabled: boolean },
+  channelType?: number,
+) {
+  const prefix = runtimePrefix(channelType)
+  return apiFetch<{ success: boolean; data: CodexAuthUploadBatchResult }>(
+    `/api/v1/channel/${channelId}/${prefix}/auth-files/status/batch`,
+    { method: "PATCH", body: input },
+  )
+}
+
 export function deleteCodexAuthFile(
   channelId: number,
   input: { name?: string; all?: boolean },
@@ -164,6 +184,18 @@ export function deleteCodexAuthFile(
   return apiFetch<{ success: boolean; data: { status: string; deleted?: number } }>(
     `/api/v1/channel/${channelId}/${prefix}/auth-files${suffix ? `?${suffix}` : ""}`,
     { method: "DELETE" },
+  )
+}
+
+export function deleteCodexAuthFileBatch(
+  channelId: number,
+  input: CodexAuthBatchScope,
+  channelType?: number,
+) {
+  const prefix = runtimePrefix(channelType)
+  return apiFetch<{ success: boolean; data: CodexAuthUploadBatchResult }>(
+    `/api/v1/channel/${channelId}/${prefix}/auth-files/delete/batch`,
+    { method: "POST", body: input },
   )
 }
 

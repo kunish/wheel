@@ -1,5 +1,5 @@
 import type { CodexAuthFile } from "@/lib/api"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Check,
   Copy,
@@ -17,17 +17,28 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
   deleteCodexAuthFile,
+  deleteCodexAuthFileBatch,
   getCodexAuthFileModels,
   getCodexAuthUploadToastState,
   getCodexOAuthStatus,
   listCodexAuthFiles,
   listCodexQuota,
   patchCodexAuthFileStatus,
+  patchCodexAuthFileStatusBatch,
   runtimeProviderFilter,
   startCodexOAuth,
   syncCodexKeys,
@@ -40,9 +51,23 @@ import {
   codexQuotaQueryKey,
   codexUploadRefreshQueryKeys,
 } from "./codex-query-keys"
+import {
+  buildAuthFileBatchScope,
+  clearRuntimeAuthSelection,
+  createRuntimeAuthSelection,
+  demoteSelectionFromAllMatching,
+  getCurrentPageSelectionState,
+  getSelectedCount,
+  isAuthFileSelected,
+  promoteSelectionToAllMatching,
+  setCurrentPageSelection,
+  toggleAuthFileSelection,
+} from "./runtime-auth-selection"
 
 const AUTH_FILES_PAGE_SIZE = 8
 const QUOTA_PAGE_SIZE = 6
+const AUTH_PAGE_SIZE_OPTIONS = [8, 20, 50, 100]
+const QUOTA_PAGE_SIZE_OPTIONS = [6, 12, 24]
 
 interface CodexChannelDetailProps {
   channelId: number
@@ -59,33 +84,42 @@ export function CodexChannelDetail({
   const queryClient = useQueryClient()
   const [modelsDialogFile, setModelsDialogFile] = useState<CodexAuthFile | null>(null)
   const [authPage, setAuthPage] = useState(1)
+  const [authPageSize, setAuthPageSize] = useState(AUTH_FILES_PAGE_SIZE)
+  const [authSearch, setAuthSearch] = useState("")
   const [quotaPage, setQuotaPage] = useState(1)
+  const [quotaPageSize, setQuotaPageSize] = useState(QUOTA_PAGE_SIZE)
+  const [selection, setSelection] = useState(createRuntimeAuthSelection)
   const providerKey = getRuntimeProviderKey(channelType)
   const providerLabel = providerKey ? t(`typeLabels.${channelType}`) : t("typeLabels.33")
+  const providerFilter = runtimeProviderFilter(channelType)
 
   const authQuery = useQuery({
     queryKey: codexAuthFilesQueryKey(channelId, {
       page: authPage,
-      pageSize: AUTH_FILES_PAGE_SIZE,
+      pageSize: authPageSize,
+      search: authSearch,
       channelType,
     }),
     queryFn: () =>
       listCodexAuthFiles(channelId, {
-        provider: runtimeProviderFilter(channelType),
+        provider: providerFilter,
+        search: authSearch || undefined,
         page: authPage,
-        pageSize: AUTH_FILES_PAGE_SIZE,
+        pageSize: authPageSize,
         channelType,
       }),
+    placeholderData: keepPreviousData,
   })
 
   const quotaQuery = useQuery({
     queryKey: codexQuotaQueryKey(channelId, {
       page: quotaPage,
-      pageSize: QUOTA_PAGE_SIZE,
+      pageSize: quotaPageSize,
       channelType,
     }),
     queryFn: () =>
-      listCodexQuota(channelId, { page: quotaPage, pageSize: QUOTA_PAGE_SIZE, channelType }),
+      listCodexQuota(channelId, { page: quotaPage, pageSize: quotaPageSize, channelType }),
+    placeholderData: keepPreviousData,
   })
 
   const modelsQuery = useQuery({
@@ -113,6 +147,77 @@ export function CodexChannelDetail({
         void queryClient.invalidateQueries({ queryKey })
       }
       toast.success(t("codex.authDeleted"))
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const batchToggleMut = useMutation({
+    mutationFn: (input: { disabled: boolean }) =>
+      patchCodexAuthFileStatusBatch(
+        channelId,
+        {
+          ...buildAuthFileBatchScope(selection, {
+            provider: providerFilter,
+            search: authSearch || undefined,
+          }),
+          ...input,
+        },
+        channelType,
+      ),
+    onSuccess: (res) => {
+      setSelection(clearRuntimeAuthSelection())
+      for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
+        void queryClient.invalidateQueries({ queryKey })
+      }
+      if (res.data.successCount > 0 && res.data.failedCount === 0) {
+        toast.success(t("runtime.batchStatusUpdated", { count: res.data.successCount }))
+        return
+      }
+      if (res.data.successCount > 0) {
+        toast.info(
+          t("runtime.batchStatusUpdatedPartial", {
+            successCount: res.data.successCount,
+            failedCount: res.data.failedCount,
+          }),
+        )
+        return
+      }
+      toast.error(
+        t("runtime.batchStatusUpdatedError", { count: res.data.failedCount || res.data.total }),
+      )
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const batchDeleteMut = useMutation({
+    mutationFn: () =>
+      deleteCodexAuthFileBatch(
+        channelId,
+        buildAuthFileBatchScope(selection, {
+          provider: providerFilter,
+          search: authSearch || undefined,
+        }),
+        channelType,
+      ),
+    onSuccess: (res) => {
+      setSelection(clearRuntimeAuthSelection())
+      for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
+        void queryClient.invalidateQueries({ queryKey })
+      }
+      if (res.data.successCount > 0 && res.data.failedCount === 0) {
+        toast.success(t("runtime.batchDeleted", { count: res.data.successCount }))
+        return
+      }
+      if (res.data.successCount > 0) {
+        toast.info(
+          t("runtime.batchDeletedPartial", {
+            successCount: res.data.successCount,
+            failedCount: res.data.failedCount,
+          }),
+        )
+        return
+      }
+      toast.error(t("runtime.batchDeletedError", { count: res.data.failedCount || res.data.total }))
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -231,8 +336,21 @@ export function CodexChannelDetail({
   const capabilities = authQuery.data?.data.capabilities
   const authTotal = authQuery.data?.data.total ?? 0
   const quotaTotal = quotaQuery.data?.data.total ?? 0
-  const authTotalPages = Math.max(1, Math.ceil(authTotal / AUTH_FILES_PAGE_SIZE))
-  const quotaTotalPages = Math.max(1, Math.ceil(quotaTotal / QUOTA_PAGE_SIZE))
+  const authTotalPages = Math.max(1, Math.ceil(authTotal / authPageSize))
+  const quotaTotalPages = Math.max(1, Math.ceil(quotaTotal / quotaPageSize))
+  const pageNames = authFiles.map((file) => file.name)
+  const currentPageSelectionState = getCurrentPageSelectionState(selection, pageNames)
+  const selectedCount = getSelectedCount(selection, authTotal)
+  const canPromoteSelection =
+    selection.mode === "explicit" &&
+    currentPageSelectionState === true &&
+    authTotal > pageNames.length &&
+    selectedCount < authTotal
+  const authMutationPending =
+    toggleMut.isPending ||
+    deleteMut.isPending ||
+    batchToggleMut.isPending ||
+    batchDeleteMut.isPending
 
   useEffect(() => {
     if (authPage > authTotalPages) {
@@ -246,15 +364,19 @@ export function CodexChannelDetail({
     }
   }, [quotaPage, quotaTotalPages])
 
+  useEffect(() => {
+    setSelection(clearRuntimeAuthSelection())
+  }, [authPageSize, authSearch, providerFilter])
+
   const handleRefresh = useCallback(() => {
     if (modelCount === 0 && authFiles.length > 0) {
       syncMut.mutate()
       return
     }
-    void queryClient.invalidateQueries({ queryKey: codexAuthFilesQueryKey(channelId) })
-    void queryClient.invalidateQueries({ queryKey: codexQuotaQueryKey(channelId) })
+    void authQuery.refetch()
+    void quotaQuery.refetch()
     void queryClient.invalidateQueries({ queryKey: channelsQueryKey })
-  }, [authFiles.length, channelId, modelCount, queryClient, syncMut])
+  }, [authFiles.length, authQuery, modelCount, queryClient, quotaQuery, syncMut])
 
   const handleUploadFile = useCallback(
     (fileList: FileList | null | undefined) => {
@@ -353,7 +475,115 @@ export function CodexChannelDetail({
           </div>
         </div>
 
-        {authQuery.isLoading ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Input
+            value={authSearch}
+            onChange={(e) => {
+              setAuthSearch(e.target.value)
+              setAuthPage(1)
+            }}
+            placeholder={t("runtime.searchAuthFiles")}
+            className="h-8 text-xs sm:max-w-xs"
+          />
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <span className="text-muted-foreground text-[11px]">{t("runtime.pageSize")}</span>
+            <Select
+              value={String(authPageSize)}
+              onValueChange={(value) => {
+                setAuthPageSize(Number(value))
+                setAuthPage(1)
+              }}
+            >
+              <SelectTrigger className="h-8 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AUTH_PAGE_SIZE_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {selectedCount > 0 ? (
+          <div className="flex flex-col gap-2 rounded-md border border-dashed px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="font-medium">
+                {selection.mode === "allMatching"
+                  ? t("runtime.allMatchingSelected", { count: selectedCount })
+                  : t("runtime.selectedAuthFiles", { count: selectedCount })}
+              </p>
+              {canPromoteSelection ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => setSelection((current) => promoteSelectionToAllMatching(current))}
+                >
+                  {t("runtime.selectAllMatching", { count: authTotal })}
+                </Button>
+              ) : null}
+              {selection.mode === "allMatching" ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto p-0 text-xs"
+                  onClick={() =>
+                    setSelection((current) => demoteSelectionFromAllMatching(current, pageNames))
+                  }
+                >
+                  {t("runtime.cancelSelectAllMatching")}
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1 sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => batchToggleMut.mutate({ disabled: false })}
+                disabled={authMutationPending}
+              >
+                {t("runtime.enableSelected")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => batchToggleMut.mutate({ disabled: true })}
+                disabled={authMutationPending}
+              >
+                {t("runtime.disableSelected")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => batchDeleteMut.mutate()}
+                disabled={authMutationPending}
+              >
+                {t("runtime.deleteSelected")}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setSelection(clearRuntimeAuthSelection())}
+              >
+                {t("runtime.clearSelection")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {authQuery.isPending && !authQuery.data ? (
           <p className="text-muted-foreground text-xs">{t("actions.loading", { ns: "common" })}</p>
         ) : authFiles.length === 0 ? (
           <div className="text-muted-foreground rounded-md border px-3 py-2 text-xs">
@@ -361,6 +591,25 @@ export function CodexChannelDetail({
           </div>
         ) : (
           <div className="space-y-1.5">
+            <div className="flex items-center justify-between rounded-md border px-2.5 py-2 text-xs">
+              <div className="flex items-center gap-2 font-medium">
+                <Checkbox
+                  checked={currentPageSelectionState}
+                  onCheckedChange={(checked) =>
+                    setSelection((current) =>
+                      setCurrentPageSelection(current, pageNames, checked === true),
+                    )
+                  }
+                  disabled={authMutationPending}
+                />
+                <span>{t("runtime.selectPage")}</span>
+              </div>
+              {authQuery.isFetching ? (
+                <span className="text-muted-foreground">
+                  {t("actions.loading", { ns: "common" })}
+                </span>
+              ) : null}
+            </div>
             {authFiles.map((file) => {
               const disabled = !!file.disabled
               return (
@@ -368,16 +617,28 @@ export function CodexChannelDetail({
                   key={file.name}
                   className="flex flex-col gap-2 rounded-md border px-2.5 py-1.5 text-sm lg:flex-row lg:items-center lg:justify-between"
                 >
-                  <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-1 items-start gap-2">
+                    <Checkbox
+                      checked={isAuthFileSelected(selection, file.name)}
+                      onCheckedChange={() =>
+                        setSelection((current) => toggleAuthFileSelection(current, file.name))
+                      }
+                      disabled={authMutationPending}
+                      className="mt-0.5"
+                    />
                     <div className="flex items-center gap-1.5">
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                        {file.provider || "codex"}
-                      </Badge>
-                      <span className="truncate text-xs font-medium">{file.name}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                            {file.provider || "codex"}
+                          </Badge>
+                          <span className="truncate text-xs font-medium">{file.name}</span>
+                        </div>
+                        <p className="text-muted-foreground mt-0.5 text-[10px]">
+                          {file.email || t("codex.noEmail")}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-muted-foreground mt-0.5 text-[10px]">
-                      {file.email || t("codex.noEmail")}
-                    </p>
                   </div>
                   <div className="flex shrink-0 items-center justify-end gap-1 self-end lg:self-auto">
                     {capabilities?.modelsEnabled !== false && (
@@ -397,7 +658,7 @@ export function CodexChannelDetail({
                       variant="ghost"
                       className="h-6 w-6"
                       onClick={() => deleteMut.mutate(file.name)}
-                      disabled={deleteMut.isPending}
+                      disabled={authMutationPending}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -406,7 +667,7 @@ export function CodexChannelDetail({
                       onCheckedChange={(checked) =>
                         toggleMut.mutate({ name: file.name, disabled: !checked })
                       }
-                      disabled={toggleMut.isPending}
+                      disabled={authMutationPending}
                       className="scale-75"
                     />
                   </div>
@@ -415,7 +676,7 @@ export function CodexChannelDetail({
             })}
             <RuntimePagination
               currentPage={authPage}
-              pageSize={AUTH_FILES_PAGE_SIZE}
+              pageSize={authPageSize}
               total={authTotal}
               onPageChange={setAuthPage}
             />
@@ -503,9 +764,14 @@ export function CodexChannelDetail({
           </div>
           <RuntimePagination
             currentPage={quotaPage}
-            pageSize={QUOTA_PAGE_SIZE}
+            pageSize={quotaPageSize}
             total={quotaTotal}
             onPageChange={setQuotaPage}
+            pageSizeOptions={QUOTA_PAGE_SIZE_OPTIONS}
+            onPageSizeChange={(pageSize) => {
+              setQuotaPageSize(pageSize)
+              setQuotaPage(1)
+            }}
           />
         </div>
       )}
@@ -618,11 +884,15 @@ function RuntimePagination({
   pageSize,
   total,
   onPageChange,
+  pageSizeOptions,
+  onPageSizeChange,
 }: {
   currentPage: number
   pageSize: number
   total: number
   onPageChange: (page: number) => void
+  pageSizeOptions?: number[]
+  onPageSizeChange?: (pageSize: number) => void
 }) {
   const { t } = useTranslation(["model", "common"])
 
@@ -641,6 +911,26 @@ function RuntimePagination({
         <span>
           {t("pagination.page", { ns: "common", current: currentPage, total: totalPages })}
         </span>
+        {pageSizeOptions && onPageSizeChange ? (
+          <div className="flex items-center gap-2">
+            <span>{t("runtime.pageSize")}</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) => onPageSizeChange(Number(value))}
+            >
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((option) => (
+                  <SelectItem key={option} value={String(option)}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
       </div>
       <div className="flex items-center gap-1 self-end sm:self-auto">
         <Button

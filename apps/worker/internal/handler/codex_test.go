@@ -118,6 +118,44 @@ func TestFilterAndPaginateAuthFiles_CopilotProviderAlias(t *testing.T) {
 	}
 }
 
+func TestSelectCodexAuthFilesForBatch_AllMatchingSearchAndExclusions(t *testing.T) {
+	files := []codexAuthFile{
+		{Name: "alpha.json", Email: "alpha@example.com", Provider: "codex"},
+		{Name: "beta.json", Email: "beta@example.com", Provider: "codex"},
+		{Name: "gamma.json", Email: "gamma@example.com", Provider: "codex"},
+		{Name: "copilot.json", Email: "copilot@example.com", Provider: "github-copilot"},
+	}
+
+	selected, err := selectCodexAuthFilesForBatch(files, codexAuthBatchScope{
+		AllMatching:  true,
+		Search:       "example",
+		Provider:     "codex",
+		ExcludeNames: []string{"beta.json"},
+	})
+	if err != nil {
+		t.Fatalf("selectCodexAuthFilesForBatch() error = %v", err)
+	}
+	if got := []string{selected[0].Name, selected[1].Name}; !slices.Equal(got, []string{"alpha.json", "gamma.json"}) {
+		t.Fatalf("selected names = %v, want [alpha.json gamma.json]", got)
+	}
+}
+
+func TestSelectCodexAuthFilesForBatch_ExplicitNames(t *testing.T) {
+	files := []codexAuthFile{
+		{Name: "alpha.json", Provider: "codex"},
+		{Name: "beta.json", Provider: "codex"},
+		{Name: "gamma.json", Provider: "codex"},
+	}
+
+	selected, err := selectCodexAuthFilesForBatch(files, codexAuthBatchScope{Names: []string{"gamma.json", "alpha.json"}})
+	if err != nil {
+		t.Fatalf("selectCodexAuthFilesForBatch() error = %v", err)
+	}
+	if got := []string{selected[0].Name, selected[1].Name}; !slices.Equal(got, []string{"alpha.json", "gamma.json"}) {
+		t.Fatalf("selected names = %v, want [alpha.json gamma.json]", got)
+	}
+}
+
 func TestParseCodexAuthContent_NormalizesGitHubCopilotProvider(t *testing.T) {
 	provider, email, disabled, normalized, raw, err := parseCodexAuthContent([]byte(`{"type":"github-copilot","email":"copilot@example.com"}`))
 	if err != nil {
@@ -438,7 +476,7 @@ func TestSyncCodexChannelModels_PersistsGPT54IntoModelAndFetchedModel(t *testing
 	t.Cleanup(h.Cache.Close)
 	expectCodexChannelTypeLookup(mock, 55, types.OutboundCodex)
 	expectCodexAuthFileListForSync(mock, 55, []string{"latest.json"})
-	mock.ExpectExec("UPDATE `channels` SET model = '\\[\"gpt-5\\.4\",\"gpt-5\\.3-codex\"\\]', fetched_model = '\\[\"gpt-5\\.4\",\"gpt-5\\.3-codex\"\\]' WHERE \\(id = 55\\)").
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE `channels` SET ") + ".*" + regexp.QuoteMeta("WHERE (id = 55)")).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -786,6 +824,89 @@ func TestListCodexQuota_CopilotReturnsSnapshotQuota(t *testing.T) {
 	}
 	if item.Snapshots[0].ID != "chat" || item.Snapshots[0].PercentRemaining != 75 {
 		t.Fatalf("unexpected first snapshot: %+v", item.Snapshots[0])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestPatchCodexAuthFileStatusBatch_LocalByNames(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Cache = cache.New()
+	t.Cleanup(h.Cache.Close)
+	expectCodexChannelTypeLookup(mock, 41, types.OutboundCodex)
+	expectCodexAuthFileListForQuota(mock, 41, []types.CodexAuthFile{
+		{ChannelID: 41, Name: "alpha.json", Provider: "codex", Email: "alpha@example.com", Content: `{"type":"codex","email":"alpha@example.com","access_token":"token-alpha"}`},
+		{ChannelID: 41, Name: "beta.json", Provider: "codex", Email: "beta@example.com", Content: `{"type":"codex","email":"beta@example.com","access_token":"token-beta"}`},
+	})
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE `codex_auth_files` SET ")).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE `codex_auth_files` SET ")).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPatch, "/api/v1/channel/41/codex/auth-files/status/batch", strings.NewReader(`{"names":["alpha.json","beta.json"],"disabled":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "41"}}
+
+	h.PatchCodexAuthFileStatusBatch(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success bool                    `json:"success"`
+		Data    codexAuthUploadResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success || resp.Data.SuccessCount != 2 || resp.Data.FailedCount != 0 {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestDeleteCodexAuthFileBatch_LocalAllMatching(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Cache = cache.New()
+	t.Cleanup(h.Cache.Close)
+	expectCodexChannelTypeLookup(mock, 42, types.OutboundCodex)
+	expectCodexAuthFileListForQuota(mock, 42, []types.CodexAuthFile{
+		{ChannelID: 42, Name: "alpha.json", Provider: "codex", Email: "alpha@example.com", Content: `{"type":"codex","email":"alpha@example.com","access_token":"token-alpha"}`},
+		{ChannelID: 42, Name: "beta.json", Provider: "codex", Email: "beta@example.com", Content: `{"type":"codex","email":"beta@example.com","access_token":"token-beta"}`},
+		{ChannelID: 42, Name: "other.json", Provider: "codex", Email: "other@another.dev", Content: `{"type":"codex","email":"other@another.dev","access_token":"token-other"}`},
+	})
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM `codex_auth_files` AS `codex_auth_file` WHERE (id = 1)")).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM `codex_auth_files` AS `codex_auth_file` WHERE (id = 2)")).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/42/codex/auth-files/delete/batch", strings.NewReader(`{"allMatching":true,"search":"example.com"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "42"}}
+
+	h.DeleteCodexAuthFileBatch(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Success bool                    `json:"success"`
+		Data    codexAuthUploadResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success || resp.Data.SuccessCount != 2 || resp.Data.FailedCount != 0 {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

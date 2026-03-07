@@ -34,14 +34,17 @@ const (
 )
 
 type codexAuthFile struct {
-	Name      string         `json:"name"`
-	Provider  string         `json:"provider"`
-	Type      string         `json:"type"`
-	Email     string         `json:"email,omitempty"`
-	Disabled  bool           `json:"disabled"`
-	AuthIndex string         `json:"authIndex,omitempty"`
-	Path      string         `json:"-"`
-	Raw       map[string]any `json:"-"`
+	ID         int            `json:"-"`
+	ChannelID  int            `json:"-"`
+	Name       string         `json:"name"`
+	Provider   string         `json:"provider"`
+	Type       string         `json:"type"`
+	Email      string         `json:"email,omitempty"`
+	Disabled   bool           `json:"disabled"`
+	AuthIndex  string         `json:"authIndex,omitempty"`
+	Path       string         `json:"-"`
+	RawContent string         `json:"-"`
+	Raw        map[string]any `json:"-"`
 }
 
 type codexCapabilities struct {
@@ -102,6 +105,14 @@ type codexAuthUploadResponse struct {
 	SuccessCount int                     `json:"successCount"`
 	FailedCount  int                     `json:"failedCount"`
 	Results      []codexAuthUploadResult `json:"results"`
+}
+
+type codexAuthBatchScope struct {
+	Names        []string `json:"names"`
+	AllMatching  bool     `json:"allMatching"`
+	Search       string   `json:"search"`
+	Provider     string   `json:"provider"`
+	ExcludeNames []string `json:"excludeNames"`
 }
 
 var codexOAuthSessions sync.Map
@@ -272,13 +283,16 @@ func (h *Handler) listManagedCodexAuthFiles(ctx context.Context, channelID int) 
 			provider = "codex"
 		}
 		out = append(out, codexAuthFile{
-			Name:      item.Name,
-			Provider:  provider,
-			Type:      provider,
-			Email:     item.Email,
-			Disabled:  item.Disabled,
-			AuthIndex: managedAuthIndex(item.ChannelID, item.Name),
-			Raw:       raw,
+			ID:         item.ID,
+			ChannelID:  item.ChannelID,
+			Name:       item.Name,
+			Provider:   provider,
+			Type:       provider,
+			Email:      item.Email,
+			Disabled:   item.Disabled,
+			AuthIndex:  managedAuthIndex(item.ChannelID, item.Name),
+			RawContent: item.Content,
+			Raw:        raw,
 		})
 	}
 	return out, nil
@@ -485,6 +499,64 @@ func (h *Handler) PatchCodexAuthFileStatus(c *gin.Context) {
 	successJSON(c, out)
 }
 
+func (h *Handler) PatchCodexAuthFileStatusBatch(c *gin.Context) {
+	channel, err := h.validateCodexChannel(c)
+	if err != nil {
+		return
+	}
+
+	var req struct {
+		codexAuthBatchScope
+		Disabled bool `json:"disabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	files, err := h.listAllCodexAuthFiles(c.Request.Context(), channel.ID)
+	if err != nil {
+		errorJSON(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	selected, err := selectCodexAuthFilesForBatch(files, req.codexAuthBatchScope)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response := codexAuthUploadResponse{Total: len(selected), Results: make([]codexAuthUploadResult, 0, len(selected))}
+	if h.codexCapabilities().LocalEnabled {
+		for _, file := range selected {
+			result := h.patchCodexLocalAuthFileStatus(file, req.Disabled)
+			response.Results = append(response.Results, result)
+			if result.Status == "ok" {
+				response.SuccessCount++
+			} else {
+				response.FailedCount++
+			}
+		}
+		if response.SuccessCount > 0 {
+			h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
+		}
+	} else {
+		if err := h.ensureCodexManagementConfigured(); err != nil {
+			errorJSON(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		for _, file := range selected {
+			result := h.patchCodexManagedAuthFileStatus(c, file.Name, req.Disabled)
+			response.Results = append(response.Results, result)
+			if result.Status == "ok" {
+				response.SuccessCount++
+			} else {
+				response.FailedCount++
+			}
+		}
+	}
+	successJSON(c, response)
+}
+
 func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 	channel, err := h.validateCodexChannel(c)
 	if err != nil {
@@ -686,6 +758,61 @@ func (h *Handler) DeleteCodexAuthFile(c *gin.Context) {
 		}
 	}
 	successJSON(c, out)
+}
+
+func (h *Handler) DeleteCodexAuthFileBatch(c *gin.Context) {
+	channel, err := h.validateCodexChannel(c)
+	if err != nil {
+		return
+	}
+
+	var req codexAuthBatchScope
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorJSON(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	files, err := h.listAllCodexAuthFiles(c.Request.Context(), channel.ID)
+	if err != nil {
+		errorJSON(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	selected, err := selectCodexAuthFilesForBatch(files, req)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response := codexAuthUploadResponse{Total: len(selected), Results: make([]codexAuthUploadResult, 0, len(selected))}
+	if h.codexCapabilities().LocalEnabled {
+		for _, file := range selected {
+			result := h.deleteCodexLocalAuthFile(c.Request.Context(), channel.ID, file)
+			response.Results = append(response.Results, result)
+			if result.Status == "ok" {
+				response.SuccessCount++
+			} else {
+				response.FailedCount++
+			}
+		}
+		if response.SuccessCount > 0 {
+			h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
+		}
+	} else {
+		if err := h.ensureCodexManagementConfigured(); err != nil {
+			errorJSON(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		for _, file := range selected {
+			result := h.deleteCodexManagedAuthFile(c, file.Name)
+			response.Results = append(response.Results, result)
+			if result.Status == "ok" {
+				response.SuccessCount++
+			} else {
+				response.FailedCount++
+			}
+		}
+	}
+	successJSON(c, response)
 }
 
 func (h *Handler) GetCodexAuthFileModels(c *gin.Context) {
@@ -1665,26 +1792,7 @@ func parseAuthFiles(files []map[string]any) []codexAuthFile {
 }
 
 func filterAndPaginateAuthFiles(files []codexAuthFile, provider string, search string, page int, pageSize int) ([]codexAuthFile, int) {
-	provider = canonicalRuntimeProvider(provider)
-	search = strings.ToLower(strings.TrimSpace(search))
-
-	filtered := make([]codexAuthFile, 0, len(files))
-	for _, file := range files {
-		p := canonicalRuntimeProvider(file.Provider)
-		if p == "" {
-			p = canonicalRuntimeProvider(file.Type)
-		}
-		if provider != "" && p != provider {
-			continue
-		}
-		if search != "" {
-			hit := strings.Contains(strings.ToLower(file.Name), search) || strings.Contains(strings.ToLower(file.Email), search)
-			if !hit {
-				continue
-			}
-		}
-		filtered = append(filtered, file)
-	}
+	filtered := filterCodexAuthFiles(files, provider, search)
 
 	total := len(filtered)
 	if total == 0 {
@@ -1705,6 +1813,161 @@ func filterAndPaginateAuthFiles(files []codexAuthFile, provider string, search s
 		end = total
 	}
 	return filtered[start:end], total
+}
+
+func filterCodexAuthFiles(files []codexAuthFile, provider string, search string) []codexAuthFile {
+	provider = canonicalRuntimeProvider(provider)
+	search = strings.ToLower(strings.TrimSpace(search))
+
+	filtered := make([]codexAuthFile, 0, len(files))
+	for _, file := range files {
+		p := canonicalRuntimeProvider(file.Provider)
+		if p == "" {
+			p = canonicalRuntimeProvider(file.Type)
+		}
+		if provider != "" && p != provider {
+			continue
+		}
+		if search != "" {
+			hit := strings.Contains(strings.ToLower(file.Name), search) || strings.Contains(strings.ToLower(file.Email), search)
+			if !hit {
+				continue
+			}
+		}
+		filtered = append(filtered, file)
+	}
+	return filtered
+}
+
+func selectCodexAuthFilesForBatch(files []codexAuthFile, scope codexAuthBatchScope) ([]codexAuthFile, error) {
+	if scope.AllMatching {
+		filtered := filterCodexAuthFiles(files, scope.Provider, scope.Search)
+		excluded := make(map[string]struct{}, len(scope.ExcludeNames))
+		for _, name := range scope.ExcludeNames {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			excluded[name] = struct{}{}
+		}
+		selected := make([]codexAuthFile, 0, len(filtered))
+		for _, file := range filtered {
+			if _, ok := excluded[file.Name]; ok {
+				continue
+			}
+			selected = append(selected, file)
+		}
+		if len(selected) == 0 {
+			return nil, fmt.Errorf("no auth files matched selection")
+		}
+		return selected, nil
+	}
+
+	selectedNames := make(map[string]struct{}, len(scope.Names))
+	for _, name := range scope.Names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		selectedNames[name] = struct{}{}
+	}
+	if len(selectedNames) == 0 {
+		return nil, fmt.Errorf("names is required")
+	}
+	selected := make([]codexAuthFile, 0, len(selectedNames))
+	for _, file := range files {
+		if _, ok := selectedNames[file.Name]; ok {
+			selected = append(selected, file)
+		}
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("no auth files matched selection")
+	}
+	return selected, nil
+}
+
+func (h *Handler) listAllCodexAuthFiles(ctx context.Context, channelID int) ([]codexAuthFile, error) {
+	if h.codexCapabilities().LocalEnabled {
+		return h.listManagedCodexAuthFiles(ctx, channelID)
+	}
+	if err := h.ensureCodexManagementConfigured(); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Files []map[string]any `json:"files"`
+	}
+	if err := h.codexManagementCallContext(ctx, http.MethodGet, "/auth-files", nil, nil, &resp); err != nil {
+		return nil, err
+	}
+	return parseAuthFiles(resp.Files), nil
+}
+
+func (h *Handler) patchCodexLocalAuthFileStatus(file codexAuthFile, disabled bool) codexAuthUploadResult {
+	result := codexAuthUploadResult{Name: file.Name}
+	_, _, _, _, raw, err := parseCodexAuthContent([]byte(file.RawContent))
+	if err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	raw["disabled"] = disabled
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		result.Status = "error"
+		result.Error = "failed to encode auth file"
+		return result
+	}
+	if err := dal.UpdateCodexAuthFile(context.Background(), h.DB, file.ID, map[string]any{"disabled": disabled, "content": string(encoded)}); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	item := &types.CodexAuthFile{ID: file.ID, ChannelID: file.ChannelID, Name: file.Name, Provider: file.Provider, Email: file.Email, Disabled: disabled, Content: string(encoded)}
+	if err := codexruntime.MaterializeOneAuthFile(item); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	result.Status = "ok"
+	return result
+}
+
+func (h *Handler) patchCodexManagedAuthFileStatus(c *gin.Context, name string, disabled bool) codexAuthUploadResult {
+	result := codexAuthUploadResult{Name: name}
+	var out map[string]any
+	if err := h.codexManagementCall(c, http.MethodPatch, "/auth-files/status", nil, map[string]any{"name": name, "disabled": disabled}, &out); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	result.Status = "ok"
+	return result
+}
+
+func (h *Handler) deleteCodexLocalAuthFile(ctx context.Context, channelID int, file codexAuthFile) codexAuthUploadResult {
+	_ = channelID
+	result := codexAuthUploadResult{Name: file.Name}
+	if err := dal.DeleteCodexAuthFile(ctx, h.DB, file.ID); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	_ = codexruntime.RemoveOneAuthFile(&types.CodexAuthFile{ID: file.ID, ChannelID: file.ChannelID, Name: file.Name, Provider: file.Provider, Email: file.Email, Disabled: file.Disabled, Content: file.RawContent})
+	result.Status = "ok"
+	return result
+}
+
+func (h *Handler) deleteCodexManagedAuthFile(c *gin.Context, name string) codexAuthUploadResult {
+	result := codexAuthUploadResult{Name: name}
+	var out map[string]any
+	query := url.Values{"name": []string{name}}
+	if err := h.codexManagementCall(c, http.MethodDelete, "/auth-files", query, nil, &out); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	result.Status = "ok"
+	return result
 }
 
 func extractCodexAccountID(auth map[string]any) string {
