@@ -242,7 +242,7 @@
     "noAuthFiles": "No auth files found yet. Import {{provider}} accounts with OAuth or upload auth files to continue.",
     "credentialsTitle": "{{provider}} Runtime Credentials",
     "keyManagedByAuthFiles": "{{provider}} credentials are managed through imported auth files, not a pasted API key.",
-    "modelHint": "Models for {{provider}} runtime channels are synced from imported accounts. You can still review or supplement the final model list here.",
+    "modelHint": "Models for {{provider}} runtime channels are synced from imported accounts. New runtime models such as gpt-5.4 appear here after sync, and you can still review or supplement the final model list.",
     "importOAuth": "Import {{provider}} OAuth",
     "importFile": "Upload {{provider}} Auth File",
     "saveChannelFirst": "Please save the {{provider}} channel first, then import runtime accounts.",

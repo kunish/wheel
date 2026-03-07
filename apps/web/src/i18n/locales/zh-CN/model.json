@@ -242,7 +242,7 @@
     "noAuthFiles": "暂未找到认证文件。请先通过 OAuth 导入 {{provider}} 账号，或上传认证文件后再继续。",
     "credentialsTitle": "{{provider}} Runtime 凭证",
     "keyManagedByAuthFiles": "{{provider}} 凭证通过导入的认证文件管理，不需要手动粘贴 API Key。",
-    "modelHint": "{{provider}} Runtime 渠道的模型会根据已导入账号自动同步；你仍然可以在这里检查或补充最终模型列表。",
+    "modelHint": "{{provider}} Runtime 渠道的模型会根据已导入账号自动同步；像 gpt-5.4 这样的新模型会在同步后出现在这里，你仍然可以在这里检查或补充最终模型列表。",
     "importOAuth": "导入 {{provider}} OAuth",
     "importFile": "上传 {{provider}} 认证文件",
     "saveChannelFirst": "请先保存 {{provider}} 渠道，再导入 Runtime 账号。",
