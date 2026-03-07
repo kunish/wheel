@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/kunish/wheel/compare/v1.25.0...v1.26.0) (2026-03-07)
+
+
+### Features
+
+* improve runtime auth bulk management ([ab6c57a](https://github.com/kunish/wheel/commit/ab6c57a964f072f6a493f8b4e26693abed700b3a))
+
 ## [1.25.0](https://github.com/kunish/wheel/compare/v1.24.0...v1.25.0) (2026-03-07)
 
 
