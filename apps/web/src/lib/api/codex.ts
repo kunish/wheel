@@ -49,6 +49,15 @@ export interface CodexQuotaItem {
   planType?: string
   weekly: CodexQuotaWindow
   codeReview: CodexQuotaWindow
+  snapshots?: Array<{
+    id: string
+    label: string
+    percentRemaining: number
+    remaining?: number
+    entitlement?: number
+    unlimited?: boolean
+  }>
+  resetAt?: string
   error?: string
 }
 

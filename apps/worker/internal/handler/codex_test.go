@@ -654,6 +654,87 @@ func TestListCodexQuota_UsesBoundedConcurrencyAndPreservesOrder(t *testing.T) {
 	}
 }
 
+func TestListCodexQuota_CopilotReturnsSnapshotQuota(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	h, mock := newCodexUploadTestHandler(t)
+	expectCodexChannelTypeLookup(mock, 34, types.OutboundCopilot)
+	expectCodexAuthFileListForQuota(mock, 34, []types.CodexAuthFile{
+		{ChannelID: 34, Name: "copilot.json", Provider: "copilot", Email: "copilot@example.com", Content: `{"type":"github-copilot","access_token":"copilot-token"}`},
+	})
+
+	h.codexQuotaDo = func(r *http.Request) (*http.Response, error) {
+		if got := r.URL.String(); got != "https://api.github.com/copilot_internal/user" {
+			t.Fatalf("url = %s, want copilot quota endpoint", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer copilot-token" {
+			t.Fatalf("authorization = %q", got)
+		}
+		body := `{
+			"copilot_plan":"business",
+			"quota_reset_date":"2026-03-31T00:00:00Z",
+			"quota_snapshots":{
+				"chat":{"quota_id":"chat","percent_remaining":75,"remaining":750,"entitlement":1000},
+				"completions":{"quota_id":"completions","percent_remaining":40,"remaining":40,"entitlement":100},
+				"premium_interactions":{"quota_id":"premium_interactions","percent_remaining":10,"remaining":1,"entitlement":10}
+			}
+		}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/34/copilot/quota", nil)
+	c.Params = gin.Params{{Key: "id", Value: "34"}}
+
+	h.ListCodexQuota(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items []codexQuotaItem `json:"items"`
+			Total int              `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("success = false, body = %s", rec.Body.String())
+	}
+	if resp.Data.Total != 1 || len(resp.Data.Items) != 1 {
+		t.Fatalf("unexpected items payload: %+v", resp.Data)
+	}
+	item := resp.Data.Items[0]
+	if item.Error != "" {
+		t.Fatalf("unexpected item error: %+v", item)
+	}
+	if item.PlanType != "business" {
+		t.Fatalf("plan type = %q, want business", item.PlanType)
+	}
+	if item.ResetAt != "2026-03-31T00:00:00Z" {
+		t.Fatalf("resetAt = %q", item.ResetAt)
+	}
+	if len(item.Snapshots) != 3 {
+		t.Fatalf("snapshot len = %d, want 3", len(item.Snapshots))
+	}
+	if item.Snapshots[0].ID != "chat" || item.Snapshots[0].PercentRemaining != 75 {
+		t.Fatalf("unexpected first snapshot: %+v", item.Snapshots[0])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestUploadCodexAuthFileBatch(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

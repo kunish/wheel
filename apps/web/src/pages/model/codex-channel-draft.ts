@@ -1,5 +1,9 @@
 import type { ChannelInput } from "@/lib/api/channels"
 
+export const RUNTIME_MANAGED_CHANNEL_KEY = "managed-by-auth-files"
+
+export type RuntimeProviderKey = "codex" | "copilot"
+
 interface SaveChannelResponse {
   data?: {
     id?: unknown
@@ -10,6 +14,41 @@ interface RuntimeChannelModels {
   id?: number
   model?: string[] | null
   fetchedModel?: string[] | null
+}
+
+export function getRuntimeProviderKey(channelType?: number): RuntimeProviderKey | null {
+  if (channelType === 33) {
+    return "codex"
+  }
+  if (channelType === 34) {
+    return "copilot"
+  }
+  return null
+}
+
+export function isRuntimeChannelType(channelType?: number): boolean {
+  return getRuntimeProviderKey(channelType) !== null
+}
+
+export function adaptChannelDraftForType<T extends ChannelInput>(form: T, channelType: number): T {
+  const isRuntime = isRuntimeChannelType(channelType)
+  const currentKey = form.keys[0]?.channelKey ?? ""
+  const currentRemark = form.keys[0]?.remark ?? ""
+
+  return {
+    ...form,
+    type: channelType,
+    baseUrls: isRuntime ? [{ url: "", delay: form.baseUrls[0]?.delay ?? 0 }] : form.baseUrls,
+    keys: isRuntime
+      ? [{ channelKey: RUNTIME_MANAGED_CHANNEL_KEY, remark: currentRemark }]
+      : currentKey === RUNTIME_MANAGED_CHANNEL_KEY
+        ? [{ channelKey: "", remark: currentRemark }]
+        : form.keys,
+  }
+}
+
+export function shouldShowGenericModelFetch(channelType?: number): boolean {
+  return !isRuntimeChannelType(channelType)
 }
 
 export async function ensureCodexChannelId({

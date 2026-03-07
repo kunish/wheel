@@ -44,7 +44,14 @@ import {
   uploadCodexAuthFile,
 } from "@/lib/api"
 import { fetchChannelModelsPreview } from "@/lib/api-client"
-import { ensureCodexChannelId, mergeRuntimeChannelModels } from "./codex-channel-draft"
+import {
+  adaptChannelDraftForType,
+  ensureCodexChannelId,
+  getRuntimeProviderKey,
+  isRuntimeChannelType,
+  mergeRuntimeChannelModels,
+  shouldShowGenericModelFetch,
+} from "./codex-channel-draft"
 import { channelsQueryKey, codexUploadRefreshQueryKeys } from "./codex-query-keys"
 
 export interface ChannelFormData {
@@ -218,11 +225,19 @@ function CodexOAuthButton({
   channelType,
   ensureChannelId,
   onRuntimeChannelHydrated,
+  buttonLabel,
+  dialogTitle,
+  dialogHint,
+  saveChannelFirstMessage,
 }: {
   channelId?: number
   channelType?: number
   ensureChannelId?: () => Promise<number>
   onRuntimeChannelHydrated?: (channelId: number) => Promise<void>
+  buttonLabel: string
+  dialogTitle: string
+  dialogHint: string
+  saveChannelFirstMessage: string
 }) {
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
@@ -325,12 +340,12 @@ function CodexOAuthButton({
       try {
         resolvedChannelId = await ensureChannelId()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : t("codex.saveChannelFirst"))
+        toast.error(err instanceof Error ? err.message : saveChannelFirstMessage)
         return
       }
     }
     if (!resolvedChannelId) {
-      toast.info(t("codex.saveChannelFirst"))
+      toast.info(saveChannelFirstMessage)
       return
     }
     setPanelOpen(true)
@@ -346,15 +361,15 @@ function CodexOAuthButton({
     <>
       <Button type="button" variant="outline" size="sm" className="w-fit" onClick={handleClick}>
         <LogIn className="mr-1.5 h-3.5 w-3.5" />
-        {t("codex.importOAuth")}
+        {buttonLabel}
       </Button>
       <Dialog open={panelOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{t("codex.importOAuth")}</DialogTitle>
+            <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-muted-foreground text-xs">{t("codex.oauthHint")}</p>
+            <p className="text-muted-foreground text-xs">{dialogHint}</p>
 
             {oauthStatus === "starting" && (
               <div className="flex items-center gap-2 text-sm">
@@ -425,11 +440,17 @@ function CodexAuthFileUploadButton({
   channelType,
   ensureChannelId,
   onRuntimeChannelHydrated,
+  buttonLabel,
+  invalidJsonMessage,
+  saveChannelFirstMessage,
 }: {
   channelId?: number
   channelType?: number
   ensureChannelId?: () => Promise<number>
   onRuntimeChannelHydrated?: (channelId: number) => Promise<void>
+  buttonLabel: string
+  invalidJsonMessage: string
+  saveChannelFirstMessage: string
 }) {
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
@@ -443,7 +464,7 @@ function CodexAuthFileUploadButton({
         return
       }
       if (files.some((file) => !file.name.toLowerCase().endsWith(".json"))) {
-        toast.error(t("codex.invalidJsonFile"))
+        toast.error(invalidJsonMessage)
         return
       }
 
@@ -454,7 +475,7 @@ function CodexAuthFileUploadButton({
           resolvedChannelId = await ensureChannelId()
         }
         if (!resolvedChannelId) {
-          toast.info(t("codex.saveChannelFirst"))
+          toast.info(saveChannelFirstMessage)
           return
         }
 
@@ -469,12 +490,21 @@ function CodexAuthFileUploadButton({
         const toastState = getCodexAuthUploadToastState(res.data)
         toast[toastState.level](t(toastState.key, toastState.values))
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : t("codex.invalidJsonFile"))
+        toast.error(err instanceof Error ? err.message : invalidJsonMessage)
       } finally {
         setUploading(false)
       }
     },
-    [channelId, channelType, ensureChannelId, onRuntimeChannelHydrated, queryClient, t],
+    [
+      channelId,
+      channelType,
+      ensureChannelId,
+      invalidJsonMessage,
+      onRuntimeChannelHydrated,
+      queryClient,
+      saveChannelFirstMessage,
+      t,
+    ],
   )
 
   return (
@@ -492,7 +522,7 @@ function CodexAuthFileUploadButton({
         ) : (
           <Upload className="mr-1.5 h-3.5 w-3.5" />
         )}
-        {uploading ? t("codex.uploadingFile") : t("codex.importFile")}
+        {uploading ? t("codex.uploadingFile") : buttonLabel}
       </Button>
       <input
         ref={fileInputRef}
@@ -532,6 +562,21 @@ export default function ChannelDialog({
   const queryClient = useQueryClient()
   const [showKey, setShowKey] = useState(false)
   const pendingCodexChannelIdRef = useRef<Promise<number> | null>(null)
+  const runtimeProviderKey = getRuntimeProviderKey(form.type)
+  const isRuntimeChannel = isRuntimeChannelType(form.type)
+  const runtimeProviderLabel = runtimeProviderKey ? t(`typeLabels.${form.type}`) : ""
+  const runtimeTitle = runtimeProviderLabel
+  const runtimeDescription = runtimeProviderKey
+    ? t(`runtime.providerDescription.${runtimeProviderKey}`, { provider: runtimeProviderLabel })
+    : ""
+  const runtimeAuthLabel = t("runtime.credentialsTitle", { provider: runtimeProviderLabel })
+  const runtimeKeyHint = t("runtime.keyManagedByAuthFiles", { provider: runtimeProviderLabel })
+  const runtimeModelHint = t("runtime.modelHint", { provider: runtimeProviderLabel })
+  const runtimeImportOAuthLabel = t("runtime.importOAuth", { provider: runtimeProviderLabel })
+  const runtimeImportFileLabel = t("runtime.importFile", { provider: runtimeProviderLabel })
+  const runtimeSaveChannelFirst = t("runtime.saveChannelFirst", { provider: runtimeProviderLabel })
+  const runtimeOauthHint = t("runtime.oauthHint", { provider: runtimeProviderLabel })
+  const runtimeInvalidJsonMessage = t("runtime.invalidJsonFile", { provider: runtimeProviderLabel })
 
   const ensureChannelIdForCodex = useCallback(async () => {
     if (form.id) {
@@ -622,16 +667,7 @@ export default function ChannelDialog({
             <Select
               value={String(form.type)}
               onValueChange={(v) => {
-                const newType = Number(v)
-                const update: Partial<ChannelFormData> = { type: newType }
-                // Auto-fill placeholder key for Codex/Copilot channels
-                if (
-                  (newType === 33 || newType === 34) &&
-                  (!form.keys[0]?.channelKey || form.keys[0].channelKey === "")
-                ) {
-                  update.keys = [{ channelKey: "managed-by-auth-files", remark: "" }]
-                }
-                setForm({ ...form, ...update })
+                setForm(adaptChannelDraftForType(form, Number(v)))
               }}
             >
               <SelectTrigger>
@@ -650,36 +686,54 @@ export default function ChannelDialog({
             </Select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>{t("channelDialog.baseUrl")}</Label>
-            <Input
-              placeholder="https://api.openai.com"
-              value={form.baseUrls[0]?.url ?? ""}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  baseUrls: [{ url: e.target.value, delay: form.baseUrls[0]?.delay ?? 0 }],
-                })
-              }
-            />
-          </div>
+          {isRuntimeChannel ? (
+            <div className="rounded-lg border border-dashed px-3 py-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{runtimeTitle}</p>
+                <p className="text-muted-foreground text-xs">{runtimeDescription}</p>
+              </div>
+            </div>
+          ) : null}
 
-          {form.type === 33 || form.type === 34 ? (
+          {!isRuntimeChannel ? (
             <div className="flex flex-col gap-2">
-              <Label>{t("channelDialog.apiKey")}</Label>
-              <p className="text-muted-foreground text-xs">{t("codex.keyManagedByAuthFiles")}</p>
+              <Label>{t("channelDialog.baseUrl")}</Label>
+              <Input
+                placeholder="https://api.openai.com"
+                value={form.baseUrls[0]?.url ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    baseUrls: [{ url: e.target.value, delay: form.baseUrls[0]?.delay ?? 0 }],
+                  })
+                }
+              />
+            </div>
+          ) : null}
+
+          {isRuntimeChannel ? (
+            <div className="flex flex-col gap-2">
+              <Label>{runtimeAuthLabel}</Label>
+              <p className="text-muted-foreground text-xs">{runtimeKeyHint}</p>
               <div className="flex flex-wrap gap-2">
                 <CodexOAuthButton
                   channelId={form.id}
                   channelType={form.type}
                   ensureChannelId={ensureChannelIdForCodex}
                   onRuntimeChannelHydrated={hydrateRuntimeChannelModels}
+                  buttonLabel={runtimeImportOAuthLabel}
+                  dialogTitle={runtimeImportOAuthLabel}
+                  dialogHint={runtimeOauthHint}
+                  saveChannelFirstMessage={runtimeSaveChannelFirst}
                 />
                 <CodexAuthFileUploadButton
                   channelId={form.id}
                   channelType={form.type}
                   ensureChannelId={ensureChannelIdForCodex}
                   onRuntimeChannelHydrated={hydrateRuntimeChannelModels}
+                  buttonLabel={runtimeImportFileLabel}
+                  invalidJsonMessage={runtimeInvalidJsonMessage}
+                  saveChannelFirstMessage={runtimeSaveChannelFirst}
                 />
               </div>
             </div>
@@ -729,9 +783,14 @@ export default function ChannelDialog({
                     {t("clearAll", { ns: "model" })}
                   </Button>
                 )}
-                <FetchModelsButton form={form} setForm={setForm} />
+                {shouldShowGenericModelFetch(form.type) ? (
+                  <FetchModelsButton form={form} setForm={setForm} />
+                ) : null}
               </div>
             </div>
+            {isRuntimeChannel ? (
+              <p className="text-muted-foreground text-xs">{runtimeModelHint}</p>
+            ) : null}
             <ModelTagInput
               value={form.model}
               onChange={(model) => setForm({ ...form, model })}

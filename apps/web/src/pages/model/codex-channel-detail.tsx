@@ -33,12 +33,16 @@ import {
   syncCodexKeys,
   uploadCodexAuthFile,
 } from "@/lib/api"
+import { getRuntimeProviderKey } from "./codex-channel-draft"
 import {
   channelsQueryKey,
   codexAuthFilesQueryKey,
   codexQuotaQueryKey,
   codexUploadRefreshQueryKeys,
 } from "./codex-query-keys"
+
+const AUTH_FILES_PAGE_SIZE = 8
+const QUOTA_PAGE_SIZE = 6
 
 interface CodexChannelDetailProps {
   channelId: number
@@ -54,16 +58,34 @@ export function CodexChannelDetail({
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
   const [modelsDialogFile, setModelsDialogFile] = useState<CodexAuthFile | null>(null)
+  const [authPage, setAuthPage] = useState(1)
+  const [quotaPage, setQuotaPage] = useState(1)
+  const providerKey = getRuntimeProviderKey(channelType)
+  const providerLabel = providerKey ? t(`typeLabels.${channelType}`) : t("typeLabels.33")
 
   const authQuery = useQuery({
-    queryKey: codexAuthFilesQueryKey(channelId),
+    queryKey: codexAuthFilesQueryKey(channelId, {
+      page: authPage,
+      pageSize: AUTH_FILES_PAGE_SIZE,
+      channelType,
+    }),
     queryFn: () =>
-      listCodexAuthFiles(channelId, { provider: runtimeProviderFilter(channelType), channelType }),
+      listCodexAuthFiles(channelId, {
+        provider: runtimeProviderFilter(channelType),
+        page: authPage,
+        pageSize: AUTH_FILES_PAGE_SIZE,
+        channelType,
+      }),
   })
 
   const quotaQuery = useQuery({
-    queryKey: codexQuotaQueryKey(channelId),
-    queryFn: () => listCodexQuota(channelId, { channelType }),
+    queryKey: codexQuotaQueryKey(channelId, {
+      page: quotaPage,
+      pageSize: QUOTA_PAGE_SIZE,
+      channelType,
+    }),
+    queryFn: () =>
+      listCodexQuota(channelId, { page: quotaPage, pageSize: QUOTA_PAGE_SIZE, channelType }),
   })
 
   const modelsQuery = useQuery({
@@ -207,6 +229,22 @@ export function CodexChannelDetail({
   const authFiles = authQuery.data?.data.files ?? []
   const quotaItems = quotaQuery.data?.data.items ?? []
   const capabilities = authQuery.data?.data.capabilities
+  const authTotal = authQuery.data?.data.total ?? 0
+  const quotaTotal = quotaQuery.data?.data.total ?? 0
+  const authTotalPages = Math.max(1, Math.ceil(authTotal / AUTH_FILES_PAGE_SIZE))
+  const quotaTotalPages = Math.max(1, Math.ceil(quotaTotal / QUOTA_PAGE_SIZE))
+
+  useEffect(() => {
+    if (authPage > authTotalPages) {
+      setAuthPage(authTotalPages)
+    }
+  }, [authPage, authTotalPages])
+
+  useEffect(() => {
+    if (quotaPage > quotaTotalPages) {
+      setQuotaPage(quotaTotalPages)
+    }
+  }, [quotaPage, quotaTotalPages])
 
   const handleRefresh = useCallback(() => {
     if (modelCount === 0 && authFiles.length > 0) {
@@ -237,13 +275,16 @@ export function CodexChannelDetail({
   const remainingPercent = (usedPercent?: number) =>
     Math.max(0, 100 - Math.min(usedPercent || 0, 100))
 
+  const hasCodexQuotaWindows = (item: (typeof quotaItems)[number]) =>
+    item.weekly.limitWindowSeconds > 0 || item.codeReview.limitWindowSeconds > 0
+
   return (
     <div className="mt-2 space-y-3">
       {/* Auth Files Section */}
       <div className="space-y-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <h5 className="text-muted-foreground shrink-0 text-xs font-medium tracking-wide whitespace-nowrap uppercase">
-            {t("codex.authFiles")}
+            {t("runtime.authFiles", { provider: providerLabel })}
           </h5>
           <div className="flex flex-wrap items-center gap-1 lg:justify-end">
             <Button
@@ -316,7 +357,7 @@ export function CodexChannelDetail({
           <p className="text-muted-foreground text-xs">{t("actions.loading", { ns: "common" })}</p>
         ) : authFiles.length === 0 ? (
           <div className="text-muted-foreground rounded-md border px-3 py-2 text-xs">
-            {t("codex.noAuthFiles")}
+            {t("runtime.noAuthFiles", { provider: providerLabel })}
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -372,6 +413,12 @@ export function CodexChannelDetail({
                 </div>
               )
             })}
+            <RuntimePagination
+              currentPage={authPage}
+              pageSize={AUTH_FILES_PAGE_SIZE}
+              total={authTotal}
+              onPageChange={setAuthPage}
+            />
           </div>
         )}
       </div>
@@ -380,7 +427,7 @@ export function CodexChannelDetail({
       {quotaItems.length > 0 && (
         <div className="space-y-2">
           <h5 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            {t("codex.remainingQuota")}
+            {t("runtime.remainingQuota", { provider: providerLabel })}
           </h5>
           <div className="grid gap-1.5 lg:grid-cols-2">
             {quotaItems.map((item) => (
@@ -395,7 +442,35 @@ export function CodexChannelDetail({
                 </div>
                 {item.error ? (
                   <p className="text-destructive text-[10px]">{item.error}</p>
-                ) : (
+                ) : item.snapshots && item.snapshots.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {item.snapshots.map((snapshot) => (
+                      <div key={snapshot.id}>
+                        <div className="mb-0.5 flex items-center justify-between text-[10px]">
+                          <span>{snapshot.label}</span>
+                          <span>
+                            {snapshot.unlimited
+                              ? t("runtime.unlimited")
+                              : `${Math.max(0, Math.min(snapshot.percentRemaining, 100)).toFixed(1)}%`}
+                          </span>
+                        </div>
+                        <Progress
+                          value={
+                            snapshot.unlimited
+                              ? 100
+                              : Math.max(0, Math.min(snapshot.percentRemaining, 100))
+                          }
+                          className="h-1.5"
+                        />
+                      </div>
+                    ))}
+                    {item.resetAt ? (
+                      <p className="text-muted-foreground text-[10px]">
+                        {t("runtime.resetAt", { resetAt: item.resetAt })}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : hasCodexQuotaWindows(item) ? (
                   <div className="space-y-1.5">
                     <div>
                       <div className="mb-0.5 flex items-center justify-between text-[10px]">
@@ -418,10 +493,20 @@ export function CodexChannelDetail({
                       />
                     </div>
                   </div>
+                ) : (
+                  <p className="text-muted-foreground text-[10px]">
+                    {t("runtime.quotaUnavailable")}
+                  </p>
                 )}
               </div>
             ))}
           </div>
+          <RuntimePagination
+            currentPage={quotaPage}
+            pageSize={QUOTA_PAGE_SIZE}
+            total={quotaTotal}
+            onPageChange={setQuotaPage}
+          />
         </div>
       )}
 
@@ -524,6 +609,61 @@ export function CodexChannelDetail({
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function RuntimePagination({
+  currentPage,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  currentPage: number
+  pageSize: number
+  total: number
+  onPageChange: (page: number) => void
+}) {
+  const { t } = useTranslation(["model", "common"])
+
+  if (total <= 0) {
+    return null
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const from = (currentPage - 1) * pageSize + 1
+  const to = Math.min(total, currentPage * pageSize)
+
+  return (
+    <div className="flex flex-col gap-2 pt-1 text-xs sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-muted-foreground flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+        <span>{t("pagination.showing", { ns: "common", from, to, total })}</span>
+        <span>
+          {t("pagination.page", { ns: "common", current: currentPage, total: totalPages })}
+        </span>
+      </div>
+      <div className="flex items-center gap-1 self-end sm:self-auto">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage <= 1}
+        >
+          {t("pagination.previous", { ns: "common" })}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage >= totalPages}
+        >
+          {t("pagination.next", { ns: "common" })}
+        </Button>
+      </div>
     </div>
   )
 }

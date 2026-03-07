@@ -67,7 +67,18 @@ type codexQuotaItem struct {
 	PlanType   string           `json:"planType,omitempty"`
 	Weekly     codexQuotaWindow `json:"weekly"`
 	CodeReview codexQuotaWindow `json:"codeReview"`
+	Snapshots  []quotaSnapshot  `json:"snapshots,omitempty"`
+	ResetAt    string           `json:"resetAt,omitempty"`
 	Error      string           `json:"error,omitempty"`
+}
+
+type quotaSnapshot struct {
+	ID               string  `json:"id"`
+	Label            string  `json:"label"`
+	PercentRemaining float64 `json:"percentRemaining"`
+	Remaining        float64 `json:"remaining,omitempty"`
+	Entitlement      float64 `json:"entitlement,omitempty"`
+	Unlimited        bool    `json:"unlimited,omitempty"`
 }
 
 type codexOAuthSession struct {
@@ -748,14 +759,12 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 	paged, total := filterAndPaginateAuthFiles(files, providerFilter, search, page, pageSize)
 
 	if channel.Type == types.OutboundCopilot {
-		items := make([]codexQuotaItem, len(paged))
-		for i, file := range paged {
-			items[i] = codexQuotaItem{
-				Name:      file.Name,
-				Email:     file.Email,
-				AuthIndex: file.AuthIndex,
+		items := h.collectCopilotQuotaItems(c.Request.Context(), paged, codexQuotaFetchConcurrency, func(ctx context.Context, file codexAuthFile) ([]quotaSnapshot, string, string, error) {
+			if h.codexCapabilities().LocalEnabled {
+				return h.fetchLocalCopilotQuota(ctx, file.Raw)
 			}
-		}
+			return h.fetchCopilotQuota(ctx, file.AuthIndex)
+		})
 		successJSON(c, gin.H{"items": items, "total": total, "page": page, "pageSize": pageSize})
 		return
 	}
@@ -796,6 +805,55 @@ func (h *Handler) collectCodexQuotaItems(ctx context.Context, files []codexAuthF
 	}
 	wg.Wait()
 	return items
+}
+
+func (h *Handler) collectCopilotQuotaItems(ctx context.Context, files []codexAuthFile, concurrency int, fetch func(context.Context, codexAuthFile) ([]quotaSnapshot, string, string, error)) []codexQuotaItem {
+	items := make([]codexQuotaItem, len(files))
+	if concurrency <= 1 {
+		for i, file := range files {
+			items[i] = buildCopilotQuotaItem(ctx, file, fetch)
+		}
+		return items
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for i, file := range files {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, file codexAuthFile) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			items[i] = buildCopilotQuotaItem(ctx, file, fetch)
+		}(i, file)
+	}
+	wg.Wait()
+	return items
+}
+
+func buildCopilotQuotaItem(ctx context.Context, file codexAuthFile, fetch func(context.Context, codexAuthFile) ([]quotaSnapshot, string, string, error)) codexQuotaItem {
+	item := codexQuotaItem{
+		Name:      file.Name,
+		Email:     file.Email,
+		AuthIndex: file.AuthIndex,
+	}
+	if file.AuthIndex == "" {
+		item.Error = "missing auth_index"
+		return item
+	}
+	snapshots, planType, resetAt, err := fetch(ctx, file)
+	if err != nil {
+		item.Error = err.Error()
+		return item
+	}
+	if len(snapshots) == 0 {
+		item.Error = "copilot quota unavailable"
+		return item
+	}
+	item.PlanType = planType
+	item.ResetAt = resetAt
+	item.Snapshots = snapshots
+	return item
 }
 
 func buildCodexQuotaItem(ctx context.Context, file codexAuthFile, fetch func(context.Context, codexAuthFile) (codexQuotaWindow, codexQuotaWindow, string, error)) codexQuotaItem {
@@ -1223,6 +1281,59 @@ func (h *Handler) fetchLocalCodexQuota(ctx context.Context, raw map[string]any) 
 	return parseCodexQuotaBody(string(body))
 }
 
+func (h *Handler) fetchCopilotQuota(ctx context.Context, authIndex string) ([]quotaSnapshot, string, string, error) {
+	query := url.Values{}
+	if strings.TrimSpace(authIndex) != "" {
+		query.Set("auth_index", authIndex)
+	}
+	var out struct {
+		AccessTypeSKU     string         `json:"access_type_sku"`
+		CopilotPlan       string         `json:"copilot_plan"`
+		QuotaResetDate    string         `json:"quota_reset_date"`
+		QuotaSnapshots    map[string]any `json:"quota_snapshots"`
+		MonthlyQuotas     map[string]any `json:"monthly_quotas"`
+		LimitedUser       map[string]any `json:"limited_user_quotas"`
+		LimitedReset      string         `json:"limited_user_reset_date"`
+		QuotaResetDateUTC string         `json:"quota_reset_date_utc"`
+	}
+	if err := h.codexManagementCallContext(ctx, http.MethodGet, "/copilot-quota", query, nil, &out); err != nil {
+		return nil, "", "", err
+	}
+	body, err := json.Marshal(out)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("encode copilot quota response: %w", err)
+	}
+	return parseCopilotQuotaBody(string(body))
+}
+
+func (h *Handler) fetchLocalCopilotQuota(ctx context.Context, raw map[string]any) ([]quotaSnapshot, string, string, error) {
+	accessToken := extractAccessToken(raw)
+	if accessToken == "" {
+		return nil, "", "", fmt.Errorf("missing access token")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/copilot_internal/user", nil)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("build copilot quota request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", "wheel/copilot-quota")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := h.doCodexQuotaRequest(req)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("request copilot quota: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("read copilot quota response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", "", fmt.Errorf("quota request returned status %d", resp.StatusCode)
+	}
+	return parseCopilotQuotaBody(string(body))
+}
+
 func (h *Handler) doCodexQuotaRequest(req *http.Request) (*http.Response, error) {
 	if h != nil && h.codexQuotaDo != nil {
 		return h.codexQuotaDo(req)
@@ -1280,6 +1391,123 @@ func parseCodexQuotaBody(body string) (codexQuotaWindow, codexQuotaWindow, strin
 	codeReview.LimitReached = boolFromMap(codeReviewRate, "limit_reached", "limitReached")
 
 	return weekly, codeReview, planType, nil
+}
+
+func parseCopilotQuotaBody(body string) ([]quotaSnapshot, string, string, error) {
+	bodyMap := map[string]any{}
+	if err := json.Unmarshal([]byte(body), &bodyMap); err != nil {
+		return nil, "", "", fmt.Errorf("invalid copilot quota response")
+	}
+
+	planType := stringFromMap(bodyMap, "copilot_plan", "access_type_sku", "accessTypeSKU")
+	resetAt := stringFromMap(bodyMap, "quota_reset_date", "quotaResetDate", "quota_reset_date_utc", "quotaResetDateUtc", "limited_user_reset_date", "limitedUserResetDate")
+
+	snapshotsMap := mapFromAny(bodyMap["quota_snapshots"])
+	if len(snapshotsMap) > 0 {
+		snapshots := collectCopilotSnapshotsFromQuotaSnapshots(snapshotsMap)
+		if len(snapshots) == 0 {
+			return nil, planType, resetAt, fmt.Errorf("copilot quota unavailable")
+		}
+		return snapshots, planType, resetAt, nil
+	}
+
+	monthlyQuotas := mapFromAny(bodyMap["monthly_quotas"])
+	if len(monthlyQuotas) == 0 {
+		monthlyQuotas = mapFromAny(bodyMap["monthlyQuotas"])
+	}
+	limitedQuotas := mapFromAny(bodyMap["limited_user_quotas"])
+	if len(limitedQuotas) == 0 {
+		limitedQuotas = mapFromAny(bodyMap["limitedUserQuotas"])
+	}
+	snapshots := collectCopilotSnapshotsFromMonthlyQuota(monthlyQuotas, limitedQuotas)
+	if len(snapshots) == 0 {
+		return nil, planType, resetAt, fmt.Errorf("copilot quota unavailable")
+	}
+	return snapshots, planType, resetAt, nil
+}
+
+func collectCopilotSnapshotsFromQuotaSnapshots(raw map[string]any) []quotaSnapshot {
+	keys := []struct {
+		id    string
+		label string
+	}{
+		{id: "chat", label: "Chat"},
+		{id: "completions", label: "Completions"},
+		{id: "premium_interactions", label: "Premium Interactions"},
+	}
+	out := make([]quotaSnapshot, 0, len(keys))
+	for _, key := range keys {
+		detail := mapFromAny(raw[key.id])
+		if len(detail) == 0 {
+			continue
+		}
+		out = appendCopilotSnapshot(out, key.id, key.label, detail)
+	}
+	return out
+}
+
+func collectCopilotSnapshotsFromMonthlyQuota(monthlyQuotas map[string]any, limitedQuotas map[string]any) []quotaSnapshot {
+	keys := []struct {
+		id    string
+		label string
+	}{
+		{id: "chat", label: "Chat"},
+		{id: "completions", label: "Completions"},
+	}
+	out := make([]quotaSnapshot, 0, len(keys))
+	for _, key := range keys {
+		entitlement := floatFromMap(monthlyQuotas, key.id)
+		if entitlement <= 0 {
+			continue
+		}
+		remaining := entitlement
+		if raw := valueByKeys(limitedQuotas, key.id); raw != nil {
+			remaining = floatFromMap(map[string]any{"value": raw}, "value")
+		}
+		percentRemaining := 0.0
+		if entitlement > 0 {
+			percentRemaining = (remaining / entitlement) * 100
+		}
+		out = append(out, quotaSnapshot{
+			ID:               key.id,
+			Label:            key.label,
+			PercentRemaining: clampPercent(percentRemaining),
+			Remaining:        remaining,
+			Entitlement:      entitlement,
+		})
+	}
+	return out
+}
+
+func appendCopilotSnapshot(out []quotaSnapshot, id string, label string, detail map[string]any) []quotaSnapshot {
+	if len(detail) == 0 {
+		return out
+	}
+	percentRemaining := floatFromMap(detail, "percent_remaining", "percentRemaining")
+	remaining := floatFromMap(detail, "quota_remaining", "quotaRemaining", "remaining")
+	entitlement := floatFromMap(detail, "entitlement")
+	unlimited := boolFromMap(detail, "unlimited")
+	if percentRemaining == 0 && remaining == 0 && entitlement == 0 && !unlimited {
+		return out
+	}
+	return append(out, quotaSnapshot{
+		ID:               id,
+		Label:            label,
+		PercentRemaining: clampPercent(percentRemaining),
+		Remaining:        remaining,
+		Entitlement:      entitlement,
+		Unlimited:        unlimited,
+	})
+}
+
+func clampPercent(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 func (h *Handler) ensureCodexManagementConfigured() error {

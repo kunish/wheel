@@ -236,6 +236,26 @@
     "uploadSummaryError": "上传失败，共 {{failedCount}} 个认证文件未导入",
     "invalidJsonFile": "请选择 .json 认证文件"
   },
+  "runtime": {
+    "authFiles": "{{provider}} 认证文件",
+    "remainingQuota": "{{provider}} 剩余配额",
+    "noAuthFiles": "暂未找到认证文件。请先通过 OAuth 导入 {{provider}} 账号，或上传认证文件后再继续。",
+    "credentialsTitle": "{{provider}} Runtime 凭证",
+    "keyManagedByAuthFiles": "{{provider}} 凭证通过导入的认证文件管理，不需要手动粘贴 API Key。",
+    "modelHint": "{{provider}} Runtime 渠道的模型会根据已导入账号自动同步；你仍然可以在这里检查或补充最终模型列表。",
+    "importOAuth": "导入 {{provider}} OAuth",
+    "importFile": "上传 {{provider}} 认证文件",
+    "saveChannelFirst": "请先保存 {{provider}} 渠道，再导入 Runtime 账号。",
+    "oauthHint": "请在新页面中完成 {{provider}} OAuth 登录。本对话框会持续轮询，并在登录成功后自动导入认证文件。",
+    "invalidJsonFile": "请选择有效的 {{provider}} .json 认证文件。",
+    "quotaUnavailable": "暂时无法获取配额详情。",
+    "unlimited": "无限制",
+    "resetAt": "重置时间 {{resetAt}}",
+    "providerDescription": {
+      "codex": "创建一个由 Runtime 管理的 Codex 渠道，凭证来自 OAuth 或导入的认证文件，而不是手动输入的 API Key。",
+      "copilot": "创建一个由 Runtime 管理的 GitHub Copilot 渠道，使用导入凭证与配额感知的认证文件管理流程。"
+    }
+  },
   "routingRules": {
     "title": "路由规则",
     "description": "定义条件规则，在请求到达上游服务商之前进行路由、拒绝或重写。",

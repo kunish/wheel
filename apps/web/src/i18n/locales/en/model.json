@@ -236,6 +236,26 @@
     "uploadSummaryError": "Failed to upload {{failedCount}} auth file(s)",
     "invalidJsonFile": "Please choose a .json auth file"
   },
+  "runtime": {
+    "authFiles": "{{provider}} Auth Files",
+    "remainingQuota": "{{provider}} Remaining Quota",
+    "noAuthFiles": "No auth files found yet. Import {{provider}} accounts with OAuth or upload auth files to continue.",
+    "credentialsTitle": "{{provider}} Runtime Credentials",
+    "keyManagedByAuthFiles": "{{provider}} credentials are managed through imported auth files, not a pasted API key.",
+    "modelHint": "Models for {{provider}} runtime channels are synced from imported accounts. You can still review or supplement the final model list here.",
+    "importOAuth": "Import {{provider}} OAuth",
+    "importFile": "Upload {{provider}} Auth File",
+    "saveChannelFirst": "Please save the {{provider}} channel first, then import runtime accounts.",
+    "oauthHint": "Start the {{provider}} OAuth flow in a new page. This dialog keeps polling and imports the auth file automatically after login succeeds.",
+    "invalidJsonFile": "Please choose a valid {{provider}} auth .json file.",
+    "quotaUnavailable": "Quota details are currently unavailable.",
+    "unlimited": "Unlimited",
+    "resetAt": "Resets at {{resetAt}}",
+    "providerDescription": {
+      "codex": "Create a runtime-managed Codex channel that pulls credentials from imported auth files or OAuth instead of a pasted API key.",
+      "copilot": "Create a runtime-managed GitHub Copilot channel that uses imported runtime credentials and quota-aware auth-file management."
+    }
+  },
   "routingRules": {
     "title": "Routing Rules",
     "description": "Define conditional rules to route, reject, or rewrite requests before they reach upstream providers.",
