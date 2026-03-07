@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/kunish/wheel/compare/v1.22.5...v1.23.0) (2026-03-07)
+
+
+### Features
+
+* expand OpenAI-compatible relay support ([5e28cda](https://github.com/kunish/wheel/commit/5e28cdaa7934f5308b2c9eb886e79b5158922cf4))
+
 ## [1.22.5](https://github.com/kunish/wheel/compare/v1.22.4...v1.22.5) (2026-03-07)
 
 
