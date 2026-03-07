@@ -7,6 +7,7 @@ RUN apk add --no-cache git make
 
 WORKDIR /build
 COPY apps/worker/go.mod apps/worker/go.sum ./
+COPY apps/worker/third_party/CLIProxyAPIPlus/go.mod apps/worker/third_party/CLIProxyAPIPlus/go.sum ./third_party/CLIProxyAPIPlus/
 RUN go mod download
 
 COPY apps/worker/ .
