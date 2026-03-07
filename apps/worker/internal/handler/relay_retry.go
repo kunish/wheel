@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -20,6 +21,7 @@ type retryOutcome struct {
 	LastError        string
 	LastRetryAfterMs int64
 	LastStreamID     string
+	LastHeaders      http.Header
 	Attempts         []attemptRecord
 	Result           *relayResult // populated on success, carries token counts and content
 }
@@ -49,6 +51,7 @@ func (h *RelayHandler) executeWithRetry(
 	attemptCount := 0
 	var lastError string
 	var lastRetryAfterMs int64
+	var lastHeaders http.Header
 	rateLimited := false
 
 	cbBaseSec, cbMaxSec := h.CircuitBreakers.GetCooldownConfig(c.Request.Context(), h.DB)
@@ -146,19 +149,45 @@ func (h *RelayHandler) executeWithRetry(
 
 			// Build upstream request
 			isAnthropicPassthrough := isAnthropicInbound && channel.Type == types.OutboundAnthropic
+			channelConfig := relay.ChannelConfig{
+				Type:          channel.Type,
+				BaseUrls:      []types.BaseUrl(channel.BaseUrls),
+				CustomHeader:  []types.CustomHeader(channel.CustomHeader),
+				ParamOverride: channel.ParamOverride,
+			}
 			upstream := relay.BuildUpstreamRequest(
-				relay.ChannelConfig{
-					Type:          channel.Type,
-					BaseUrls:      []types.BaseUrl(channel.BaseUrls),
-					CustomHeader:  []types.CustomHeader(channel.CustomHeader),
-					ParamOverride: channel.ParamOverride,
-				},
+				channelConfig,
 				selectedKey.ChannelKey,
 				body,
 				c.Request.URL.Path,
 				targetModel,
 				isAnthropicPassthrough,
 			)
+			if relay.ShouldUseMultimodalExecution(req.RequestType, channel.Type) {
+				upstream = relay.BuildMultimodalUpstreamRequest(
+					channelConfig,
+					selectedKey.ChannelKey,
+					body,
+					targetModel,
+					req.RequestType,
+				)
+				if relay.RequiresMultipartForm(req.RequestType) {
+					multipartBody, multipartContentType, err := relay.BuildMultipartUpstreamBody(
+						req.ContentType,
+						req.BodyBytes,
+						body,
+						targetModel,
+						channel.ParamOverride,
+					)
+					if err == nil {
+						upstream.Headers["Content-Type"] = multipartContentType
+						upstream.Body = string(multipartBody)
+					} else {
+						upstream.Headers["Content-Type"] = req.ContentType
+						upstream.Body = string(req.BodyBytes)
+					}
+				}
+			}
 
 			originalBody, _ := json.Marshal(body)
 			var upstreamBodyForLog *string
@@ -169,6 +198,7 @@ func (h *RelayHandler) executeWithRetry(
 
 			params := &relayAttemptParams{
 				C:                      c,
+				RequestType:            req.RequestType,
 				Upstream:               upstream,
 				Channel:                channel,
 				SelectedKey:            selectedKey,
@@ -192,6 +222,9 @@ func (h *RelayHandler) executeWithRetry(
 				errMsg := proxyErr.Error()
 				attemptDuration := int(time.Since(attemptStart).Milliseconds())
 				pe, isProxyErr := proxyErr.(*relay.ProxyError)
+				if isProxyErr {
+					lastHeaders = pe.Headers
+				}
 				attempts = append(attempts, attemptRecord{
 					ChannelID:    channel.ID,
 					ChannelKeyID: &keyId,
@@ -219,6 +252,7 @@ func (h *RelayHandler) executeWithRetry(
 						RateLimited:  false,
 						LastError:    lastError,
 						LastStreamID: lastStreamId,
+						LastHeaders:  lastHeaders,
 						Attempts:     attempts,
 					}
 				}
@@ -232,8 +266,10 @@ func (h *RelayHandler) executeWithRetry(
 						lastRetryAfterMs = 1000
 					}
 					rateLimited = true
-					_ = dal.UpdateChannelKeyStatus(c.Request.Context(), h.DB, selectedKey.ID, 429)
-					h.Cache.Delete("channels")
+					if h.DB != nil {
+						_ = dal.UpdateChannelKeyStatus(c.Request.Context(), h.DB, selectedKey.ID, 429)
+						h.Cache.Delete("channels")
+					}
 				}
 
 				continue
@@ -259,7 +295,7 @@ func (h *RelayHandler) executeWithRetry(
 				h.Sessions.SetSticky(apiKeyId, model, channel.ID, selectedKey.ID)
 			}
 
-			if selectedKey.StatusCode == 429 {
+			if selectedKey.StatusCode == 429 && h.DB != nil {
 				_ = dal.UpdateChannelKeyStatus(c.Request.Context(), h.DB, selectedKey.ID, 0)
 				h.Cache.Delete("channels")
 			}
@@ -278,6 +314,7 @@ func (h *RelayHandler) executeWithRetry(
 		LastError:        lastError,
 		LastRetryAfterMs: lastRetryAfterMs,
 		LastStreamID:     lastStreamId,
+		LastHeaders:      lastHeaders,
 		Attempts:         attempts,
 	}
 }
@@ -336,6 +373,8 @@ func (h *RelayHandler) handleExhaustion(c *gin.Context, req *relayRequest, outco
 		model, lastAttemptChannelID, lastAttemptChannelName,
 		req.Body, outcome.LastError, outcome.Attempts, startTime, outcome.LastStreamID,
 	)
+
+	relay.CopyMeaningfulErrorHeaders(c.Writer.Header(), outcome.LastHeaders)
 
 	if retryAfterSecs > 0 {
 		c.Header("Retry-After", strconv.Itoa(retryAfterSecs))

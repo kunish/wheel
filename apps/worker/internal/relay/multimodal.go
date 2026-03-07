@@ -1,10 +1,14 @@
 package relay
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/kunish/wheel/apps/worker/internal/types"
@@ -34,11 +38,14 @@ func BuildMultimodalUpstreamRequest(
 	if !ok {
 		path = "/v1/chat/completions"
 	}
+	if channel.Type == types.OutboundAzureOpenAI {
+		return buildAzureOpenAIRequest(baseUrl, key, body, path, model, channel)
+	}
 
 	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + key,
+		"Content-Type": "application/json",
 	}
+	headers["Authorization"] = "Bearer " + key
 	for _, h := range channel.CustomHeader {
 		headers[h.Key] = h.Value
 	}
@@ -53,6 +60,113 @@ func BuildMultimodalUpstreamRequest(
 		Headers: headers,
 		Body:    string(bodyJSON),
 	}
+}
+
+// BuildMultipartUpstreamBody rebuilds multipart/form-data requests after model
+// rewriting and param overrides have been applied while preserving file parts.
+func BuildMultipartUpstreamBody(
+	contentType string,
+	bodyBytes []byte,
+	body map[string]any,
+	model string,
+	paramOverride *string,
+) ([]byte, string, error) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
+		return nil, "", fmt.Errorf("unsupported content type")
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		return nil, "", fmt.Errorf("invalid multipart form data")
+	}
+
+	outBody := copyBody(body)
+	outBody["model"] = model
+	applyParamOverrides(outBody, paramOverride)
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	keys := make([]string, 0, len(outBody))
+	for key := range outBody {
+		if key == "file" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if err := writeMultipartField(writer, key, outBody[key]); err != nil {
+			return nil, "", err
+		}
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(bodyBytes), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		if part.FileName() == "" {
+			continue
+		}
+
+		hdr := make(map[string][]string, len(part.Header))
+		for key, values := range part.Header {
+			hdr[key] = append([]string(nil), values...)
+		}
+		dst, err := writer.CreatePart(hdr)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := io.Copy(dst, part); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+
+	return buf.Bytes(), writer.FormDataContentType(), nil
+}
+
+func writeMultipartField(writer *multipart.Writer, key string, value any) error {
+	switch values := value.(type) {
+	case []any:
+		for _, item := range values {
+			if err := writer.WriteField(key, stringifyMultipartFieldValue(item)); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []string:
+		for _, item := range values {
+			if err := writer.WriteField(key, item); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return writer.WriteField(key, stringifyMultipartFieldValue(value))
+	}
+}
+
+func stringifyMultipartFieldValue(value any) string {
+	if value == nil {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return s
+	}
+	encoded, err := json.Marshal(value)
+	if err == nil {
+		return string(encoded)
+	}
+	return fmt.Sprint(value)
 }
 
 // ProxyMultimodal proxies a multimodal request and returns the result.
@@ -102,8 +216,9 @@ func ProxyMultimodal(
 
 	// Extract token usage if present
 	pr := &ProxyResult{
-		Response:   result,
-		StatusCode: resp.StatusCode,
+		Response:        result,
+		StatusCode:      resp.StatusCode,
+		UpstreamHeaders: resp.Header.Clone(),
 	}
 	if usage, ok := result["usage"].(map[string]any); ok {
 		pr.InputTokens = toInt(usage["prompt_tokens"])
@@ -161,9 +276,39 @@ func IsAudioBinaryResponse(requestType string) bool {
 	return requestType == RequestTypeAudioSpeech
 }
 
+// RequiresEndpointAwareExecution returns true for request types that need
+// dedicated multimodal execution instead of the generic JSON proxy flow.
+func RequiresEndpointAwareExecution(requestType string) bool {
+	return IsMultimodalRequest(requestType) || requestType == RequestTypeModerations
+}
+
+// ShouldUseMultimodalExecution returns true when the request should use the
+// OpenAI-compatible multimodal execution path for the selected channel.
+func ShouldUseMultimodalExecution(requestType string, channelType types.OutboundType) bool {
+	if !RequiresEndpointAwareExecution(requestType) {
+		return false
+	}
+	for _, supportedType := range multimodalChannelTypes() {
+		if channelType == supportedType {
+			return true
+		}
+	}
+	return false
+}
+
+// IsDeferredExecutionUnsupported returns true for multimedia endpoints that are
+// not yet supported by async/batch background execution.
+func IsDeferredExecutionUnsupported(requestType string) bool {
+	switch requestType {
+	case RequestTypeAudioSpeech, RequestTypeAudioTranscribe, RequestTypeAudioTranslate:
+		return true
+	}
+	return false
+}
+
 // ExtractMultimodalModel extracts the model from multimodal request bodies.
-// Some endpoints like audio/transcriptions use "model" in form data,
-// but we normalize everything to JSON in the gateway.
+// Some endpoints like audio/transcriptions use "model" in form data.
+// The handler decides when endpoint defaults are allowed.
 func ExtractMultimodalModel(body map[string]any, requestType string) string {
 	if m, ok := body["model"].(string); ok && m != "" {
 		return m
@@ -180,6 +325,15 @@ func ExtractMultimodalModel(body map[string]any, requestType string) string {
 		return "omni-moderation-latest"
 	}
 	return ""
+}
+
+// AllowsDefaultMultimodalModel returns true when the handler may infer a model.
+func AllowsDefaultMultimodalModel(requestType string) bool {
+	switch requestType {
+	case RequestTypeImageGeneration, RequestTypeAudioSpeech, RequestTypeModerations:
+		return true
+	}
+	return false
 }
 
 // multimodalChannelTypes lists channel types that support multimodal endpoints.

@@ -15,6 +15,11 @@ func (h *RelayHandler) executeBackgroundNonStream(
 	requestModel string,
 	apiKeyID int,
 ) (*relay.ProxyResult, error) {
+	requestType := relay.DetectRequestType(requestPath)
+	if relay.IsDeferredExecutionUnsupported(requestType) {
+		return nil, fmt.Errorf("background execution does not support audio endpoint %s", requestPath)
+	}
+
 	allChannels := h.loadChannels()
 	allGroups := h.loadGroups()
 
@@ -58,13 +63,14 @@ func (h *RelayHandler) executeBackgroundNonStream(
 				continue
 			}
 
+			channelConfig := relay.ChannelConfig{
+				Type:          channel.Type,
+				BaseUrls:      []types.BaseUrl(channel.BaseUrls),
+				CustomHeader:  []types.CustomHeader(channel.CustomHeader),
+				ParamOverride: channel.ParamOverride,
+			}
 			upstream := relay.BuildUpstreamRequest(
-				relay.ChannelConfig{
-					Type:          channel.Type,
-					BaseUrls:      []types.BaseUrl(channel.BaseUrls),
-					CustomHeader:  []types.CustomHeader(channel.CustomHeader),
-					ParamOverride: channel.ParamOverride,
-				},
+				channelConfig,
 				selectedKey.ChannelKey,
 				requestBody,
 				requestPath,
@@ -72,14 +78,37 @@ func (h *RelayHandler) executeBackgroundNonStream(
 				false,
 			)
 
-			result, err := relay.ProxyNonStreaming(
-				h.HTTPClient,
-				upstream.URL,
-				upstream.Headers,
-				upstream.Body,
-				channel.Type,
-				false,
-			)
+			var result *relay.ProxyResult
+			var err error
+			if relay.ShouldUseMultimodalExecution(requestType, channel.Type) {
+				upstream = relay.BuildMultimodalUpstreamRequest(
+					channelConfig,
+					selectedKey.ChannelKey,
+					requestBody,
+					targetModel,
+					requestType,
+				)
+				var proxyErr *relay.ProxyError
+				result, proxyErr = relay.ProxyMultimodal(
+					h.HTTPClient,
+					upstream.URL,
+					upstream.Headers,
+					upstream.Body,
+					requestType,
+				)
+				if proxyErr != nil {
+					err = proxyErr
+				}
+			} else {
+				result, err = relay.ProxyNonStreaming(
+					h.HTTPClient,
+					upstream.URL,
+					upstream.Headers,
+					upstream.Body,
+					channel.Type,
+					false,
+				)
+			}
 			if err != nil {
 				lastErr = err
 				h.CircuitBreakers.RecordFailure(channel.ID, selectedKey.ID, targetModel, context.Background(), h.DB)

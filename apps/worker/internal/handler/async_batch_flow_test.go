@@ -383,3 +383,58 @@ func TestExecuteBackgroundNonStream_Proxy429WithNilDBDoesNotPanic(t *testing.T) 
 		t.Fatal("expected error when upstream responds with 429")
 	}
 }
+
+func TestExecuteBackgroundNonStream_SupportsEndpointAwareJSONRoutes(t *testing.T) {
+	model := "dall-e-3"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/images/generations" {
+			t.Fatalf("path = %q, want %q", r.URL.Path, "/v1/images/generations")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"url":"https://example.com/image.png"}]}`))
+	}))
+	defer server.Close()
+
+	h := newTestRelayHandler(t, model,
+		[]types.Channel{makeChannel(1, server.URL, 901, "k1")},
+		[]types.GroupItem{{GroupID: 1, ChannelID: 1, ModelName: model, Priority: 1, Enabled: true}},
+	)
+
+	result, err := h.executeBackgroundNonStream(
+		"/v1/images/generations",
+		map[string]any{"model": model, "prompt": "hello"},
+		model,
+		1,
+	)
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result for endpoint-aware json route")
+	}
+	data, ok := result.Response["data"].([]any)
+	if !ok || len(data) != 1 {
+		t.Fatalf("unexpected image response: %#v", result.Response)
+	}
+}
+
+func TestExecuteBackgroundNonStream_RejectsUnsupportedAudioEndpoints(t *testing.T) {
+	h := newTestRelayHandler(t, "whisper-1",
+		[]types.Channel{makeChannel(1, "http://example.invalid", 901, "k1")},
+		[]types.GroupItem{{GroupID: 1, ChannelID: 1, ModelName: "whisper-1", Priority: 1, Enabled: true}},
+	)
+
+	_, err := h.executeBackgroundNonStream(
+		"/v1/audio/transcriptions",
+		map[string]any{"model": "whisper-1"},
+		"whisper-1",
+		1,
+	)
+	if err == nil {
+		t.Fatal("expected explicit error for unsupported audio background execution")
+	}
+	if got := err.Error(); got != "background execution does not support audio endpoint /v1/audio/transcriptions" {
+		t.Fatalf("error = %q, want %q", got, "background execution does not support audio endpoint /v1/audio/transcriptions")
+	}
+}

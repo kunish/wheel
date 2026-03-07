@@ -58,6 +58,15 @@ func IsMultimodalRequest(requestType string) bool {
 	return false
 }
 
+// RequiresMultipartForm returns true for endpoints that accept multipart/form-data.
+func RequiresMultipartForm(requestType string) bool {
+	switch requestType {
+	case RequestTypeAudioTranscribe, RequestTypeAudioTranslate:
+		return true
+	}
+	return false
+}
+
 // ExtractModel extracts the model name and stream flag from the parsed request body.
 func ExtractModel(body map[string]any) (model string, stream bool) {
 	if m, ok := body["model"].(string); ok {

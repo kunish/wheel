@@ -2,10 +2,9 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +21,8 @@ import (
 )
 
 const (
-	maxRetryRounds = 3
+	maxRetryRounds          = 3
+	openAIModelsCreatedUnix = 0
 )
 
 // attemptRecord tracks a single relay attempt for logging.
@@ -88,78 +88,6 @@ func (h *RelayHandler) selectChannels(c *gin.Context, model string, apiKeyId int
 		ChannelMap:        channelMap,
 		FirstTokenTimeout: group.FirstTokenTimeOut,
 		SessionKeepTime:   sessionKeepTime,
-	}
-}
-
-// relayRequest holds the parsed relay request data.
-type relayRequest struct {
-	RequestType        string
-	IsAnthropicInbound bool
-	Body               map[string]any
-	BodyBytes          []byte
-	Model              string
-	OriginalModel      string // preserved for logs/metrics after routing rules modify Model
-	Stream             bool
-	ApiKeyID           int
-}
-
-// parseRelayRequest reads the request body, extracts model/stream, and checks access.
-// Returns nil if an error response was already written to the client.
-func (h *RelayHandler) parseRelayRequest(c *gin.Context) *relayRequest {
-	path := c.Request.URL.Path
-
-	requestType := relay.DetectRequestType(path)
-	isAnthropicInbound := requestType == relay.RequestTypeAnthropicMsg
-	if requestType == "" {
-		c.JSON(400, gin.H{"error": gin.H{"message": "Unsupported endpoint", "type": "invalid_request_error"}})
-		return nil
-	}
-
-	bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, 10*1024*1024))
-	if err != nil {
-		apiError(c, 400, "invalid_request_error", "Failed to read request body", isAnthropicInbound)
-		return nil
-	}
-
-	var body map[string]any
-	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		apiError(c, 400, "invalid_request_error", "Invalid JSON body", isAnthropicInbound)
-		return nil
-	}
-
-	model, stream := relay.ExtractModel(body)
-
-	// For multimodal endpoints, fall back to default model if not specified
-	if model == "" && relay.IsMultimodalRequest(requestType) {
-		model = relay.ExtractMultimodalModel(body, requestType)
-	}
-
-	if model == "" {
-		apiError(c, 400, "invalid_request_error", "Model is required", isAnthropicInbound)
-		return nil
-	}
-
-	supportedModels, _ := c.Get("supportedModels")
-	sm, _ := supportedModels.(string)
-	if !middleware.CheckModelAccess(sm, model) {
-		apiError(c, 403, "invalid_request_error",
-			fmt.Sprintf("Model '%s' not allowed for this API key", model),
-			isAnthropicInbound,
-		)
-		return nil
-	}
-
-	apiKeyIdRaw, _ := c.Get("apiKeyId")
-	apiKeyId, _ := apiKeyIdRaw.(int)
-
-	return &relayRequest{
-		RequestType:        requestType,
-		IsAnthropicInbound: isAnthropicInbound,
-		Body:               body,
-		BodyBytes:          bodyBytes,
-		Model:              model,
-		Stream:             stream,
-		ApiKeyID:           apiKeyId,
 	}
 }
 
@@ -293,6 +221,7 @@ func (h *RelayHandler) handleModels(c *gin.Context) {
 		}
 		models = filtered
 	}
+	sort.Strings(models)
 
 	// Detect format: Anthropic if anthropic-version header or x-api-key without Authorization
 	isAnthropic := c.GetHeader("anthropic-version") != "" ||
@@ -312,13 +241,12 @@ func (h *RelayHandler) handleModels(c *gin.Context) {
 		return
 	}
 
-	now := time.Now().Unix()
 	data := make([]map[string]any, 0, len(models))
 	for _, id := range models {
 		data = append(data, map[string]any{
 			"id":       id,
 			"object":   "model",
-			"created":  now,
+			"created":  openAIModelsCreatedUnix,
 			"owned_by": "wheel",
 		})
 	}
