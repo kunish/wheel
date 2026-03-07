@@ -12,7 +12,7 @@ require (
 	github.com/mark3labs/mcp-go v0.44.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/router-for-me/CLIProxyAPI/v6 v6.8.41
+	github.com/router-for-me/CLIProxyAPI/v6 v6.8.46
 	github.com/swaggo/swag v1.16.6
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/mysqldialect v1.2.18
