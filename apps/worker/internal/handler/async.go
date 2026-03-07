@@ -21,32 +21,32 @@ type asyncCreateRequest struct {
 // HandleCreateAsyncInference handles POST /v1/async/chat/completions — creates an async job.
 func (h *RelayHandler) HandleCreateAsyncInference(c *gin.Context) {
 	if h.AsyncStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Async API not available", "type": "service_error"}})
+		apiError(c, http.StatusServiceUnavailable, "service_error", "Async API not available", false)
 		return
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Failed to read request body", "type": "invalid_request_error"}})
+		apiError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body", false)
 		return
 	}
 
 	var body map[string]any
 	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Invalid JSON body", "type": "invalid_request_error"}})
+		apiError(c, http.StatusBadRequest, "invalid_request_error", "Invalid JSON body", false)
 		return
 	}
 
 	model, _ := body["model"].(string)
 	if model == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Model is required", "type": "invalid_request_error"}})
+		apiError(c, http.StatusBadRequest, "invalid_request_error", "Model is required", false)
 		return
 	}
 
 	supportedModels, _ := c.Get("supportedModels")
 	sm, _ := supportedModels.(string)
 	if !middleware.CheckModelAccess(sm, model) {
-		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": "Model not allowed for this API key", "type": "invalid_request_error"}})
+		apiError(c, http.StatusForbidden, "invalid_request_error", "Model not allowed for this API key", false)
 		return
 	}
 
@@ -64,14 +64,14 @@ func (h *RelayHandler) HandleCreateAsyncInference(c *gin.Context) {
 // HandleGetAsyncJob handles GET /v1/async/:id — returns async job status/result.
 func (h *RelayHandler) HandleGetAsyncJob(c *gin.Context) {
 	if h.AsyncStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Async API not available", "type": "service_error"}})
+		apiError(c, http.StatusServiceUnavailable, "service_error", "Async API not available", false)
 		return
 	}
 
 	id := c.Param("id")
 	job := h.AsyncStore.GetJob(id)
 	if job == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"message": "Async job not found", "type": "not_found_error"}})
+		apiError(c, http.StatusNotFound, "not_found_error", "Async job not found", false)
 		return
 	}
 
@@ -81,7 +81,7 @@ func (h *RelayHandler) HandleGetAsyncJob(c *gin.Context) {
 // HandleListAsyncJobs handles GET /v1/async — lists async jobs with pagination.
 func (h *RelayHandler) HandleListAsyncJobs(c *gin.Context) {
 	if h.AsyncStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Async API not available", "type": "service_error"}})
+		apiError(c, http.StatusServiceUnavailable, "service_error", "Async API not available", false)
 		return
 	}
 

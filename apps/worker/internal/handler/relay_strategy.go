@@ -15,6 +15,7 @@ import (
 // relayAttemptParams holds per-attempt context shared by both strategies.
 type relayAttemptParams struct {
 	C                      *gin.Context
+	RequestType            string
 	Upstream               relay.UpstreamRequest
 	Channel                *types.Channel
 	SelectedKey            *types.ChannelKey
@@ -43,6 +44,7 @@ type relayResult struct {
 	Response            map[string]any // non-streaming JSON response
 	StreamID            string         // streaming: the stream ID
 	ResponseHeaders     http.Header
+	BinaryResponse      bool
 }
 
 // RelayStrategy abstracts the streaming/non-streaming proxy execution.
@@ -162,6 +164,48 @@ func (s *streamStrategy) CleanupOnFailure(h *RelayHandler, p *relayAttemptParams
 type nonStreamStrategy struct{}
 
 func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relayResult, error) {
+	if relay.IsAudioBinaryResponse(p.RequestType) {
+		if proxyErr := relay.ProxyBinaryResponse(
+			p.C.Writer,
+			h.HTTPClient,
+			p.Upstream.URL,
+			p.Upstream.Headers,
+			p.Upstream.Body,
+		); proxyErr != nil {
+			return nil, proxyErr
+		}
+
+		return &relayResult{
+			ResponseContent: "[binary]",
+			ResponseHeaders: p.C.Writer.Header().Clone(),
+			BinaryResponse:  true,
+		}, nil
+	}
+
+	if relay.ShouldUseMultimodalExecution(p.RequestType, p.Channel.Type) {
+		result, proxyErr := relay.ProxyMultimodal(
+			h.HTTPClient,
+			p.Upstream.URL,
+			p.Upstream.Headers,
+			p.Upstream.Body,
+			p.RequestType,
+		)
+		if proxyErr != nil {
+			return nil, proxyErr
+		}
+
+		respJSON, _ := json.Marshal(result.Response)
+		return &relayResult{
+			InputTokens:         result.InputTokens,
+			OutputTokens:        result.OutputTokens,
+			CacheReadTokens:     result.CacheReadTokens,
+			CacheCreationTokens: result.CacheCreationTokens,
+			Response:            result.Response,
+			ResponseContent:     string(respJSON),
+			ResponseHeaders:     result.UpstreamHeaders,
+		}, nil
+	}
+
 	result, proxyErr := relay.ProxyNonStreaming(
 		h.HTTPClient,
 		p.Upstream.URL,
@@ -191,6 +235,10 @@ func (s *nonStreamStrategy) HandleSuccess(h *RelayHandler, p *relayAttemptParams
 		p.RequestModel, p.TargetModel, p.Channel, p.SelectedKey, p.ApiKeyID,
 		p.Body, p.Upstream.Headers, result.ResponseHeaders, p.UpstreamBodyForLog, result, p.Attempts, p.StartTime,
 	)
+	if result.BinaryResponse {
+		return
+	}
+	relay.CopyForwardableHeaders(p.C.Writer.Header(), result.ResponseHeaders)
 
 	// Write response
 	if p.IsAnthropicPassthrough {

@@ -21,6 +21,7 @@ type ProxyError struct {
 	Message      string
 	StatusCode   int
 	RetryAfterMs int64
+	Headers      http.Header
 }
 
 func (e *ProxyError) Error() string {
@@ -198,6 +199,7 @@ func ProxyNonStreaming(
 			Message:      fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, errorText),
 			StatusCode:   resp.StatusCode,
 			RetryAfterMs: parseRetryDelay(resp, errorText),
+			Headers:      resp.Header.Clone(),
 		}
 	}
 
@@ -350,6 +352,7 @@ func ProxyStreaming(
 			Message:      fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, errorText),
 			StatusCode:   resp.StatusCode,
 			RetryAfterMs: parseRetryDelay(resp, errorText),
+			Headers:      resp.Header.Clone(),
 		}
 	}
 

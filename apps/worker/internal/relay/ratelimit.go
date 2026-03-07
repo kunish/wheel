@@ -187,15 +187,13 @@ func (p *RateLimitPlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 		ctx.Set("rate_limit_retry_after_ms", retryAfterMs)
 		return &ShortCircuit{
 			StatusCode: 429,
-			Body: map[string]any{
-				"error": map[string]any{
-					"message": fmt.Sprintf(
-						"Rate limit exceeded (RPM: %d, TPM: %d). Retry after %dms",
-						config.RPM, config.TPM, retryAfterMs,
-					),
-					"type": "rate_limit_error",
-				},
-			},
+			Body: OpenAIErrorBody(
+				"rate_limit_error",
+				fmt.Sprintf(
+					"Rate limit exceeded (RPM: %d, TPM: %d). Retry after %dms",
+					config.RPM, config.TPM, retryAfterMs,
+				),
+			),
 		}
 	}
 

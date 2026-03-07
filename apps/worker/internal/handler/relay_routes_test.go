@@ -16,6 +16,19 @@ func hasRoute(routes []gin.RouteInfo, method, path string) bool {
 	return false
 }
 
+func assertRoutesPresent(t *testing.T, routes []gin.RouteInfo, want []struct {
+	method string
+	path   string
+}, label string) {
+	t.Helper()
+
+	for _, item := range want {
+		if !hasRoute(routes, item.method, item.path) {
+			t.Fatalf("missing %s route %s %s", label, item.method, item.path)
+		}
+	}
+}
+
 func TestRegisterRelayRoutes_NoWildcardConflicts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -30,10 +43,11 @@ func TestRegisterRelayRoutes_NoWildcardConflicts(t *testing.T) {
 	h.RegisterRelayRoutes(r)
 
 	routes := r.Routes()
-	required := []struct {
+	openAICompatRoutes := []struct {
 		method string
 		path   string
 	}{
+		{method: "GET", path: "/v1/models"},
 		{method: "POST", path: "/v1/chat/completions"},
 		{method: "POST", path: "/v1/messages"},
 		{method: "POST", path: "/v1/embeddings"},
@@ -43,14 +57,31 @@ func TestRegisterRelayRoutes_NoWildcardConflicts(t *testing.T) {
 		{method: "POST", path: "/v1/audio/transcriptions"},
 		{method: "POST", path: "/v1/audio/translations"},
 		{method: "POST", path: "/v1/moderations"},
+	}
+	wheelExtensionRoutes := []struct {
+		method string
+		path   string
+	}{
 		{method: "POST", path: "/v1/mcp/tool/execute"},
 		{method: "POST", path: "/v1/batch"},
+		{method: "GET", path: "/v1/batch"},
+		{method: "GET", path: "/v1/batch/:id"},
+		{method: "POST", path: "/v1/batch/:id/cancel"},
 		{method: "POST", path: "/v1/async/chat/completions"},
+		{method: "GET", path: "/v1/async"},
+		{method: "GET", path: "/v1/async/:id"},
+		{method: "POST", path: "/v1/rerank"},
+		{method: "POST", path: "/v1/count-tokens"},
 	}
 
-	for _, item := range required {
-		if !hasRoute(routes, item.method, item.path) {
-			t.Fatalf("missing route %s %s", item.method, item.path)
+	assertRoutesPresent(t, routes, openAICompatRoutes, "OpenAI-compatible")
+	assertRoutesPresent(t, routes, wheelExtensionRoutes, "wheel extension")
+
+	for _, item := range openAICompatRoutes {
+		for _, route := range routes {
+			if route.Path == item.path && route.Method != item.method {
+				t.Fatalf("unexpected extra method for OpenAI-compatible route %s: got %s want only %s", item.path, route.Method, item.method)
+			}
 		}
 	}
 

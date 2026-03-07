@@ -51,12 +51,10 @@ func (p *ContentFilterPlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 	if p.config.MaxInputLength > 0 && len(content) > p.config.MaxInputLength {
 		return &ShortCircuit{
 			StatusCode: 400,
-			Body: map[string]any{
-				"error": map[string]any{
-					"message": fmt.Sprintf("Input too long: %d characters (max %d)", len(content), p.config.MaxInputLength),
-					"type":    "invalid_request_error",
-				},
-			},
+			Body: OpenAIErrorBody(
+				"invalid_request_error",
+				fmt.Sprintf("Input too long: %d characters (max %d)", len(content), p.config.MaxInputLength),
+			),
 		}
 	}
 
@@ -66,12 +64,7 @@ func (p *ContentFilterPlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 		if strings.Contains(lower, strings.ToLower(kw)) {
 			return &ShortCircuit{
 				StatusCode: 400,
-				Body: map[string]any{
-					"error": map[string]any{
-						"message": "Request blocked by content filter",
-						"type":    "content_filter_error",
-					},
-				},
+				Body:       OpenAIErrorBody("content_filter_error", "Request blocked by content filter"),
 			}
 		}
 	}
@@ -81,12 +74,7 @@ func (p *ContentFilterPlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 		if re.MatchString(content) {
 			return &ShortCircuit{
 				StatusCode: 400,
-				Body: map[string]any{
-					"error": map[string]any{
-						"message": "Request blocked by content filter",
-						"type":    "content_filter_error",
-					},
-				},
+				Body:       OpenAIErrorBody("content_filter_error", "Request blocked by content filter"),
 			}
 		}
 	}

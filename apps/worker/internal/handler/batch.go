@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,24 +22,24 @@ type batchCreateRequest struct {
 // HandleCreateBatch handles POST /v1/batch — creates a batch job and starts processing in background.
 func (h *RelayHandler) HandleCreateBatch(c *gin.Context) {
 	if h.BatchStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		apiError(c, http.StatusServiceUnavailable, "service_error", "Batch API not available", false)
 		return
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Failed to read request body", "type": "invalid_request_error"}})
+		apiError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body", false)
 		return
 	}
 
 	var req batchCreateRequest
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Invalid JSON body", "type": "invalid_request_error"}})
+		apiError(c, http.StatusBadRequest, "invalid_request_error", "Invalid JSON body", false)
 		return
 	}
 
 	if len(req.Requests) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "At least one request is required", "type": "invalid_request_error"}})
+		apiError(c, http.StatusBadRequest, "invalid_request_error", "At least one request is required", false)
 		return
 	}
 
@@ -47,11 +48,30 @@ func (h *RelayHandler) HandleCreateBatch(c *gin.Context) {
 
 	for i := range req.Requests {
 		if req.Requests[i].Body == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Request body is required", "type": "invalid_request_error"}})
+			apiError(c, http.StatusBadRequest, "invalid_request_error", "Request body is required", false)
 			return
 		}
 		if req.Requests[i].Method != "" && strings.ToUpper(req.Requests[i].Method) != http.MethodPost {
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Only POST requests are supported in batch", "type": "invalid_request_error"}})
+			apiError(c, http.StatusBadRequest, "invalid_request_error", "Only POST requests are supported in batch", false)
+			return
+		}
+
+		if req.Requests[i].URL == "" {
+			req.Requests[i].URL = "/v1/chat/completions"
+		}
+		if !strings.HasPrefix(req.Requests[i].URL, "/") {
+			req.Requests[i].URL = "/" + req.Requests[i].URL
+		}
+		requestType := relay.DetectRequestType(req.Requests[i].URL)
+		if requestType == "" {
+			apiError(c, http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Unsupported batch endpoint %s", req.Requests[i].URL), false)
+			return
+		}
+		if relay.IsDeferredExecutionUnsupported(requestType) {
+			apiError(c, http.StatusBadRequest, "invalid_request_error",
+				"Batch API does not support audio endpoint "+req.Requests[i].URL,
+				false,
+			)
 			return
 		}
 
@@ -60,17 +80,14 @@ func (h *RelayHandler) HandleCreateBatch(c *gin.Context) {
 			model = req.Model
 		}
 		if model == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Model is required for each batch request", "type": "invalid_request_error"}})
+			apiError(c, http.StatusBadRequest, "invalid_request_error", "Model is required for each batch request", false)
 			return
 		}
 		if !middleware.CheckModelAccess(sm, model) {
-			c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": "Model not allowed for this API key", "type": "invalid_request_error"}})
+			apiError(c, http.StatusForbidden, "invalid_request_error", "Model not allowed for this API key", false)
 			return
 		}
 		req.Requests[i].Body["model"] = model
-		if req.Requests[i].URL == "" {
-			req.Requests[i].URL = "/v1/chat/completions"
-		}
 	}
 
 	apiKeyIDRaw, _ := c.Get("apiKeyId")
@@ -87,14 +104,14 @@ func (h *RelayHandler) HandleCreateBatch(c *gin.Context) {
 // HandleGetBatch handles GET /v1/batch/:id — returns batch job status.
 func (h *RelayHandler) HandleGetBatch(c *gin.Context) {
 	if h.BatchStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		apiError(c, http.StatusServiceUnavailable, "service_error", "Batch API not available", false)
 		return
 	}
 
 	id := c.Param("id")
 	job := h.BatchStore.GetJob(id)
 	if job == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"message": "Batch job not found", "type": "not_found_error"}})
+		apiError(c, http.StatusNotFound, "not_found_error", "Batch job not found", false)
 		return
 	}
 
@@ -104,7 +121,7 @@ func (h *RelayHandler) HandleGetBatch(c *gin.Context) {
 // HandleListBatches handles GET /v1/batch — lists all batch jobs.
 func (h *RelayHandler) HandleListBatches(c *gin.Context) {
 	if h.BatchStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		apiError(c, http.StatusServiceUnavailable, "service_error", "Batch API not available", false)
 		return
 	}
 
@@ -115,13 +132,13 @@ func (h *RelayHandler) HandleListBatches(c *gin.Context) {
 // HandleCancelBatch handles POST /v1/batch/:id/cancel — cancels a batch job.
 func (h *RelayHandler) HandleCancelBatch(c *gin.Context) {
 	if h.BatchStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Batch API not available", "type": "service_error"}})
+		apiError(c, http.StatusServiceUnavailable, "service_error", "Batch API not available", false)
 		return
 	}
 
 	id := c.Param("id")
 	if ok := h.BatchStore.CancelJob(id); !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Cannot cancel batch job (not found or not in cancellable state)", "type": "invalid_request_error"}})
+		apiError(c, http.StatusBadRequest, "invalid_request_error", "Cannot cancel batch job (not found or not in cancellable state)", false)
 		return
 	}
 

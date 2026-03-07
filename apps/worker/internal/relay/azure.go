@@ -34,6 +34,10 @@ func buildAzureOpenAIRequest(baseUrl, key string, body map[string]any, inboundPa
 		endpoint = "audio/speech"
 	} else if strings.Contains(inboundPath, "/audio/transcriptions") {
 		endpoint = "audio/transcriptions"
+	} else if strings.Contains(inboundPath, "/audio/translations") {
+		endpoint = "audio/translations"
+	} else if strings.Contains(inboundPath, "/moderations") {
+		endpoint = "moderations"
 	} else if strings.Contains(inboundPath, "/responses") {
 		endpoint = "responses"
 	}

@@ -28,6 +28,10 @@ func (h *RelayHandler) asyncRecordLog(
 	attempts []attemptRecord,
 	startTime time.Time,
 ) {
+	if h.LogWriter == nil {
+		return
+	}
+
 	cost := relay.CalculateCost(targetModel, result.InputTokens, result.OutputTokens, context.Background(), h.DB,
 		&relay.CacheTokens{
 			CacheReadTokens:     result.CacheReadTokens,
@@ -104,6 +108,10 @@ func (h *RelayHandler) asyncErrorLog(
 	startTime time.Time,
 	streamID string,
 ) {
+	if h.LogWriter == nil {
+		return
+	}
+
 	logBody := serializeForLog(body)
 
 	attemptsJSON, _ := json.Marshal(attempts)
@@ -180,7 +188,7 @@ func shouldRedactHeader(name string) bool {
 
 // apiError returns an error response in the correct format based on the request type.
 // Anthropic format: {"type":"error","error":{"type":"...","message":"..."}}
-// OpenAI format:    {"error":{"message":"...","type":"..."}}
+// OpenAI format:    {"error":{"message":"...","type":"...","param":null,"code":null}}
 func apiError(c *gin.Context, status int, errType, message string, isAnthropicInbound bool) {
 	if isAnthropicInbound {
 		c.JSON(status, gin.H{
@@ -191,11 +199,6 @@ func apiError(c *gin.Context, status int, errType, message string, isAnthropicIn
 			},
 		})
 	} else {
-		c.JSON(status, gin.H{
-			"error": gin.H{
-				"message": message,
-				"type":    errType,
-			},
-		})
+		c.JSON(status, relay.OpenAIErrorBody(errType, message))
 	}
 }
