@@ -21,6 +21,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/cache"
 	"github.com/kunish/wheel/apps/worker/internal/codexruntime"
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	"github.com/kunish/wheel/apps/worker/internal/types"
@@ -403,6 +404,62 @@ func TestCollectCodexChannelModels_CopilotProviderAlias(t *testing.T) {
 	}
 	if got, want := strings.Join(models, ","), "gpt-5.2"; got != want {
 		t.Fatalf("models = %q, want %q", got, want)
+	}
+}
+
+func TestCollectCodexChannelModels_PreservesNewlyExposedRuntimeModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v0/management/auth-files/models" {
+			t.Fatalf("path = %s, want /v0/management/auth-files/models", r.URL.Path)
+		}
+		if name := r.URL.Query().Get("name"); name != "channel-9--latest.json" {
+			t.Fatalf("unexpected auth file query name: %s", name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"id":"gpt-5.4"},{"id":"gpt-5.3-codex"}]}`))
+	}))
+	defer server.Close()
+
+	h := &Handler{Config: &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}}
+	models, err := h.collectCodexChannelModels(t.Context(), 9, types.OutboundCodex, []codexAuthFile{{Name: "latest.json", Provider: "codex"}})
+	if err != nil {
+		t.Fatalf("collectCodexChannelModels() error = %v", err)
+	}
+	if got, want := strings.Join(models, ","), "gpt-5.4,gpt-5.3-codex"; got != want {
+		t.Fatalf("models = %q, want %q", got, want)
+	}
+}
+
+func TestSyncCodexChannelModels_PersistsGPT54IntoModelAndFetchedModel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Cache = cache.New()
+	t.Cleanup(h.Cache.Close)
+	expectCodexChannelTypeLookup(mock, 55, types.OutboundCodex)
+	expectCodexAuthFileListForSync(mock, 55, []string{"latest.json"})
+	mock.ExpectExec("UPDATE `channels` SET model = '\\[\"gpt-5\\.4\",\"gpt-5\\.3-codex\"\\]', fetched_model = '\\[\"gpt-5\\.4\",\"gpt-5\\.3-codex\"\\]' WHERE \\(id = 55\\)").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v0/management/auth-files/models" {
+			t.Fatalf("path = %s, want /v0/management/auth-files/models", r.URL.Path)
+		}
+		if name := r.URL.Query().Get("name"); name != "channel-55--latest.json" {
+			t.Fatalf("unexpected auth file query name: %s", name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"id":"gpt-5.4"},{"id":"gpt-5.3-codex"}]}`))
+	}))
+	defer server.Close()
+	h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+
+	err := h.syncCodexChannelModels(t.Context(), 55)
+	if err != nil {
+		t.Fatalf("syncCodexChannelModels() error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
 	}
 }
 

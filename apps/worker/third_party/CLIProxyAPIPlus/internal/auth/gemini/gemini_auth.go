@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/codex"
@@ -29,11 +28,11 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-const DefaultCallbackPort = 8085
-
-var (
-	ClientID     = os.Getenv("GEMINI_OAUTH_CLIENT_ID")
-	ClientSecret = os.Getenv("GEMINI_OAUTH_CLIENT_SECRET")
+// OAuth configuration constants for Gemini
+const (
+	ClientID            = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+	ClientSecret        = "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"
+	DefaultCallbackPort = 8085
 )
 
 // OAuth scopes for Gemini authentication

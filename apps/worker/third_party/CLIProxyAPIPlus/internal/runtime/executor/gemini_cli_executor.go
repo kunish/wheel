@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,13 +32,10 @@ import (
 )
 
 const (
-	codeAssistEndpoint = "https://cloudcode-pa.googleapis.com"
-	codeAssistVersion  = "v1internal"
-)
-
-var (
-	geminiOAuthClientID     = strings.TrimSpace(os.Getenv("GEMINI_OAUTH_CLIENT_ID"))
-	geminiOAuthClientSecret = strings.TrimSpace(os.Getenv("GEMINI_OAUTH_CLIENT_SECRET"))
+	codeAssistEndpoint      = "https://cloudcode-pa.googleapis.com"
+	codeAssistVersion       = "v1internal"
+	geminiOAuthClientID     = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+	geminiOAuthClientSecret = "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"
 )
 
 var geminiOAuthScopes = []string{
