@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/kunish/wheel/compare/v1.24.0...v1.25.0) (2026-03-07)
+
+
+### Features
+
+* clarify runtime model sync updates ([2048f87](https://github.com/kunish/wheel/commit/2048f87b5caaf564568e050cadbfc4e80361647d))
+
 ## [1.24.0](https://github.com/kunish/wheel/compare/v1.23.0...v1.24.0) (2026-03-07)
 
 
