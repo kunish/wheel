@@ -36,3 +36,8 @@ func defaultWatcherFactory(configPath, authDir string, reload func(*config.Confi
 		},
 	}, nil
 }
+
+// DefaultWatcherFactory exposes the SDK default watcher factory for host-owned seams.
+func DefaultWatcherFactory(configPath, authDir string, reload func(*config.Config)) (*WatcherWrapper, error) {
+	return defaultWatcherFactory(configPath, authDir, reload)
+}

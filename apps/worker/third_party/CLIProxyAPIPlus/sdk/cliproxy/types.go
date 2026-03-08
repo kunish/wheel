@@ -5,11 +5,85 @@ package cliproxy
 
 import (
 	"context"
+	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/api"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/watcher"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/wsrelay"
+	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
+	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
 )
+
+// ExecutorBinder allows hosts to intercept provider executor binding for specific auth entries.
+// Return true when the binder handled registration and the default binding path should stop.
+type ExecutorBinder func(cfg *config.Config, manager *coreauth.Manager, auth *coreauth.Auth, forceReplace bool) bool
+
+// ServerRuntime captures the subset of API server behavior required by the embedded runtime service.
+type ServerRuntime interface {
+	Start() error
+	Stop(ctx context.Context) error
+	UpdateClients(cfg *config.Config)
+	AttachWebsocketRoute(path string, handler http.Handler)
+	SetWebsocketAuthChangeHandler(func(oldEnabled, newEnabled bool))
+}
+
+// ServerFactory constructs the HTTP API server for the embedded runtime.
+type ServerFactory func(cfg *config.Config, authManager *coreauth.Manager, accessManager *sdkaccess.Manager, configFilePath string, opts ...api.ServerOption) ServerRuntime
+
+// WebsocketGateway captures the websocket relay behavior required by the embedded runtime service.
+type WebsocketGateway interface {
+	Path() string
+	Handler() http.Handler
+	DisconnectAll(ctx context.Context) error
+	NonStream(ctx context.Context, provider string, req *wsrelay.HTTPRequest) (*wsrelay.HTTPResponse, error)
+	Stream(ctx context.Context, provider string, req *wsrelay.HTTPRequest) (<-chan wsrelay.StreamEvent, error)
+}
+
+// WebsocketGatewayOptions configures websocket gateway construction.
+type WebsocketGatewayOptions struct {
+	Path           string
+	OnConnected    func(string)
+	OnDisconnected func(string, error)
+	LogDebugf      func(string, ...any)
+	LogInfof       func(string, ...any)
+	LogWarnf       func(string, ...any)
+}
+
+// WebsocketGatewayFactory constructs the websocket relay gateway used by the embedded runtime.
+type WebsocketGatewayFactory func(opts WebsocketGatewayOptions) WebsocketGateway
+
+type OpenAIHandlerRoutes interface {
+	OpenAIModels(*gin.Context)
+	ChatCompletions(*gin.Context)
+	Completions(*gin.Context)
+}
+
+type OpenAIResponsesHandlerRoutes interface {
+	ResponsesWebsocket(*gin.Context)
+	Responses(*gin.Context)
+	Compact(*gin.Context)
+}
+
+type ManagementHandlerRoutes interface {
+	Middleware() gin.HandlerFunc
+	RegisterRoutes(*gin.RouterGroup)
+	SetConfig(*config.Config)
+	SetAuthManager(*coreauth.Manager)
+	SetLocalPassword(string)
+	SetLogDirectory(string)
+	SetPostAuthHook(coreauth.PostAuthHook)
+}
+
+type ManagementHandlerFactory func(*config.Config, string, *coreauth.Manager) ManagementHandlerRoutes
+
+type OAuthCallbackWriter func(authDir, provider, state, code, errorMessage string) (string, error)
+
+type OpenAIHandlerFactory func(*handlers.BaseAPIHandler) OpenAIHandlerRoutes
+
+type OpenAIResponsesHandlerFactory func(*handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes
 
 // TokenClientProvider loads clients backed by stored authentication tokens.
 // It provides an interface for loading authentication tokens from various sources

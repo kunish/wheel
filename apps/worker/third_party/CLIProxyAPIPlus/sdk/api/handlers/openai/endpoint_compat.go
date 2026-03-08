@@ -5,7 +5,20 @@ import "github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
 const (
 	openAIChatEndpoint      = "/chat/completions"
 	openAIResponsesEndpoint = "/responses"
+	OpenAIChatEndpoint      = openAIChatEndpoint
+	OpenAIResponsesEndpoint = openAIResponsesEndpoint
 )
+
+func ResolveEndpointOverride(modelName, requestedEndpoint string) (string, bool) {
+	return resolveEndpointOverride(modelName, requestedEndpoint)
+}
+
+func WebsocketUpstreamSupportsIncrementalInputForModel(h *OpenAIResponsesAPIHandler, modelName string) bool {
+	if h == nil {
+		return false
+	}
+	return h.websocketUpstreamSupportsIncrementalInputForModel(modelName)
+}
 
 func resolveEndpointOverride(modelName, requestedEndpoint string) (string, bool) {
 	if modelName == "" {

@@ -16,9 +16,66 @@ import (
 	proxyconfig "github.com/router-for-me/CLIProxyAPI/v6/internal/config"
 	internallogging "github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
+	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
 )
+
+type stubOpenAIHandler struct{}
+
+func (stubOpenAIHandler) OpenAIModels(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"handler": "chat-models"})
+}
+
+func (stubOpenAIHandler) ChatCompletions(c *gin.Context) {
+	c.JSON(http.StatusTeapot, gin.H{"handler": "chat"})
+}
+
+func (stubOpenAIHandler) Completions(c *gin.Context) {
+	c.JSON(http.StatusCreated, gin.H{"handler": "completions"})
+}
+
+type stubOpenAIResponsesHandler struct{}
+
+func (stubOpenAIResponsesHandler) OpenAIResponsesModels(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"handler": "responses-models"})
+}
+
+func (stubOpenAIResponsesHandler) Responses(c *gin.Context) {
+	c.JSON(http.StatusAccepted, gin.H{"handler": "responses"})
+}
+
+func (stubOpenAIResponsesHandler) Compact(c *gin.Context) {
+	c.JSON(http.StatusNonAuthoritativeInfo, gin.H{"handler": "compact"})
+}
+
+func (stubOpenAIResponsesHandler) ResponsesWebsocket(c *gin.Context) {
+	c.JSON(http.StatusSwitchingProtocols, gin.H{"handler": "responses-websocket"})
+}
+
+type stubManagementHandler struct{}
+
+func (stubManagementHandler) Middleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func (stubManagementHandler) RegisterRoutes(group *gin.RouterGroup) {
+	group.GET("/config", func(c *gin.Context) {
+		c.JSON(http.StatusAccepted, gin.H{"handler": "management"})
+	})
+}
+
+func (stubManagementHandler) SetConfig(*proxyconfig.Config) {}
+
+func (stubManagementHandler) SetAuthManager(*auth.Manager) {}
+
+func (stubManagementHandler) SetLocalPassword(string) {}
+
+func (stubManagementHandler) SetLogDirectory(string) {}
+
+func (stubManagementHandler) SetPostAuthHook(auth.PostAuthHook) {}
 
 func readManagerOAuthAliasReverse(t *testing.T, mgr *auth.Manager) map[string]map[string]string {
 	t.Helper()
@@ -77,6 +134,180 @@ func TestServerUpdateClients_RefreshesOAuthModelAliasesInAuthManager(t *testing.
 	reverse := readManagerOAuthAliasReverse(t, server.handlers.AuthManager)
 	if got := reverse["github-copilot"]["claude-opus-4-6"]; got != "claude-opus-4.6" {
 		t.Fatalf("github-copilot alias after update = %q, want %q", got, "claude-opus-4.6")
+	}
+}
+
+func TestNewServer_UsesInjectedOpenAIHandlerFactories(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tmpDir := t.TempDir()
+	authDir := filepath.Join(tmpDir, "auth")
+	if err := os.MkdirAll(authDir, 0o700); err != nil {
+		t.Fatalf("failed to create auth dir: %v", err)
+	}
+
+	cfg := &proxyconfig.Config{
+		SDKConfig:              sdkconfig.SDKConfig{APIKeys: []string{"test-key"}},
+		Port:                   0,
+		AuthDir:                authDir,
+		Debug:                  true,
+		LoggingToFile:          false,
+		UsageStatisticsEnabled: false,
+	}
+
+	authManager := auth.NewManager(nil, nil, nil)
+	accessManager := sdkaccess.NewManager()
+	server := NewServer(
+		cfg,
+		authManager,
+		accessManager,
+		filepath.Join(tmpDir, "config.yaml"),
+		WithOpenAIHandlerFactory(func(*handlers.BaseAPIHandler) OpenAIHandlerRoutes {
+			return stubOpenAIHandler{}
+		}),
+		WithOpenAIResponsesHandlerFactory(func(*handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes {
+			return stubOpenAIResponsesHandler{}
+		}),
+	)
+
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		wantStatus     int
+		wantBodySubstr string
+	}{
+		{name: "models", method: http.MethodGet, path: "/v1/models", wantStatus: http.StatusOK, wantBodySubstr: `"handler":"chat-models"`},
+		{name: "chat", method: http.MethodPost, path: "/v1/chat/completions", wantStatus: http.StatusTeapot, wantBodySubstr: `"handler":"chat"`},
+		{name: "completions", method: http.MethodPost, path: "/v1/completions", wantStatus: http.StatusCreated, wantBodySubstr: `"handler":"completions"`},
+		{name: "responses", method: http.MethodPost, path: "/v1/responses", wantStatus: http.StatusAccepted, wantBodySubstr: `"handler":"responses"`},
+		{name: "compact", method: http.MethodPost, path: "/v1/responses/compact", wantStatus: http.StatusNonAuthoritativeInfo, wantBodySubstr: `"handler":"compact"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(`{"model":"test"}`))
+			req.Header.Set("Authorization", "Bearer test-key")
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+
+			server.engine.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d body=%s", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), tt.wantBodySubstr) {
+				t.Fatalf("body = %s, want substring %s", rr.Body.String(), tt.wantBodySubstr)
+			}
+		})
+	}
+}
+
+func TestNewServer_UsesInjectedManagementHandlerFactory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tmpDir := t.TempDir()
+	authDir := filepath.Join(tmpDir, "auth")
+	if err := os.MkdirAll(authDir, 0o700); err != nil {
+		t.Fatalf("failed to create auth dir: %v", err)
+	}
+
+	cfg := &proxyconfig.Config{
+		SDKConfig:              sdkconfig.SDKConfig{APIKeys: []string{"test-key"}},
+		Port:                   0,
+		AuthDir:                authDir,
+		Debug:                  true,
+		LoggingToFile:          false,
+		UsageStatisticsEnabled: false,
+		RemoteManagement: proxyconfig.RemoteManagement{
+			SecretKey: "$2a$10$abcdefghijklmnopqrstuuN1H8A0b7A0J8sM7l6L8b7lW5x4a3b2",
+		},
+	}
+
+	authManager := auth.NewManager(nil, nil, nil)
+	accessManager := sdkaccess.NewManager()
+	server := NewServer(
+		cfg,
+		authManager,
+		accessManager,
+		filepath.Join(tmpDir, "config.yaml"),
+		WithManagementHandlerFactory(func(*proxyconfig.Config, string, *auth.Manager) ManagementHandlerRoutes {
+			return stubManagementHandler{}
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v0/management/config", nil)
+	rr := httptest.NewRecorder()
+
+	server.engine.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusAccepted, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"handler":"management"`) {
+		t.Fatalf("body = %s, want injected management handler response", rr.Body.String())
+	}
+}
+
+func TestNewServer_UsesInjectedOAuthCallbackWriter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tmpDir := t.TempDir()
+	authDir := filepath.Join(tmpDir, "auth")
+	if err := os.MkdirAll(authDir, 0o700); err != nil {
+		t.Fatalf("failed to create auth dir: %v", err)
+	}
+
+	cfg := &proxyconfig.Config{
+		SDKConfig:              sdkconfig.SDKConfig{APIKeys: []string{"test-key"}},
+		Port:                   0,
+		AuthDir:                authDir,
+		Debug:                  true,
+		LoggingToFile:          false,
+		UsageStatisticsEnabled: false,
+	}
+
+	authManager := auth.NewManager(nil, nil, nil)
+	accessManager := sdkaccess.NewManager()
+	called := false
+	var gotAuthDir string
+	var gotProvider string
+	var gotState string
+	var gotCode string
+	var gotError string
+
+	server := NewServer(
+		cfg,
+		authManager,
+		accessManager,
+		filepath.Join(tmpDir, "config.yaml"),
+		WithOAuthCallbackWriter(func(authDir, provider, state, code, errorMessage string) (string, error) {
+			called = true
+			gotAuthDir = authDir
+			gotProvider = provider
+			gotState = state
+			gotCode = code
+			gotError = errorMessage
+			return filepath.Join(authDir, "callback.oauth"), nil
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/codex/callback?state=test-state&code=test-code&error_description=test-error", nil)
+	rr := httptest.NewRecorder()
+
+	server.engine.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	if !called {
+		t.Fatal("expected injected oauth callback writer to be called")
+	}
+	if gotAuthDir != authDir || gotProvider != "codex" || gotState != "test-state" || gotCode != "test-code" || gotError != "test-error" {
+		t.Fatalf("writer args = (%q, %q, %q, %q, %q)", gotAuthDir, gotProvider, gotState, gotCode, gotError)
+	}
+	if !strings.Contains(rr.Body.String(), "Authentication successful") {
+		t.Fatalf("body = %s, want success HTML", rr.Body.String())
 	}
 }
 

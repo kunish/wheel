@@ -21,8 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 	codexruntime "github.com/kunish/wheel/apps/worker/internal/codexruntime"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
+	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
 	"github.com/kunish/wheel/apps/worker/internal/types"
-	codexauthsdk "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	"github.com/uptrace/bun"
 )
 
@@ -252,8 +252,7 @@ func localAuthPath(authDir string, name string) (string, error) {
 }
 
 func localAuthIndex(name string) string {
-	auth := &codexauthsdk.Auth{FileName: name}
-	return auth.EnsureIndex()
+	return runtimeauth.EnsureAuthIndex(name, "", "")
 }
 
 func managedAuthRelativeName(channelID int, name string) string {

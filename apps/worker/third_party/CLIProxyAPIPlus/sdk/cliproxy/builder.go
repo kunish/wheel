@@ -34,6 +34,27 @@ type Builder struct {
 	// watcherFactory creates file watcher instances.
 	watcherFactory WatcherFactory
 
+	// executorBinder allows host-owned code to override provider executor binding.
+	executorBinder ExecutorBinder
+
+	// serverFactory creates the embedded HTTP API server.
+	serverFactory ServerFactory
+
+	// websocketGatewayFactory creates the embedded websocket relay gateway.
+	websocketGatewayFactory WebsocketGatewayFactory
+
+	// openAIHandlerFactory overrides OpenAI chat/completions route construction.
+	openAIHandlerFactory OpenAIHandlerFactory
+
+	// openAIResponsesFactory overrides OpenAI responses route construction.
+	openAIResponsesFactory OpenAIResponsesHandlerFactory
+
+	// managementHandlerFactory overrides management route handler construction.
+	managementHandlerFactory ManagementHandlerFactory
+
+	// oauthCallbackWriter overrides OAuth callback persistence.
+	oauthCallbackWriter OAuthCallbackWriter
+
 	// hooks provides lifecycle callbacks.
 	hooks Hooks
 
@@ -111,6 +132,48 @@ func (b *Builder) WithAPIKeyClientProvider(provider APIKeyClientProvider) *Build
 // WithWatcherFactory allows customizing the watcher factory that handles reloads.
 func (b *Builder) WithWatcherFactory(factory WatcherFactory) *Builder {
 	b.watcherFactory = factory
+	return b
+}
+
+// WithExecutorBinder allows host-owned code to intercept provider executor binding.
+func (b *Builder) WithExecutorBinder(binder ExecutorBinder) *Builder {
+	b.executorBinder = binder
+	return b
+}
+
+// WithServerFactory allows host-owned code to override embedded API server construction.
+func (b *Builder) WithServerFactory(factory ServerFactory) *Builder {
+	b.serverFactory = factory
+	return b
+}
+
+// WithWebsocketGatewayFactory allows host-owned code to override websocket gateway construction.
+func (b *Builder) WithWebsocketGatewayFactory(factory WebsocketGatewayFactory) *Builder {
+	b.websocketGatewayFactory = factory
+	return b
+}
+
+// WithOpenAIHandlerFactory allows host-owned code to override OpenAI chat/completions handlers.
+func (b *Builder) WithOpenAIHandlerFactory(factory OpenAIHandlerFactory) *Builder {
+	b.openAIHandlerFactory = factory
+	return b
+}
+
+// WithOpenAIResponsesHandlerFactory allows host-owned code to override OpenAI responses handlers.
+func (b *Builder) WithOpenAIResponsesHandlerFactory(factory OpenAIResponsesHandlerFactory) *Builder {
+	b.openAIResponsesFactory = factory
+	return b
+}
+
+// WithManagementHandlerFactory allows host-owned code to override management handler construction.
+func (b *Builder) WithManagementHandlerFactory(factory ManagementHandlerFactory) *Builder {
+	b.managementHandlerFactory = factory
+	return b
+}
+
+// WithOAuthCallbackWriter allows host-owned code to override OAuth callback persistence.
+func (b *Builder) WithOAuthCallbackWriter(writer OAuthCallbackWriter) *Builder {
+	b.oauthCallbackWriter = writer
 	return b
 }
 
@@ -227,16 +290,23 @@ func (b *Builder) Build() (*Service, error) {
 	coreManager.SetOAuthModelAlias(b.cfg.OAuthModelAlias)
 
 	service := &Service{
-		cfg:            b.cfg,
-		configPath:     b.configPath,
-		tokenProvider:  tokenProvider,
-		apiKeyProvider: apiKeyProvider,
-		watcherFactory: watcherFactory,
-		hooks:          b.hooks,
-		authManager:    authManager,
-		accessManager:  accessManager,
-		coreManager:    coreManager,
-		serverOptions:  append([]api.ServerOption(nil), b.serverOptions...),
+		cfg:                      b.cfg,
+		configPath:               b.configPath,
+		tokenProvider:            tokenProvider,
+		apiKeyProvider:           apiKeyProvider,
+		watcherFactory:           watcherFactory,
+		executorBinder:           b.executorBinder,
+		serverFactory:            b.serverFactory,
+		websocketGatewayFactory:  b.websocketGatewayFactory,
+		openAIHandlerFactory:     b.openAIHandlerFactory,
+		openAIResponsesFactory:   b.openAIResponsesFactory,
+		managementHandlerFactory: b.managementHandlerFactory,
+		oauthCallbackWriter:      b.oauthCallbackWriter,
+		hooks:                    b.hooks,
+		authManager:              authManager,
+		accessManager:            accessManager,
+		coreManager:              coreManager,
+		serverOptions:            append([]api.ServerOption(nil), b.serverOptions...),
 	}
 	return service, nil
 }

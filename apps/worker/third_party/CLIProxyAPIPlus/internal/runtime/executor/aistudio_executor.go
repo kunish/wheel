@@ -26,8 +26,13 @@ import (
 // AIStudioExecutor routes AI Studio requests through a websocket-backed transport.
 type AIStudioExecutor struct {
 	provider string
-	relay    *wsrelay.Manager
+	relay    aiStudioRelay
 	cfg      *config.Config
+}
+
+type aiStudioRelay interface {
+	NonStream(ctx context.Context, provider string, req *wsrelay.HTTPRequest) (*wsrelay.HTTPResponse, error)
+	Stream(ctx context.Context, provider string, req *wsrelay.HTTPRequest) (<-chan wsrelay.StreamEvent, error)
 }
 
 // NewAIStudioExecutor creates a new AI Studio executor instance.
@@ -39,7 +44,7 @@ type AIStudioExecutor struct {
 //
 // Returns:
 //   - *AIStudioExecutor: A new AI Studio executor instance
-func NewAIStudioExecutor(cfg *config.Config, provider string, relay *wsrelay.Manager) *AIStudioExecutor {
+func NewAIStudioExecutor(cfg *config.Config, provider string, relay aiStudioRelay) *AIStudioExecutor {
 	return &AIStudioExecutor{provider: strings.ToLower(provider), relay: relay, cfg: cfg}
 }
 

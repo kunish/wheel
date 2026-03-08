@@ -5,13 +5,68 @@ import (
 	"fmt"
 
 	"github.com/kunish/wheel/apps/worker/internal/config"
-	codexsdk "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy"
-	sdkconfig "github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
+	runtimecliproxy "github.com/kunish/wheel/apps/worker/internal/runtimeapi/cliproxy"
+	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 )
 
 // Service wraps the embedded Codex runtime.
 type Service struct {
 	run func(ctx context.Context) error
+}
+
+var ensureManagedConfig = EnsureManagedConfig
+
+var loadRuntimeConfig = runtimeconfig.LoadConfig
+
+type runtimeService interface {
+	Run(context.Context) error
+}
+
+type runtimeBuilder interface {
+	WithConfig(*runtimeconfig.Config) runtimeBuilder
+	WithConfigPath(string) runtimeBuilder
+	WithLocalManagementPassword(string) runtimeBuilder
+	Build() (runtimeService, error)
+}
+
+type runtimeBuilderAdapter struct {
+	inner *runtimecliproxy.Builder
+}
+
+func (a *runtimeBuilderAdapter) WithConfig(cfg *runtimeconfig.Config) runtimeBuilder {
+	a.inner = a.inner.WithConfig(cfg)
+	return a
+}
+
+func (a *runtimeBuilderAdapter) WithConfigPath(path string) runtimeBuilder {
+	a.inner = a.inner.WithConfigPath(path)
+	return a
+}
+
+func (a *runtimeBuilderAdapter) WithLocalManagementPassword(password string) runtimeBuilder {
+	a.inner = a.inner.WithLocalManagementPassword(password)
+	return a
+}
+
+func (a *runtimeBuilderAdapter) Build() (runtimeService, error) {
+	return a.inner.Build()
+}
+
+var newRuntimeBuilder = func() runtimeBuilder {
+	return &runtimeBuilderAdapter{inner: runtimecliproxy.NewBuilder()}
+}
+
+var buildRuntimeService = func(cfg *runtimeconfig.Config, configPath string, managementKey string) (func(context.Context) error, error) {
+	inner, err := newRuntimeBuilder().
+		WithConfig(cfg).
+		WithConfigPath(configPath).
+		WithLocalManagementPassword(managementKey).
+		Build()
+	if err != nil {
+		return nil, err
+	}
+
+	return inner.Run, nil
 }
 
 // NewFromConfig creates an embedded Codex runtime service from worker config.
@@ -20,26 +75,22 @@ func NewFromConfig(cfg *config.Config) (*Service, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("nil config")
 	}
-	if err := EnsureManagedConfig(cfg.CodexRuntimeManagementKey); err != nil {
+	if err := ensureManagedConfig(cfg.CodexRuntimeManagementKey); err != nil {
 		return nil, err
 	}
 
 	configPath := ManagedConfigPath()
-	cpaCfg, err := sdkconfig.LoadConfig(configPath)
+	ownedCfg, err := loadRuntimeConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("load codex runtime config: %w", err)
 	}
 
-	inner, err := codexsdk.NewBuilder().
-		WithConfig(cpaCfg).
-		WithConfigPath(configPath).
-		WithLocalManagementPassword(cfg.CodexRuntimeManagementKey).
-		Build()
+	run, err := buildRuntimeService(ownedCfg, configPath, cfg.CodexRuntimeManagementKey)
 	if err != nil {
 		return nil, fmt.Errorf("build codex runtime service: %w", err)
 	}
 
-	return &Service{run: inner.Run}, nil
+	return &Service{run: run}, nil
 }
 
 // Start runs the embedded service in a goroutine and returns a channel

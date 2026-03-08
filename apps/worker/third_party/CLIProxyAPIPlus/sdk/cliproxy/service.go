@@ -18,8 +18,8 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/runtime/executor"
 	_ "github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/watcher"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/wsrelay"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
+	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v6/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/usage"
@@ -49,14 +49,35 @@ type Service struct {
 	// watcherFactory creates file watcher instances.
 	watcherFactory WatcherFactory
 
+	// executorBinder allows host-owned code to intercept provider executor binding.
+	executorBinder ExecutorBinder
+
 	// hooks provides lifecycle callbacks.
 	hooks Hooks
 
 	// serverOptions contains additional server configuration options.
 	serverOptions []api.ServerOption
 
+	// serverFactory creates the HTTP API server instance.
+	serverFactory ServerFactory
+
+	// websocketGatewayFactory creates the websocket relay gateway instance.
+	websocketGatewayFactory WebsocketGatewayFactory
+
+	// openAIHandlerFactory overrides OpenAI chat/completions route construction.
+	openAIHandlerFactory OpenAIHandlerFactory
+
+	// openAIResponsesFactory overrides OpenAI responses route construction.
+	openAIResponsesFactory OpenAIResponsesHandlerFactory
+
+	// managementHandlerFactory overrides management route handler construction.
+	managementHandlerFactory ManagementHandlerFactory
+
+	// oauthCallbackWriter overrides OAuth callback persistence.
+	oauthCallbackWriter OAuthCallbackWriter
+
 	// server is the HTTP API server instance.
-	server *api.Server
+	server ServerRuntime
 
 	// pprofServer manages the optional pprof HTTP debug server.
 	pprofServer *pprofServer
@@ -89,7 +110,7 @@ type Service struct {
 	shutdownOnce sync.Once
 
 	// wsGateway manages websocket Gemini providers.
-	wsGateway *wsrelay.Manager
+	wsGateway WebsocketGateway
 }
 
 // RegisterUsagePlugin registers a usage plugin on the global usage manager.
@@ -219,15 +240,18 @@ func (s *Service) ensureWebsocketGateway() {
 	if s.wsGateway != nil {
 		return
 	}
-	opts := wsrelay.Options{
+	factory := s.websocketGatewayFactory
+	if factory == nil {
+		factory = defaultWebsocketGatewayFactory
+	}
+	s.wsGateway = factory(WebsocketGatewayOptions{
 		Path:           "/v1/ws",
 		OnConnected:    s.wsOnConnected,
 		OnDisconnected: s.wsOnDisconnected,
 		LogDebugf:      log.Debugf,
 		LogInfof:       log.Infof,
 		LogWarnf:       log.Warnf,
-	}
-	s.wsGateway = wsrelay.NewManager(opts)
+	})
 }
 
 func (s *Service) wsOnConnected(channelID string) {
@@ -281,6 +305,26 @@ func (s *Service) wsOnDisconnected(channelID string, reason error) {
 		Action: watcher.AuthUpdateActionDelete,
 		ID:     channelID,
 	})
+}
+
+func (s *Service) handleWebsocketAuthChange(oldEnabled, newEnabled bool) {
+	if s == nil || s.wsGateway == nil {
+		return
+	}
+	if oldEnabled == newEnabled {
+		return
+	}
+	if !oldEnabled && newEnabled {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.wsGateway.DisconnectAll(ctx); err != nil {
+			log.Warnf("failed to reset websocket connections after ws-auth change %t -> %t: %v", oldEnabled, newEnabled, err)
+			return
+		}
+		log.Debugf("ws-auth enabled; existing websocket sessions terminated to enforce authentication")
+		return
+	}
+	log.Debugf("ws-auth disabled; existing websocket sessions remain connected")
 }
 
 func (s *Service) applyCoreAuthAddOrUpdate(ctx context.Context, auth *coreauth.Auth) {
@@ -398,6 +442,9 @@ func (s *Service) ensureExecutorsForAuthWithMode(a *coreauth.Auth, forceReplace 
 	// Disabled auths can linger during config reloads (e.g., removed OpenAI-compat entries)
 	// and must not override active provider executors (such as iFlow OAuth accounts).
 	if a.Disabled {
+		return
+	}
+	if s.executorBinder != nil && s.executorBinder(s.cfg, s.coreManager, a, forceReplace) {
 		return
 	}
 	if compatProviderKey, _, isCompat := openAICompatInfoFromAuth(a); isCompat {
@@ -522,8 +569,33 @@ func (s *Service) Run(ctx context.Context) error {
 
 	// legacy clients removed; no caches to refresh
 
+	serverFactory := s.serverFactory
+	if serverFactory == nil {
+		serverFactory = defaultServerFactory
+	}
+	serverOptions := append([]api.ServerOption(nil), s.serverOptions...)
+	if s.openAIHandlerFactory != nil {
+		serverOptions = append(serverOptions, api.WithOpenAIHandlerFactory(func(base *handlers.BaseAPIHandler) api.OpenAIHandlerRoutes {
+			return s.openAIHandlerFactory(base)
+		}))
+	}
+	if s.openAIResponsesFactory != nil {
+		serverOptions = append(serverOptions, api.WithOpenAIResponsesHandlerFactory(func(base *handlers.BaseAPIHandler) api.OpenAIResponsesHandlerRoutes {
+			return s.openAIResponsesFactory(base)
+		}))
+	}
+	if s.managementHandlerFactory != nil {
+		serverOptions = append(serverOptions, api.WithManagementHandlerFactory(func(cfg *config.Config, configFilePath string, authManager *coreauth.Manager) api.ManagementHandlerRoutes {
+			return s.managementHandlerFactory(cfg, configFilePath, authManager)
+		}))
+	}
+	if s.oauthCallbackWriter != nil {
+		serverOptions = append(serverOptions, api.WithOAuthCallbackWriter(func(authDir, provider, state, code, errorMessage string) (string, error) {
+			return s.oauthCallbackWriter(authDir, provider, state, code, errorMessage)
+		}))
+	}
 	// handlers no longer depend on legacy clients; pass nil slice initially
-	s.server = api.NewServer(s.cfg, s.coreManager, s.accessManager, s.configPath, s.serverOptions...)
+	s.server = serverFactory(s.cfg, s.coreManager, s.accessManager, s.configPath, serverOptions...)
 
 	if s.authManager == nil {
 		s.authManager = newDefaultAuthManager()
@@ -532,22 +604,7 @@ func (s *Service) Run(ctx context.Context) error {
 	s.ensureWebsocketGateway()
 	if s.server != nil && s.wsGateway != nil {
 		s.server.AttachWebsocketRoute(s.wsGateway.Path(), s.wsGateway.Handler())
-		s.server.SetWebsocketAuthChangeHandler(func(oldEnabled, newEnabled bool) {
-			if oldEnabled == newEnabled {
-				return
-			}
-			if !oldEnabled && newEnabled {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if errStop := s.wsGateway.Stop(ctx); errStop != nil {
-					log.Warnf("failed to reset websocket connections after ws-auth change %t -> %t: %v", oldEnabled, newEnabled, errStop)
-					return
-				}
-				log.Debugf("ws-auth enabled; existing websocket sessions terminated to enforce authentication")
-				return
-			}
-			log.Debugf("ws-auth disabled; existing websocket sessions remain connected")
-		})
+		s.server.SetWebsocketAuthChangeHandler(s.handleWebsocketAuthChange)
 	}
 
 	if s.hooks.OnBeforeStart != nil {
@@ -707,7 +764,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			}
 		}
 		if s.wsGateway != nil {
-			if err := s.wsGateway.Stop(ctx); err != nil {
+			if err := s.wsGateway.DisconnectAll(ctx); err != nil {
 				log.Errorf("failed to stop websocket gateway: %v", err)
 				if shutdownErr == nil {
 					shutdownErr = err
@@ -870,7 +927,7 @@ func (s *Service) registerModelsForAuth(a *coreauth.Auth) {
 		models = applyExcludedModels(models, excluded)
 	case "kimi":
 		models = registry.GetKimiModels()
-    models = applyExcludedModels(models, excluded)
+		models = applyExcludedModels(models, excluded)
 	case "github-copilot":
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()

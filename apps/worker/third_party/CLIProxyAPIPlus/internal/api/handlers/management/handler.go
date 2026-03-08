@@ -134,6 +134,171 @@ func (h *Handler) SetPostAuthHook(hook coreauth.PostAuthHook) {
 	h.postAuthHook = hook
 }
 
+// RegisterRoutes attaches management endpoints to the provided router group.
+func (h *Handler) RegisterRoutes(mgmt *gin.RouterGroup) {
+	if h == nil || mgmt == nil {
+		return
+	}
+
+	mgmt.GET("/usage", h.GetUsageStatistics)
+	mgmt.GET("/usage/export", h.ExportUsageStatistics)
+	mgmt.POST("/usage/import", h.ImportUsageStatistics)
+	mgmt.GET("/config", h.GetConfig)
+	mgmt.GET("/config.yaml", h.GetConfigYAML)
+	mgmt.PUT("/config.yaml", h.PutConfigYAML)
+	mgmt.GET("/latest-version", h.GetLatestVersion)
+
+	mgmt.GET("/debug", h.GetDebug)
+	mgmt.PUT("/debug", h.PutDebug)
+	mgmt.PATCH("/debug", h.PutDebug)
+
+	mgmt.GET("/logging-to-file", h.GetLoggingToFile)
+	mgmt.PUT("/logging-to-file", h.PutLoggingToFile)
+	mgmt.PATCH("/logging-to-file", h.PutLoggingToFile)
+
+	mgmt.GET("/logs-max-total-size-mb", h.GetLogsMaxTotalSizeMB)
+	mgmt.PUT("/logs-max-total-size-mb", h.PutLogsMaxTotalSizeMB)
+	mgmt.PATCH("/logs-max-total-size-mb", h.PutLogsMaxTotalSizeMB)
+
+	mgmt.GET("/error-logs-max-files", h.GetErrorLogsMaxFiles)
+	mgmt.PUT("/error-logs-max-files", h.PutErrorLogsMaxFiles)
+	mgmt.PATCH("/error-logs-max-files", h.PutErrorLogsMaxFiles)
+
+	mgmt.GET("/usage-statistics-enabled", h.GetUsageStatisticsEnabled)
+	mgmt.PUT("/usage-statistics-enabled", h.PutUsageStatisticsEnabled)
+	mgmt.PATCH("/usage-statistics-enabled", h.PutUsageStatisticsEnabled)
+
+	mgmt.GET("/proxy-url", h.GetProxyURL)
+	mgmt.PUT("/proxy-url", h.PutProxyURL)
+	mgmt.PATCH("/proxy-url", h.PutProxyURL)
+	mgmt.DELETE("/proxy-url", h.DeleteProxyURL)
+
+	mgmt.POST("/api-call", h.APICall)
+
+	mgmt.GET("/quota-exceeded/switch-project", h.GetSwitchProject)
+	mgmt.PUT("/quota-exceeded/switch-project", h.PutSwitchProject)
+	mgmt.PATCH("/quota-exceeded/switch-project", h.PutSwitchProject)
+
+	mgmt.GET("/quota-exceeded/switch-preview-model", h.GetSwitchPreviewModel)
+	mgmt.PUT("/quota-exceeded/switch-preview-model", h.PutSwitchPreviewModel)
+	mgmt.PATCH("/quota-exceeded/switch-preview-model", h.PutSwitchPreviewModel)
+
+	mgmt.GET("/api-keys", h.GetAPIKeys)
+	mgmt.PUT("/api-keys", h.PutAPIKeys)
+	mgmt.PATCH("/api-keys", h.PatchAPIKeys)
+	mgmt.DELETE("/api-keys", h.DeleteAPIKeys)
+
+	mgmt.GET("/gemini-api-key", h.GetGeminiKeys)
+	mgmt.PUT("/gemini-api-key", h.PutGeminiKeys)
+	mgmt.PATCH("/gemini-api-key", h.PatchGeminiKey)
+	mgmt.DELETE("/gemini-api-key", h.DeleteGeminiKey)
+
+	mgmt.GET("/logs", h.GetLogs)
+	mgmt.DELETE("/logs", h.DeleteLogs)
+	mgmt.GET("/request-error-logs", h.GetRequestErrorLogs)
+	mgmt.GET("/request-error-logs/:name", h.DownloadRequestErrorLog)
+	mgmt.GET("/request-log-by-id/:id", h.GetRequestLogByID)
+	mgmt.GET("/request-log", h.GetRequestLog)
+	mgmt.PUT("/request-log", h.PutRequestLog)
+	mgmt.PATCH("/request-log", h.PutRequestLog)
+	mgmt.GET("/ws-auth", h.GetWebsocketAuth)
+	mgmt.PUT("/ws-auth", h.PutWebsocketAuth)
+	mgmt.PATCH("/ws-auth", h.PutWebsocketAuth)
+
+	mgmt.GET("/ampcode", h.GetAmpCode)
+	mgmt.GET("/ampcode/upstream-url", h.GetAmpUpstreamURL)
+	mgmt.PUT("/ampcode/upstream-url", h.PutAmpUpstreamURL)
+	mgmt.PATCH("/ampcode/upstream-url", h.PutAmpUpstreamURL)
+	mgmt.DELETE("/ampcode/upstream-url", h.DeleteAmpUpstreamURL)
+	mgmt.GET("/ampcode/upstream-api-key", h.GetAmpUpstreamAPIKey)
+	mgmt.PUT("/ampcode/upstream-api-key", h.PutAmpUpstreamAPIKey)
+	mgmt.PATCH("/ampcode/upstream-api-key", h.PutAmpUpstreamAPIKey)
+	mgmt.DELETE("/ampcode/upstream-api-key", h.DeleteAmpUpstreamAPIKey)
+	mgmt.GET("/ampcode/restrict-management-to-localhost", h.GetAmpRestrictManagementToLocalhost)
+	mgmt.PUT("/ampcode/restrict-management-to-localhost", h.PutAmpRestrictManagementToLocalhost)
+	mgmt.PATCH("/ampcode/restrict-management-to-localhost", h.PutAmpRestrictManagementToLocalhost)
+	mgmt.GET("/ampcode/model-mappings", h.GetAmpModelMappings)
+	mgmt.PUT("/ampcode/model-mappings", h.PutAmpModelMappings)
+	mgmt.PATCH("/ampcode/model-mappings", h.PatchAmpModelMappings)
+	mgmt.DELETE("/ampcode/model-mappings", h.DeleteAmpModelMappings)
+	mgmt.GET("/ampcode/force-model-mappings", h.GetAmpForceModelMappings)
+	mgmt.PUT("/ampcode/force-model-mappings", h.PutAmpForceModelMappings)
+	mgmt.PATCH("/ampcode/force-model-mappings", h.PutAmpForceModelMappings)
+	mgmt.GET("/ampcode/upstream-api-keys", h.GetAmpUpstreamAPIKeys)
+	mgmt.PUT("/ampcode/upstream-api-keys", h.PutAmpUpstreamAPIKeys)
+	mgmt.PATCH("/ampcode/upstream-api-keys", h.PatchAmpUpstreamAPIKeys)
+	mgmt.DELETE("/ampcode/upstream-api-keys", h.DeleteAmpUpstreamAPIKeys)
+
+	mgmt.GET("/request-retry", h.GetRequestRetry)
+	mgmt.PUT("/request-retry", h.PutRequestRetry)
+	mgmt.PATCH("/request-retry", h.PutRequestRetry)
+	mgmt.GET("/max-retry-interval", h.GetMaxRetryInterval)
+	mgmt.PUT("/max-retry-interval", h.PutMaxRetryInterval)
+	mgmt.PATCH("/max-retry-interval", h.PutMaxRetryInterval)
+
+	mgmt.GET("/force-model-prefix", h.GetForceModelPrefix)
+	mgmt.PUT("/force-model-prefix", h.PutForceModelPrefix)
+	mgmt.PATCH("/force-model-prefix", h.PutForceModelPrefix)
+
+	mgmt.GET("/routing/strategy", h.GetRoutingStrategy)
+	mgmt.PUT("/routing/strategy", h.PutRoutingStrategy)
+	mgmt.PATCH("/routing/strategy", h.PutRoutingStrategy)
+
+	mgmt.GET("/claude-api-key", h.GetClaudeKeys)
+	mgmt.PUT("/claude-api-key", h.PutClaudeKeys)
+	mgmt.PATCH("/claude-api-key", h.PatchClaudeKey)
+	mgmt.DELETE("/claude-api-key", h.DeleteClaudeKey)
+
+	mgmt.GET("/codex-api-key", h.GetCodexKeys)
+	mgmt.PUT("/codex-api-key", h.PutCodexKeys)
+	mgmt.PATCH("/codex-api-key", h.PatchCodexKey)
+	mgmt.DELETE("/codex-api-key", h.DeleteCodexKey)
+
+	mgmt.GET("/openai-compatibility", h.GetOpenAICompat)
+	mgmt.PUT("/openai-compatibility", h.PutOpenAICompat)
+	mgmt.PATCH("/openai-compatibility", h.PatchOpenAICompat)
+	mgmt.DELETE("/openai-compatibility", h.DeleteOpenAICompat)
+
+	mgmt.GET("/vertex-api-key", h.GetVertexCompatKeys)
+	mgmt.PUT("/vertex-api-key", h.PutVertexCompatKeys)
+	mgmt.PATCH("/vertex-api-key", h.PatchVertexCompatKey)
+	mgmt.DELETE("/vertex-api-key", h.DeleteVertexCompatKey)
+
+	mgmt.GET("/oauth-excluded-models", h.GetOAuthExcludedModels)
+	mgmt.PUT("/oauth-excluded-models", h.PutOAuthExcludedModels)
+	mgmt.PATCH("/oauth-excluded-models", h.PatchOAuthExcludedModels)
+	mgmt.DELETE("/oauth-excluded-models", h.DeleteOAuthExcludedModels)
+
+	mgmt.GET("/oauth-model-alias", h.GetOAuthModelAlias)
+	mgmt.PUT("/oauth-model-alias", h.PutOAuthModelAlias)
+	mgmt.PATCH("/oauth-model-alias", h.PatchOAuthModelAlias)
+	mgmt.DELETE("/oauth-model-alias", h.DeleteOAuthModelAlias)
+
+	mgmt.GET("/auth-files", h.ListAuthFiles)
+	mgmt.GET("/auth-files/models", h.GetAuthFileModels)
+	mgmt.GET("/model-definitions/:channel", h.GetStaticModelDefinitions)
+	mgmt.GET("/auth-files/download", h.DownloadAuthFile)
+	mgmt.POST("/auth-files", h.UploadAuthFile)
+	mgmt.DELETE("/auth-files", h.DeleteAuthFile)
+	mgmt.PATCH("/auth-files/status", h.PatchAuthFileStatus)
+	mgmt.PATCH("/auth-files/fields", h.PatchAuthFileFields)
+	mgmt.POST("/vertex/import", h.ImportVertexCredential)
+
+	mgmt.GET("/anthropic-auth-url", h.RequestAnthropicToken)
+	mgmt.GET("/codex-auth-url", h.RequestCodexToken)
+	mgmt.GET("/gemini-cli-auth-url", h.RequestGeminiCLIToken)
+	mgmt.GET("/antigravity-auth-url", h.RequestAntigravityToken)
+	mgmt.GET("/qwen-auth-url", h.RequestQwenToken)
+	mgmt.GET("/kilo-auth-url", h.RequestKiloToken)
+	mgmt.GET("/kimi-auth-url", h.RequestKimiToken)
+	mgmt.GET("/iflow-auth-url", h.RequestIFlowToken)
+	mgmt.POST("/iflow-auth-url", h.RequestIFlowCookieToken)
+	mgmt.GET("/kiro-auth-url", h.RequestKiroToken)
+	mgmt.GET("/github-auth-url", h.RequestGitHubToken)
+	mgmt.POST("/oauth-callback", h.PostOAuthCallback)
+	mgmt.GET("/get-auth-status", h.GetAuthStatus)
+}
+
 // Middleware enforces access control for management endpoints.
 // All requests (local and remote) require a valid management key.
 // Additionally, remote access requires allow-remote-management=true.

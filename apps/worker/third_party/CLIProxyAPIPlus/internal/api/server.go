@@ -44,15 +44,53 @@ import (
 const oauthCallbackSuccessHTML = `<html><head><meta charset="utf-8"><title>Authentication successful</title><script>setTimeout(function(){window.close();},5000);</script></head><body><h1>Authentication successful!</h1><p>You can close this window.</p><p>This window will close automatically in 5 seconds.</p></body></html>`
 
 type serverOptionConfig struct {
-	extraMiddleware      []gin.HandlerFunc
-	engineConfigurator   func(*gin.Engine)
-	routerConfigurator   func(*gin.Engine, *handlers.BaseAPIHandler, *config.Config)
-	requestLoggerFactory func(*config.Config, string) logging.RequestLogger
-	localPassword        string
-	keepAliveEnabled     bool
-	keepAliveTimeout     time.Duration
-	keepAliveOnTimeout   func()
-	postAuthHook         auth.PostAuthHook
+	extraMiddleware        []gin.HandlerFunc
+	engineConfigurator     func(*gin.Engine)
+	routerConfigurator     func(*gin.Engine, *handlers.BaseAPIHandler, *config.Config)
+	requestLoggerFactory   func(*config.Config, string) logging.RequestLogger
+	openAIHandlerFactory   func(*handlers.BaseAPIHandler) OpenAIHandlerRoutes
+	openAIResponsesFactory func(*handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes
+	managementFactory      func(*config.Config, string, *auth.Manager) ManagementHandlerRoutes
+	oauthCallbackWriter    OAuthCallbackWriter
+	localPassword          string
+	keepAliveEnabled       bool
+	keepAliveTimeout       time.Duration
+	keepAliveOnTimeout     func()
+	postAuthHook           auth.PostAuthHook
+}
+
+type OpenAIHandlerRoutes interface {
+	OpenAIModels(*gin.Context)
+	ChatCompletions(*gin.Context)
+	Completions(*gin.Context)
+}
+
+type OpenAIResponsesHandlerRoutes interface {
+	ResponsesWebsocket(*gin.Context)
+	Responses(*gin.Context)
+	Compact(*gin.Context)
+}
+
+type ManagementHandlerRoutes interface {
+	Middleware() gin.HandlerFunc
+	RegisterRoutes(*gin.RouterGroup)
+	SetConfig(*config.Config)
+	SetAuthManager(*auth.Manager)
+	SetLocalPassword(string)
+	SetLogDirectory(string)
+	SetPostAuthHook(auth.PostAuthHook)
+}
+
+type OAuthCallbackWriter func(authDir, provider, state, code, errorMessage string) (string, error)
+
+// DefaultManagementHandlerFactory exposes the built-in management handler construction seam.
+func DefaultManagementHandlerFactory(cfg *config.Config, configFilePath string, authManager *auth.Manager) ManagementHandlerRoutes {
+	return managementHandlers.NewHandler(cfg, configFilePath, authManager)
+}
+
+// DefaultOAuthCallbackWriter exposes the built-in OAuth callback persistence seam.
+func DefaultOAuthCallbackWriter(authDir, provider, state, code, errorMessage string) (string, error) {
+	return managementHandlers.WriteOAuthCallbackFileForPendingSession(authDir, provider, state, code, errorMessage)
 }
 
 // ServerOption customises HTTP server construction.
@@ -82,6 +120,34 @@ func WithEngineConfigurator(fn func(*gin.Engine)) ServerOption {
 func WithRouterConfigurator(fn func(*gin.Engine, *handlers.BaseAPIHandler, *config.Config)) ServerOption {
 	return func(cfg *serverOptionConfig) {
 		cfg.routerConfigurator = fn
+	}
+}
+
+// WithOpenAIHandlerFactory overrides the OpenAI chat/completions route handler construction.
+func WithOpenAIHandlerFactory(factory func(*handlers.BaseAPIHandler) OpenAIHandlerRoutes) ServerOption {
+	return func(cfg *serverOptionConfig) {
+		cfg.openAIHandlerFactory = factory
+	}
+}
+
+// WithOpenAIResponsesHandlerFactory overrides the OpenAI responses route handler construction.
+func WithOpenAIResponsesHandlerFactory(factory func(*handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes) ServerOption {
+	return func(cfg *serverOptionConfig) {
+		cfg.openAIResponsesFactory = factory
+	}
+}
+
+// WithManagementHandlerFactory overrides management handler construction.
+func WithManagementHandlerFactory(factory func(*config.Config, string, *auth.Manager) ManagementHandlerRoutes) ServerOption {
+	return func(cfg *serverOptionConfig) {
+		cfg.managementFactory = factory
+	}
+}
+
+// WithOAuthCallbackWriter overrides persistence for OAuth callback redirects.
+func WithOAuthCallbackWriter(writer OAuthCallbackWriter) ServerOption {
+	return func(cfg *serverOptionConfig) {
+		cfg.oauthCallbackWriter = writer
 	}
 }
 
@@ -144,6 +210,9 @@ type Server struct {
 	requestLogger logging.RequestLogger
 	loggerToggle  func(bool)
 
+	openAIHandlerFactory   func(*handlers.BaseAPIHandler) OpenAIHandlerRoutes
+	openAIResponsesFactory func(*handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes
+
 	// configFilePath is the absolute path to the YAML config file for persistence.
 	configFilePath string
 
@@ -157,7 +226,9 @@ type Server struct {
 	wsAuthEnabled atomic.Bool
 
 	// management handler
-	mgmt *managementHandlers.Handler
+	mgmt ManagementHandlerRoutes
+
+	oauthCallbackWriter OAuthCallbackWriter
 
 	// ampModule is the Amp routing module for model mapping hot-reload
 	ampModule *ampmodule.AmpModule
@@ -242,12 +313,24 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 
 	// Create server instance
 	s := &Server{
-		engine:              engine,
-		handlers:            handlers.NewBaseAPIHandlers(&cfg.SDKConfig, authManager),
-		cfg:                 cfg,
-		accessManager:       accessManager,
-		requestLogger:       requestLogger,
-		loggerToggle:        toggle,
+		engine:        engine,
+		handlers:      handlers.NewBaseAPIHandlers(&cfg.SDKConfig, authManager),
+		cfg:           cfg,
+		accessManager: accessManager,
+		requestLogger: requestLogger,
+		loggerToggle:  toggle,
+		openAIHandlerFactory: func(base *handlers.BaseAPIHandler) OpenAIHandlerRoutes {
+			if optionState.openAIHandlerFactory != nil {
+				return optionState.openAIHandlerFactory(base)
+			}
+			return openai.NewOpenAIAPIHandler(base)
+		},
+		openAIResponsesFactory: func(base *handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes {
+			if optionState.openAIResponsesFactory != nil {
+				return optionState.openAIResponsesFactory(base)
+			}
+			return openai.NewOpenAIResponsesAPIHandler(base)
+		},
 		configFilePath:      configFilePath,
 		currentPath:         wd,
 		envManagementSecret: envManagementSecret,
@@ -264,8 +347,12 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	}
 	managementasset.SetCurrentConfig(cfg)
 	auth.SetQuotaCooldownDisabled(cfg.DisableCooling)
+	managementFactory := optionState.managementFactory
+	if managementFactory == nil {
+		managementFactory = DefaultManagementHandlerFactory
+	}
 	// Initialize management handler
-	s.mgmt = managementHandlers.NewHandler(cfg, configFilePath, authManager)
+	s.mgmt = managementFactory(cfg, configFilePath, authManager)
 	if optionState.localPassword != "" {
 		s.mgmt.SetLocalPassword(optionState.localPassword)
 	}
@@ -275,6 +362,10 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 		s.mgmt.SetPostAuthHook(optionState.postAuthHook)
 	}
 	s.localPassword = optionState.localPassword
+	s.oauthCallbackWriter = optionState.oauthCallbackWriter
+	if s.oauthCallbackWriter == nil {
+		s.oauthCallbackWriter = DefaultOAuthCallbackWriter
+	}
 
 	// Setup routes
 	s.setupRoutes()
@@ -326,11 +417,23 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 // It defines the endpoints and associates them with their respective handlers.
 func (s *Server) setupRoutes() {
 	s.engine.GET("/management.html", s.serveManagementControlPanel)
-	openaiHandlers := openai.NewOpenAIAPIHandler(s.handlers)
+	openAIHandlerFactory := s.openAIHandlerFactory
+	if openAIHandlerFactory == nil {
+		openAIHandlerFactory = func(base *handlers.BaseAPIHandler) OpenAIHandlerRoutes {
+			return openai.NewOpenAIAPIHandler(base)
+		}
+	}
+	openaiHandlers := openAIHandlerFactory(s.handlers)
 	geminiHandlers := gemini.NewGeminiAPIHandler(s.handlers)
 	geminiCLIHandlers := gemini.NewGeminiCLIAPIHandler(s.handlers)
 	claudeCodeHandlers := claude.NewClaudeCodeAPIHandler(s.handlers)
-	openaiResponsesHandlers := openai.NewOpenAIResponsesAPIHandler(s.handlers)
+	openAIResponsesFactory := s.openAIResponsesFactory
+	if openAIResponsesFactory == nil {
+		openAIResponsesFactory = func(base *handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes {
+			return openai.NewOpenAIResponsesAPIHandler(base)
+		}
+	}
+	openaiResponsesHandlers := openAIResponsesFactory(s.handlers)
 
 	// OpenAI compatible API routes
 	v1 := s.engine.Group("/v1")
@@ -377,89 +480,12 @@ func (s *Server) setupRoutes() {
 	// OAuth callback endpoints (reuse main server port)
 	// These endpoints receive provider redirects and persist
 	// the short-lived code/state for the waiting goroutine.
-	s.engine.GET("/anthropic/callback", func(c *gin.Context) {
-		code := c.Query("code")
-		state := c.Query("state")
-		errStr := c.Query("error")
-		if errStr == "" {
-			errStr = c.Query("error_description")
-		}
-		if state != "" {
-			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "anthropic", state, code, errStr)
-		}
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, oauthCallbackSuccessHTML)
-	})
-
-	s.engine.GET("/codex/callback", func(c *gin.Context) {
-		code := c.Query("code")
-		state := c.Query("state")
-		errStr := c.Query("error")
-		if errStr == "" {
-			errStr = c.Query("error_description")
-		}
-		if state != "" {
-			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "codex", state, code, errStr)
-		}
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, oauthCallbackSuccessHTML)
-	})
-
-	s.engine.GET("/google/callback", func(c *gin.Context) {
-		code := c.Query("code")
-		state := c.Query("state")
-		errStr := c.Query("error")
-		if errStr == "" {
-			errStr = c.Query("error_description")
-		}
-		if state != "" {
-			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "gemini", state, code, errStr)
-		}
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, oauthCallbackSuccessHTML)
-	})
-
-	s.engine.GET("/iflow/callback", func(c *gin.Context) {
-		code := c.Query("code")
-		state := c.Query("state")
-		errStr := c.Query("error")
-		if errStr == "" {
-			errStr = c.Query("error_description")
-		}
-		if state != "" {
-			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "iflow", state, code, errStr)
-		}
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, oauthCallbackSuccessHTML)
-	})
-
-	s.engine.GET("/antigravity/callback", func(c *gin.Context) {
-		code := c.Query("code")
-		state := c.Query("state")
-		errStr := c.Query("error")
-		if errStr == "" {
-			errStr = c.Query("error_description")
-		}
-		if state != "" {
-			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "antigravity", state, code, errStr)
-		}
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, oauthCallbackSuccessHTML)
-	})
-
-	s.engine.GET("/kiro/callback", func(c *gin.Context) {
-		code := c.Query("code")
-		state := c.Query("state")
-		errStr := c.Query("error")
-		if errStr == "" {
-			errStr = c.Query("error_description")
-		}
-		if state != "" {
-			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "kiro", state, code, errStr)
-		}
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, oauthCallbackSuccessHTML)
-	})
+	s.registerOAuthCallbackRoute("/anthropic/callback", "anthropic")
+	s.registerOAuthCallbackRoute("/codex/callback", "codex")
+	s.registerOAuthCallbackRoute("/google/callback", "gemini")
+	s.registerOAuthCallbackRoute("/iflow/callback", "iflow")
+	s.registerOAuthCallbackRoute("/antigravity/callback", "antigravity")
+	s.registerOAuthCallbackRoute("/kiro/callback", "kiro")
 
 	// Management routes are registered lazily by registerManagementRoutes when a secret is configured.
 }
@@ -513,165 +539,26 @@ func (s *Server) registerManagementRoutes() {
 
 	mgmt := s.engine.Group("/v0/management")
 	mgmt.Use(s.managementAvailabilityMiddleware(), s.mgmt.Middleware())
-	{
-		mgmt.GET("/usage", s.mgmt.GetUsageStatistics)
-		mgmt.GET("/usage/export", s.mgmt.ExportUsageStatistics)
-		mgmt.POST("/usage/import", s.mgmt.ImportUsageStatistics)
-		mgmt.GET("/config", s.mgmt.GetConfig)
-		mgmt.GET("/config.yaml", s.mgmt.GetConfigYAML)
-		mgmt.PUT("/config.yaml", s.mgmt.PutConfigYAML)
-		mgmt.GET("/latest-version", s.mgmt.GetLatestVersion)
+	s.mgmt.RegisterRoutes(mgmt)
+}
 
-		mgmt.GET("/debug", s.mgmt.GetDebug)
-		mgmt.PUT("/debug", s.mgmt.PutDebug)
-		mgmt.PATCH("/debug", s.mgmt.PutDebug)
-
-		mgmt.GET("/logging-to-file", s.mgmt.GetLoggingToFile)
-		mgmt.PUT("/logging-to-file", s.mgmt.PutLoggingToFile)
-		mgmt.PATCH("/logging-to-file", s.mgmt.PutLoggingToFile)
-
-		mgmt.GET("/logs-max-total-size-mb", s.mgmt.GetLogsMaxTotalSizeMB)
-		mgmt.PUT("/logs-max-total-size-mb", s.mgmt.PutLogsMaxTotalSizeMB)
-		mgmt.PATCH("/logs-max-total-size-mb", s.mgmt.PutLogsMaxTotalSizeMB)
-
-		mgmt.GET("/error-logs-max-files", s.mgmt.GetErrorLogsMaxFiles)
-		mgmt.PUT("/error-logs-max-files", s.mgmt.PutErrorLogsMaxFiles)
-		mgmt.PATCH("/error-logs-max-files", s.mgmt.PutErrorLogsMaxFiles)
-
-		mgmt.GET("/usage-statistics-enabled", s.mgmt.GetUsageStatisticsEnabled)
-		mgmt.PUT("/usage-statistics-enabled", s.mgmt.PutUsageStatisticsEnabled)
-		mgmt.PATCH("/usage-statistics-enabled", s.mgmt.PutUsageStatisticsEnabled)
-
-		mgmt.GET("/proxy-url", s.mgmt.GetProxyURL)
-		mgmt.PUT("/proxy-url", s.mgmt.PutProxyURL)
-		mgmt.PATCH("/proxy-url", s.mgmt.PutProxyURL)
-		mgmt.DELETE("/proxy-url", s.mgmt.DeleteProxyURL)
-
-		mgmt.POST("/api-call", s.mgmt.APICall)
-
-		mgmt.GET("/quota-exceeded/switch-project", s.mgmt.GetSwitchProject)
-		mgmt.PUT("/quota-exceeded/switch-project", s.mgmt.PutSwitchProject)
-		mgmt.PATCH("/quota-exceeded/switch-project", s.mgmt.PutSwitchProject)
-
-		mgmt.GET("/quota-exceeded/switch-preview-model", s.mgmt.GetSwitchPreviewModel)
-		mgmt.PUT("/quota-exceeded/switch-preview-model", s.mgmt.PutSwitchPreviewModel)
-		mgmt.PATCH("/quota-exceeded/switch-preview-model", s.mgmt.PutSwitchPreviewModel)
-
-		mgmt.GET("/api-keys", s.mgmt.GetAPIKeys)
-		mgmt.PUT("/api-keys", s.mgmt.PutAPIKeys)
-		mgmt.PATCH("/api-keys", s.mgmt.PatchAPIKeys)
-		mgmt.DELETE("/api-keys", s.mgmt.DeleteAPIKeys)
-
-		mgmt.GET("/gemini-api-key", s.mgmt.GetGeminiKeys)
-		mgmt.PUT("/gemini-api-key", s.mgmt.PutGeminiKeys)
-		mgmt.PATCH("/gemini-api-key", s.mgmt.PatchGeminiKey)
-		mgmt.DELETE("/gemini-api-key", s.mgmt.DeleteGeminiKey)
-
-		mgmt.GET("/logs", s.mgmt.GetLogs)
-		mgmt.DELETE("/logs", s.mgmt.DeleteLogs)
-		mgmt.GET("/request-error-logs", s.mgmt.GetRequestErrorLogs)
-		mgmt.GET("/request-error-logs/:name", s.mgmt.DownloadRequestErrorLog)
-		mgmt.GET("/request-log-by-id/:id", s.mgmt.GetRequestLogByID)
-		mgmt.GET("/request-log", s.mgmt.GetRequestLog)
-		mgmt.PUT("/request-log", s.mgmt.PutRequestLog)
-		mgmt.PATCH("/request-log", s.mgmt.PutRequestLog)
-		mgmt.GET("/ws-auth", s.mgmt.GetWebsocketAuth)
-		mgmt.PUT("/ws-auth", s.mgmt.PutWebsocketAuth)
-		mgmt.PATCH("/ws-auth", s.mgmt.PutWebsocketAuth)
-
-		mgmt.GET("/ampcode", s.mgmt.GetAmpCode)
-		mgmt.GET("/ampcode/upstream-url", s.mgmt.GetAmpUpstreamURL)
-		mgmt.PUT("/ampcode/upstream-url", s.mgmt.PutAmpUpstreamURL)
-		mgmt.PATCH("/ampcode/upstream-url", s.mgmt.PutAmpUpstreamURL)
-		mgmt.DELETE("/ampcode/upstream-url", s.mgmt.DeleteAmpUpstreamURL)
-		mgmt.GET("/ampcode/upstream-api-key", s.mgmt.GetAmpUpstreamAPIKey)
-		mgmt.PUT("/ampcode/upstream-api-key", s.mgmt.PutAmpUpstreamAPIKey)
-		mgmt.PATCH("/ampcode/upstream-api-key", s.mgmt.PutAmpUpstreamAPIKey)
-		mgmt.DELETE("/ampcode/upstream-api-key", s.mgmt.DeleteAmpUpstreamAPIKey)
-		mgmt.GET("/ampcode/restrict-management-to-localhost", s.mgmt.GetAmpRestrictManagementToLocalhost)
-		mgmt.PUT("/ampcode/restrict-management-to-localhost", s.mgmt.PutAmpRestrictManagementToLocalhost)
-		mgmt.PATCH("/ampcode/restrict-management-to-localhost", s.mgmt.PutAmpRestrictManagementToLocalhost)
-		mgmt.GET("/ampcode/model-mappings", s.mgmt.GetAmpModelMappings)
-		mgmt.PUT("/ampcode/model-mappings", s.mgmt.PutAmpModelMappings)
-		mgmt.PATCH("/ampcode/model-mappings", s.mgmt.PatchAmpModelMappings)
-		mgmt.DELETE("/ampcode/model-mappings", s.mgmt.DeleteAmpModelMappings)
-		mgmt.GET("/ampcode/force-model-mappings", s.mgmt.GetAmpForceModelMappings)
-		mgmt.PUT("/ampcode/force-model-mappings", s.mgmt.PutAmpForceModelMappings)
-		mgmt.PATCH("/ampcode/force-model-mappings", s.mgmt.PutAmpForceModelMappings)
-		mgmt.GET("/ampcode/upstream-api-keys", s.mgmt.GetAmpUpstreamAPIKeys)
-		mgmt.PUT("/ampcode/upstream-api-keys", s.mgmt.PutAmpUpstreamAPIKeys)
-		mgmt.PATCH("/ampcode/upstream-api-keys", s.mgmt.PatchAmpUpstreamAPIKeys)
-		mgmt.DELETE("/ampcode/upstream-api-keys", s.mgmt.DeleteAmpUpstreamAPIKeys)
-
-		mgmt.GET("/request-retry", s.mgmt.GetRequestRetry)
-		mgmt.PUT("/request-retry", s.mgmt.PutRequestRetry)
-		mgmt.PATCH("/request-retry", s.mgmt.PutRequestRetry)
-		mgmt.GET("/max-retry-interval", s.mgmt.GetMaxRetryInterval)
-		mgmt.PUT("/max-retry-interval", s.mgmt.PutMaxRetryInterval)
-		mgmt.PATCH("/max-retry-interval", s.mgmt.PutMaxRetryInterval)
-
-		mgmt.GET("/force-model-prefix", s.mgmt.GetForceModelPrefix)
-		mgmt.PUT("/force-model-prefix", s.mgmt.PutForceModelPrefix)
-		mgmt.PATCH("/force-model-prefix", s.mgmt.PutForceModelPrefix)
-
-		mgmt.GET("/routing/strategy", s.mgmt.GetRoutingStrategy)
-		mgmt.PUT("/routing/strategy", s.mgmt.PutRoutingStrategy)
-		mgmt.PATCH("/routing/strategy", s.mgmt.PutRoutingStrategy)
-
-		mgmt.GET("/claude-api-key", s.mgmt.GetClaudeKeys)
-		mgmt.PUT("/claude-api-key", s.mgmt.PutClaudeKeys)
-		mgmt.PATCH("/claude-api-key", s.mgmt.PatchClaudeKey)
-		mgmt.DELETE("/claude-api-key", s.mgmt.DeleteClaudeKey)
-
-		mgmt.GET("/codex-api-key", s.mgmt.GetCodexKeys)
-		mgmt.PUT("/codex-api-key", s.mgmt.PutCodexKeys)
-		mgmt.PATCH("/codex-api-key", s.mgmt.PatchCodexKey)
-		mgmt.DELETE("/codex-api-key", s.mgmt.DeleteCodexKey)
-
-		mgmt.GET("/openai-compatibility", s.mgmt.GetOpenAICompat)
-		mgmt.PUT("/openai-compatibility", s.mgmt.PutOpenAICompat)
-		mgmt.PATCH("/openai-compatibility", s.mgmt.PatchOpenAICompat)
-		mgmt.DELETE("/openai-compatibility", s.mgmt.DeleteOpenAICompat)
-
-		mgmt.GET("/vertex-api-key", s.mgmt.GetVertexCompatKeys)
-		mgmt.PUT("/vertex-api-key", s.mgmt.PutVertexCompatKeys)
-		mgmt.PATCH("/vertex-api-key", s.mgmt.PatchVertexCompatKey)
-		mgmt.DELETE("/vertex-api-key", s.mgmt.DeleteVertexCompatKey)
-
-		mgmt.GET("/oauth-excluded-models", s.mgmt.GetOAuthExcludedModels)
-		mgmt.PUT("/oauth-excluded-models", s.mgmt.PutOAuthExcludedModels)
-		mgmt.PATCH("/oauth-excluded-models", s.mgmt.PatchOAuthExcludedModels)
-		mgmt.DELETE("/oauth-excluded-models", s.mgmt.DeleteOAuthExcludedModels)
-
-		mgmt.GET("/oauth-model-alias", s.mgmt.GetOAuthModelAlias)
-		mgmt.PUT("/oauth-model-alias", s.mgmt.PutOAuthModelAlias)
-		mgmt.PATCH("/oauth-model-alias", s.mgmt.PatchOAuthModelAlias)
-		mgmt.DELETE("/oauth-model-alias", s.mgmt.DeleteOAuthModelAlias)
-
-		mgmt.GET("/auth-files", s.mgmt.ListAuthFiles)
-		mgmt.GET("/auth-files/models", s.mgmt.GetAuthFileModels)
-		mgmt.GET("/model-definitions/:channel", s.mgmt.GetStaticModelDefinitions)
-		mgmt.GET("/auth-files/download", s.mgmt.DownloadAuthFile)
-		mgmt.POST("/auth-files", s.mgmt.UploadAuthFile)
-		mgmt.DELETE("/auth-files", s.mgmt.DeleteAuthFile)
-		mgmt.PATCH("/auth-files/status", s.mgmt.PatchAuthFileStatus)
-		mgmt.PATCH("/auth-files/fields", s.mgmt.PatchAuthFileFields)
-		mgmt.POST("/vertex/import", s.mgmt.ImportVertexCredential)
-
-		mgmt.GET("/anthropic-auth-url", s.mgmt.RequestAnthropicToken)
-		mgmt.GET("/codex-auth-url", s.mgmt.RequestCodexToken)
-		mgmt.GET("/gemini-cli-auth-url", s.mgmt.RequestGeminiCLIToken)
-		mgmt.GET("/antigravity-auth-url", s.mgmt.RequestAntigravityToken)
-		mgmt.GET("/qwen-auth-url", s.mgmt.RequestQwenToken)
-		mgmt.GET("/kilo-auth-url", s.mgmt.RequestKiloToken)
-		mgmt.GET("/kimi-auth-url", s.mgmt.RequestKimiToken)
-		mgmt.GET("/iflow-auth-url", s.mgmt.RequestIFlowToken)
-		mgmt.POST("/iflow-auth-url", s.mgmt.RequestIFlowCookieToken)
-		mgmt.GET("/kiro-auth-url", s.mgmt.RequestKiroToken)
-		mgmt.GET("/github-auth-url", s.mgmt.RequestGitHubToken)
-		mgmt.POST("/oauth-callback", s.mgmt.PostOAuthCallback)
-		mgmt.GET("/get-auth-status", s.mgmt.GetAuthStatus)
+func (s *Server) registerOAuthCallbackRoute(path, provider string) {
+	if s == nil || s.engine == nil {
+		return
 	}
+	s.engine.GET(path, func(c *gin.Context) {
+		code := c.Query("code")
+		state := c.Query("state")
+		errStr := c.Query("error")
+		if errStr == "" {
+			errStr = c.Query("error_description")
+		}
+		if state != "" && s.oauthCallbackWriter != nil {
+			_, _ = s.oauthCallbackWriter(s.cfg.AuthDir, provider, state, code, errStr)
+		}
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.String(http.StatusOK, oauthCallbackSuccessHTML)
+	})
 }
 
 func (s *Server) managementAvailabilityMiddleware() gin.HandlerFunc {
@@ -796,7 +683,7 @@ func (s *Server) watchKeepAlive() {
 // that routes to different handlers based on the User-Agent header.
 // If User-Agent starts with "claude-cli", it routes to Claude handler,
 // otherwise it routes to OpenAI handler.
-func (s *Server) unifiedModelsHandler(openaiHandler *openai.OpenAIAPIHandler, claudeHandler *claude.ClaudeCodeAPIHandler) gin.HandlerFunc {
+func (s *Server) unifiedModelsHandler(openaiHandler OpenAIHandlerRoutes, claudeHandler *claude.ClaudeCodeAPIHandler) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 
