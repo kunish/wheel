@@ -302,6 +302,7 @@ func main() {
 		MCPServer:       mcpSrv,
 		BatchStore:      batchStore,
 		AsyncStore:      asyncStore,
+		CopilotRelay:    handler.NewCopilotRelay(database),
 	}
 
 	// ── Router ──

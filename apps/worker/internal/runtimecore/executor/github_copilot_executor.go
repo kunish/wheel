@@ -16,6 +16,7 @@ import (
 	translatorbridge "github.com/kunish/wheel/apps/worker/internal/runtimeapi/translatorbridge"
 	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	runtimetranslator "github.com/kunish/wheel/apps/worker/internal/runtimecore/translator"
+	sdkcliproxy "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
 	"github.com/tidwall/gjson"
@@ -57,7 +58,7 @@ func NewGitHubCopilotExecutor(cfg *runtimeconfig.Config) *GitHubCopilotExecutor 
 func (e *GitHubCopilotExecutor) Identifier() string { return "github-copilot" }
 
 func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
-	apiToken, baseURL, err := e.ensureAPIToken(auth)
+	apiToken, baseURL, err := e.ensureAPIToken(ctx, auth)
 	if err != nil {
 		return cliproxyexecutor.Response{}, err
 	}
@@ -101,7 +102,7 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 }
 
 func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
-	apiToken, baseURL, err := e.ensureAPIToken(auth)
+	apiToken, baseURL, err := e.ensureAPIToken(ctx, auth)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +182,7 @@ func (e *GitHubCopilotExecutor) HttpRequest(ctx context.Context, auth *cliproxya
 	if req == nil {
 		return nil, fmt.Errorf("github-copilot executor: request is nil")
 	}
-	apiToken, _, err := e.ensureAPIToken(auth)
+	apiToken, _, err := e.ensureAPIToken(ctx, auth)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +191,7 @@ func (e *GitHubCopilotExecutor) HttpRequest(ctx context.Context, auth *cliproxya
 	return (&http.Client{}).Do(httpReq)
 }
 
-func (e *GitHubCopilotExecutor) ensureAPIToken(auth *cliproxyauth.Auth) (string, string, error) {
+func (e *GitHubCopilotExecutor) ensureAPIToken(ctx context.Context, auth *cliproxyauth.Auth) (string, string, error) {
 	if auth == nil {
 		return "", "", statusErr{code: http.StatusUnauthorized, msg: "missing auth"}
 	}
@@ -205,7 +206,30 @@ func (e *GitHubCopilotExecutor) ensureAPIToken(auth *cliproxyauth.Auth) (string,
 	}
 	e.mu.RUnlock()
 
-	return "", "", statusErr{code: http.StatusUnauthorized, msg: "missing cached copilot api token"}
+	// Exchange GitHub access token for short-lived Copilot API token.
+	result, err := sdkcliproxy.ExchangeCopilotAPIToken(ctx, nil, accessToken)
+	if err != nil {
+		return "", "", statusErr{code: http.StatusUnauthorized, msg: fmt.Sprintf("failed to get copilot api token: %v", err)}
+	}
+
+	apiEndpoint := result.APIEndpoint
+	if apiEndpoint == "" {
+		apiEndpoint = githubCopilotBaseURL
+	}
+
+	expiresAt := time.Now().Add(githubCopilotTokenCacheTTL)
+	if result.ExpiresAt > 0 {
+		expiresAt = time.Unix(result.ExpiresAt, 0)
+	}
+	e.mu.Lock()
+	e.cache[accessToken] = &cachedAPIToken{
+		token:       result.Token,
+		apiEndpoint: strings.TrimRight(apiEndpoint, "/"),
+		expiresAt:   expiresAt,
+	}
+	e.mu.Unlock()
+
+	return result.Token, strings.TrimRight(apiEndpoint, "/"), nil
 }
 
 func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string, body []byte) {

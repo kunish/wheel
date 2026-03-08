@@ -62,6 +62,11 @@ type RelayStrategy interface {
 type streamStrategy struct{}
 
 func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relayResult, error) {
+	// Copilot channels: call upstream API directly instead of HTTP proxy.
+	if p.Channel.Type == types.OutboundCopilot && h.CopilotRelay != nil {
+		return h.executeCopilotStreaming(p)
+	}
+
 	streamId := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), p.Channel.ID, p.ApiKeyID)
 
 	h.Observer.StreamStarted(p.C.Request.Context())
@@ -164,6 +169,11 @@ func (s *streamStrategy) CleanupOnFailure(h *RelayHandler, p *relayAttemptParams
 type nonStreamStrategy struct{}
 
 func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relayResult, error) {
+	// Copilot channels: call upstream API directly instead of HTTP proxy.
+	if p.Channel.Type == types.OutboundCopilot && h.CopilotRelay != nil {
+		return h.executeCopilotNonStreaming(p)
+	}
+
 	if relay.IsAudioBinaryResponse(p.RequestType) {
 		if proxyErr := relay.ProxyBinaryResponse(
 			p.C.Writer,

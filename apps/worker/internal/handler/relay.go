@@ -116,6 +116,9 @@ type RelayHandler struct {
 	// ── Batch & Async ──
 	BatchStore *relay.BatchStore
 	AsyncStore *relay.AsyncStore
+
+	// ── Copilot ──
+	CopilotRelay *CopilotRelay
 }
 
 // RegisterRelayRoutes registers relay and related /v1 routes on a Gin engine.
