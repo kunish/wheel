@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.1](https://github.com/kunish/wheel/compare/v1.27.0...v1.27.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* fix pre-existing test failures, update docs, and eliminate sdk/config indirection ([1c42da8](https://github.com/kunish/wheel/commit/1c42da882042c7e3f6d56e1dd14fa7d2f51d5670))
+
 ## [1.27.0](https://github.com/kunish/wheel/compare/v1.26.1...v1.27.0) (2026-03-08)
 
 
