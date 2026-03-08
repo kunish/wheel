@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.27.0](https://github.com/kunish/wheel/compare/v1.26.1...v1.27.0) (2026-03-08)
+
+
+### Features
+
+* absorb vendored module into worker and migrate all auth handlers to first-party ([bd6e3ad](https://github.com/kunish/wheel/commit/bd6e3ad679c8ef5a4b1aa785bcc44d27200e87d8))
+* migrate device-flow auth providers to first-party ownership ([1b2e801](https://github.com/kunish/wheel/commit/1b2e8010ccba19a498a264030998ecb25b9556dd))
+* migrate runtime integration ownership seams ([926ef98](https://github.com/kunish/wheel/commit/926ef9827f067c0d8957320f1f7f58f59e4c3877))
+
+
+### Bug Fixes
+
+* resolve Copilot 502 by direct executor integration in relay handler ([41934e1](https://github.com/kunish/wheel/commit/41934e132b5bb995ebe05adddc62089f66b133de))
+* restore runtime seam factory files ([e9f7056](https://github.com/kunish/wheel/commit/e9f7056ea41b09fe0b685977cfb60610c6579dad))
+
 ## [1.26.1](https://github.com/kunish/wheel/compare/v1.26.0...v1.26.1) (2026-03-08)
 
 
