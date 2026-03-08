@@ -114,6 +114,7 @@ func (h *RelayHandler) executeWithRetry(
 			if targetModel == "" {
 				targetModel = model
 			}
+			targetModel = normalizeRuntimeTargetModel(channel.Type, targetModel)
 			isSticky := sessionKeepTime > 0 && idx == 0 && h.Sessions.GetSticky(apiKeyId, model, sessionKeepTime) != nil
 			stickyPtr := &isSticky
 

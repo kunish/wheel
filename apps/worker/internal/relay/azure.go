@@ -26,7 +26,11 @@ func buildAzureOpenAIRequest(baseUrl, key string, body map[string]any, inboundPa
 
 	// Determine endpoint type from inbound path
 	endpoint := "chat/completions"
-	if strings.Contains(inboundPath, "/embeddings") {
+	if strings.Contains(inboundPath, "/chat/completions") {
+		endpoint = "chat/completions"
+	} else if strings.Contains(inboundPath, "/completions") {
+		endpoint = "completions"
+	} else if strings.Contains(inboundPath, "/embeddings") {
 		endpoint = "embeddings"
 	} else if strings.Contains(inboundPath, "/images/generations") {
 		endpoint = "images/generations"

@@ -28,6 +28,7 @@ func newRelayTestEngine(h *RelayHandler, supportedModels string) *gin.Engine {
 	v1.POST("/rerank", h.HandleRerank)
 	v1.POST("/count-tokens", h.HandleCountTokens)
 	v1.POST("/chat/completions", h.handleRelay)
+	v1.POST("/completions", h.handleRelay)
 	v1.POST("/embeddings", h.handleRelay)
 	v1.POST("/responses", h.handleRelay)
 	v1.POST("/images/generations", h.handleRelay)
@@ -110,6 +111,24 @@ func successResponsesAPIResponse(model string) map[string]any {
 	}
 }
 
+func successTextCompletionResponse(model string) map[string]any {
+	return map[string]any{
+		"id":     "cmpl-test",
+		"object": "text_completion",
+		"model":  model,
+		"choices": []any{map[string]any{
+			"index":         0,
+			"text":          "ok",
+			"finish_reason": "stop",
+		}},
+		"usage": map[string]any{
+			"prompt_tokens":     3,
+			"completion_tokens": 2,
+			"total_tokens":      5,
+		},
+	}
+}
+
 func successEmbeddingsResponse(model string) map[string]any {
 	return map[string]any{
 		"object": "list",
@@ -186,6 +205,9 @@ func newOpenAICompatFixture(t *testing.T, models ...string) *openAICompatFixture
 		case "/v1/chat/completions":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(successCompletionResponse(openAICompatInferenceModel))
+		case "/v1/completions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(successTextCompletionResponse(openAICompatInferenceModel))
 		case "/v1/responses":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(successResponsesAPIResponse(openAICompatInferenceModel))
@@ -252,6 +274,20 @@ func TestRelayRoutes_EndToEndOpenAICompatibleEndpoints(t *testing.T) {
 		body := decodeJSONBody(t, resp.Body.Bytes())
 		if got := body["object"]; got != "chat.completion" {
 			t.Fatalf("object = %#v, want %q", got, "chat.completion")
+		}
+	})
+
+	t.Run("completions", func(t *testing.T) {
+		resp := doJSONRequest(t, r, http.MethodPost, "/v1/completions", map[string]any{
+			"model":  openAICompatInferenceModel,
+			"prompt": "hello",
+		})
+		if resp.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", resp.Code, resp.Body.String())
+		}
+		body := decodeJSONBody(t, resp.Body.Bytes())
+		if got := body["object"]; got != "text_completion" {
+			t.Fatalf("object = %#v, want %q", got, "text_completion")
 		}
 	})
 

@@ -28,10 +28,25 @@ func SelectBaseUrl(baseUrls []types.BaseUrl, channelType ...types.OutboundType) 
 		}
 		return "https://api.openai.com"
 	}
-	best := baseUrls[0]
-	for i := 1; i < len(baseUrls); i++ {
-		if baseUrls[i].Delay < best.Delay {
-			best = baseUrls[i]
+	filtered := make([]types.BaseUrl, 0, len(baseUrls))
+	for _, baseURL := range baseUrls {
+		if strings.TrimSpace(baseURL.URL) == "" {
+			continue
+		}
+		filtered = append(filtered, baseURL)
+	}
+	if len(filtered) == 0 {
+		if len(channelType) > 0 {
+			if def := types.DefaultBaseURL(channelType[0]); def != "" {
+				return def
+			}
+		}
+		return "https://api.openai.com"
+	}
+	best := filtered[0]
+	for i := 1; i < len(filtered); i++ {
+		if filtered[i].Delay < best.Delay {
+			best = filtered[i]
 		}
 	}
 	return strings.TrimRight(best.URL, "/")
@@ -138,7 +153,11 @@ func BuildUpstreamRequest(
 
 func buildOpenAIRequest(baseUrl, key string, body map[string]any, inboundPath, model string, channel ChannelConfig) UpstreamRequest {
 	path := "/v1/chat/completions"
-	if strings.Contains(inboundPath, "/embeddings") {
+	if strings.Contains(inboundPath, "/chat/completions") {
+		path = "/v1/chat/completions"
+	} else if strings.Contains(inboundPath, "/completions") {
+		path = "/v1/completions"
+	} else if strings.Contains(inboundPath, "/embeddings") {
 		path = "/v1/embeddings"
 	} else if strings.Contains(inboundPath, "/responses") {
 		path = "/v1/responses"

@@ -19,6 +19,7 @@ func TestDetectRequestType(t *testing.T) {
 
 	tests := append([]testCase{
 		{name: "chat completions", path: "/v1/chat/completions", want: RequestTypeChat},
+		{name: "completions", path: "/v1/completions", want: RequestTypeCompletions},
 		{name: "anthropic messages", path: "/v1/messages", want: RequestTypeAnthropicMsg},
 		{name: "embeddings", path: "/v1/embeddings", want: RequestTypeEmbeddings},
 		{name: "responses", path: "/v1/responses", want: RequestTypeResponses},

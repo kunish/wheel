@@ -5,6 +5,7 @@ import "strings"
 // Request type constants for all supported API endpoints.
 const (
 	RequestTypeChat            = "openai-chat"
+	RequestTypeCompletions     = "openai-completions"
 	RequestTypeAnthropicMsg    = "anthropic-messages"
 	RequestTypeEmbeddings      = "openai-embeddings"
 	RequestTypeResponses       = "openai-responses"
@@ -19,6 +20,9 @@ const (
 func DetectRequestType(path string) string {
 	if strings.Contains(path, "/chat/completions") {
 		return RequestTypeChat
+	}
+	if strings.Contains(path, "/completions") {
+		return RequestTypeCompletions
 	}
 	if strings.Contains(path, "/v1/messages") {
 		return RequestTypeAnthropicMsg

@@ -143,9 +143,9 @@ func DefaultBaseURL(t OutboundType) string {
 	case OutboundSiliconFlow:
 		return "https://api.siliconflow.cn"
 	case OutboundCodex:
-		return "http://localhost:8317"
+		return "http://127.0.0.1:8317"
 	case OutboundCopilot:
-		return "http://localhost:8317"
+		return "http://127.0.0.1:8317"
 	default:
 		return ""
 	}

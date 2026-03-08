@@ -48,6 +48,14 @@ func TestSelectBaseUrl_TrimsTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestSelectBaseUrl_EmptyConfiguredRuntimeURLFallsBackToDefault(t *testing.T) {
+	urls := []types.BaseUrl{{URL: "", Delay: 0}}
+	got := SelectBaseUrl(urls, types.OutboundCopilot)
+	if got != "http://127.0.0.1:8317" {
+		t.Errorf("got %q, want runtime default", got)
+	}
+}
+
 // ── BuildUpstreamRequest routing ───────────────────────────────
 
 func TestBuildUpstreamRequest_RoutesToOpenAI(t *testing.T) {
@@ -149,6 +157,19 @@ func TestBuildOpenAIRequest_ResponsesPath(t *testing.T) {
 	req := BuildUpstreamRequest(ch, "key", body, "/v1/responses", "gpt-4o", false)
 
 	if req.URL != "https://api.openai.com/v1/responses" {
+		t.Errorf("URL = %q", req.URL)
+	}
+}
+
+func TestBuildOpenAIRequest_CompletionsPath(t *testing.T) {
+	ch := ChannelConfig{
+		Type:     types.OutboundOpenAI,
+		BaseUrls: []types.BaseUrl{{URL: "https://api.openai.com", Delay: 0}},
+	}
+	body := map[string]any{"model": "gpt-4o", "prompt": "hello"}
+	req := BuildUpstreamRequest(ch, "key", body, "/v1/completions", "gpt-4o", false)
+
+	if req.URL != "https://api.openai.com/v1/completions" {
 		t.Errorf("URL = %q", req.URL)
 	}
 }

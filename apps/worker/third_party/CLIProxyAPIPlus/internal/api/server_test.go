@@ -5,9 +5,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	gin "github.com/gin-gonic/gin"
 	proxyconfig "github.com/router-for-me/CLIProxyAPI/v6/internal/config"
@@ -16,6 +19,66 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
 )
+
+func readManagerOAuthAliasReverse(t *testing.T, mgr *auth.Manager) map[string]map[string]string {
+	t.Helper()
+
+	field := reflect.ValueOf(mgr).Elem().FieldByName("oauthModelAlias")
+	if !field.IsValid() {
+		t.Fatal("oauthModelAlias field not found")
+	}
+	value := (*atomic.Value)(unsafe.Pointer(field.UnsafeAddr())).Load()
+	if value == nil {
+		return nil
+	}
+
+	tableValue := reflect.ValueOf(value)
+	if tableValue.Kind() == reflect.Ptr {
+		tableValue = tableValue.Elem()
+	}
+	reverseField := tableValue.FieldByName("reverse")
+	if !reverseField.IsValid() || reverseField.IsNil() {
+		return nil
+	}
+
+	return reflect.NewAt(reverseField.Type(), unsafe.Pointer(reverseField.UnsafeAddr())).Elem().Interface().(map[string]map[string]string)
+}
+
+func TestNewServer_PropagatesOAuthModelAliasesToAuthManager(t *testing.T) {
+	t.Helper()
+
+	cfg := &proxyconfig.Config{
+		SDKConfig: sdkconfig.SDKConfig{APIKeys: []string{"test-key"}},
+		OAuthModelAlias: map[string][]proxyconfig.OAuthModelAlias{
+			"github-copilot": {{Name: "claude-opus-4.6", Alias: "claude-opus-4-6", Fork: true}},
+		},
+	}
+	authManager := auth.NewManager(nil, nil, nil)
+	accessManager := sdkaccess.NewManager()
+
+	_ = NewServer(cfg, authManager, accessManager, filepath.Join(t.TempDir(), "config.yaml"))
+
+	reverse := readManagerOAuthAliasReverse(t, authManager)
+	if got := reverse["github-copilot"]["claude-opus-4-6"]; got != "claude-opus-4.6" {
+		t.Fatalf("github-copilot alias = %q, want %q", got, "claude-opus-4.6")
+	}
+}
+
+func TestServerUpdateClients_RefreshesOAuthModelAliasesInAuthManager(t *testing.T) {
+	server := newTestServer(t)
+
+	updated := *server.cfg
+	updated.OAuthModelAlias = map[string][]proxyconfig.OAuthModelAlias{
+		"github-copilot": {{Name: "claude-opus-4.6", Alias: "claude-opus-4-6", Fork: true}},
+	}
+
+	server.UpdateClients(&updated)
+
+	reverse := readManagerOAuthAliasReverse(t, server.handlers.AuthManager)
+	if got := reverse["github-copilot"]["claude-opus-4-6"]; got != "claude-opus-4.6" {
+		t.Fatalf("github-copilot alias after update = %q, want %q", got, "claude-opus-4.6")
+	}
+}
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()

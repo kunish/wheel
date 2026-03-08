@@ -57,6 +57,7 @@ func (h *RelayHandler) executeBackgroundNonStream(
 			if targetModel == "" {
 				targetModel = requestModel
 			}
+			targetModel = normalizeRuntimeTargetModel(channel.Type, targetModel)
 
 			tripped, _ := h.CircuitBreakers.IsTripped(channel.ID, selectedKey.ID, targetModel, cbBaseSec, cbMaxSec)
 			if tripped {

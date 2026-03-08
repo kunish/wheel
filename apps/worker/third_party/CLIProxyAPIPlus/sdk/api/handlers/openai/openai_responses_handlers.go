@@ -87,7 +87,10 @@ func (h *OpenAIResponsesAPIHandler) Responses(c *gin.Context) {
 	streamResult := gjson.GetBytes(rawJSON, "stream")
 	stream := streamResult.Type == gjson.True
 
-	modelName := gjson.GetBytes(rawJSON, "model").String()
+	modelName, ok := requireOpenAIModel(c, rawJSON)
+	if !ok {
+		return
+	}
 	if overrideEndpoint, ok := resolveEndpointOverride(modelName, openAIResponsesEndpoint); ok && overrideEndpoint == openAIChatEndpoint {
 		chatJSON := responsesconverter.ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName, rawJSON, stream)
 		stream = gjson.GetBytes(chatJSON, "stream").Bool()

@@ -566,6 +566,11 @@ func detectVisionContent(body []byte) bool {
 // suffixed model identifiers.
 func (e *GitHubCopilotExecutor) normalizeModel(model string, body []byte) []byte {
 	baseModel := thinking.ParseSuffix(model).ModelName
+	if strings.HasPrefix(baseModel, "claude-") {
+		baseModel = strings.Replace(baseModel, "-4-1", "-4.1", 1)
+		baseModel = strings.Replace(baseModel, "-4-5", "-4.5", 1)
+		baseModel = strings.Replace(baseModel, "-4-6", "-4.6", 1)
+	}
 	if baseModel != model {
 		body, _ = sjson.SetBytes(body, "model", baseModel)
 	}

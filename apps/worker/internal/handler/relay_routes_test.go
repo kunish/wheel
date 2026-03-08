@@ -49,6 +49,7 @@ func TestRegisterRelayRoutes_NoWildcardConflicts(t *testing.T) {
 	}{
 		{method: "GET", path: "/v1/models"},
 		{method: "POST", path: "/v1/chat/completions"},
+		{method: "POST", path: "/v1/completions"},
 		{method: "POST", path: "/v1/messages"},
 		{method: "POST", path: "/v1/embeddings"},
 		{method: "POST", path: "/v1/responses"},

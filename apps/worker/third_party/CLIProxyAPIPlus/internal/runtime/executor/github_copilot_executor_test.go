@@ -18,6 +18,11 @@ func TestGitHubCopilotNormalizeModel_StripsSuffix(t *testing.T) {
 		wantModel string
 	}{
 		{
+			name:      "claude hyphen alias normalized",
+			model:     "claude-opus-4-6",
+			wantModel: "claude-opus-4.6",
+		},
+		{
 			name:      "suffix stripped",
 			model:     "claude-opus-4.6(medium)",
 			wantModel: "claude-opus-4.6",

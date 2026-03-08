@@ -7,6 +7,7 @@
 package openai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -90,6 +91,17 @@ func (h *OpenAIAPIHandler) OpenAIModels(c *gin.Context) {
 	})
 }
 
+func formatOpenAIStreamChunk(chunk []byte) string {
+	trimmed := bytes.TrimSpace(chunk)
+	if len(trimmed) == 0 {
+		return "\n\n"
+	}
+	if bytes.HasPrefix(trimmed, []byte("data:")) || bytes.HasPrefix(trimmed, []byte("event:")) || bytes.HasPrefix(trimmed, []byte(":")) {
+		return string(trimmed) + "\n\n"
+	}
+	return fmt.Sprintf("data: %s\n\n", trimmed)
+}
+
 // ChatCompletions handles the /v1/chat/completions endpoint.
 // It determines whether the request is for a streaming or non-streaming response
 // and calls the appropriate handler based on the model provider.
@@ -113,7 +125,10 @@ func (h *OpenAIAPIHandler) ChatCompletions(c *gin.Context) {
 	streamResult := gjson.GetBytes(rawJSON, "stream")
 	stream := streamResult.Type == gjson.True
 
-	modelName := gjson.GetBytes(rawJSON, "model").String()
+	modelName, ok := requireOpenAIModel(c, rawJSON)
+	if !ok {
+		return
+	}
 	if overrideEndpoint, ok := resolveEndpointOverride(modelName, openAIChatEndpoint); ok && overrideEndpoint == openAIResponsesEndpoint {
 		originalChat := rawJSON
 		if shouldTreatAsResponsesFormat(rawJSON) {
@@ -183,6 +198,9 @@ func (h *OpenAIAPIHandler) Completions(c *gin.Context) {
 
 	// Check if the client requested a streaming response.
 	streamResult := gjson.GetBytes(rawJSON, "stream")
+	if _, ok := requireOpenAIModel(c, rawJSON); !ok {
+		return
+	}
 	if streamResult.Type == gjson.True {
 		h.handleCompletionsStreamingResponse(c, rawJSON)
 	} else {
@@ -297,7 +315,7 @@ func writeConvertedResponsesChunk(c *gin.Context, ctx context.Context, modelName
 		if out == "" {
 			continue
 		}
-		_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", out)
+		_, _ = c.Writer.Write([]byte(formatOpenAIStreamChunk([]byte(out))))
 	}
 }
 
@@ -309,7 +327,7 @@ func (h *OpenAIAPIHandler) forwardResponsesAsChatStream(c *gin.Context, flusher 
 				if out == "" {
 					continue
 				}
-				_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", out)
+				_, _ = c.Writer.Write([]byte(formatOpenAIStreamChunk([]byte(out))))
 			}
 		},
 		WriteTerminalError: func(errMsg *interfaces.ErrorMessage) {
@@ -325,7 +343,7 @@ func (h *OpenAIAPIHandler) forwardResponsesAsChatStream(c *gin.Context, flusher 
 				errText = errMsg.Error.Error()
 			}
 			body := handlers.BuildErrorResponseBody(status, errText)
-			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(body))
+			_, _ = c.Writer.Write([]byte(formatOpenAIStreamChunk(body)))
 		},
 		WriteDone: func() {
 			_, _ = fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
@@ -416,6 +434,13 @@ func convertChatCompletionsResponseToCompletions(rawJSON []byte) []byte {
 // Returns:
 //   - []byte: The converted completions stream chunk, or nil if should be filtered out
 func convertChatCompletionsStreamChunkToCompletions(chunkData []byte) []byte {
+	if bytes.HasPrefix(chunkData, []byte("data:")) {
+		chunkData = bytes.TrimSpace(chunkData[5:])
+	}
+	if bytes.Equal(chunkData, []byte("[DONE]")) {
+		return nil
+	}
+
 	root := gjson.ParseBytes(chunkData)
 
 	// Check if this chunk has any meaningful content
@@ -621,7 +646,7 @@ func (h *OpenAIAPIHandler) handleStreamingResponse(c *gin.Context, rawJSON []byt
 			setSSEHeaders()
 			handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
 
-			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(chunk))
+			_, _ = c.Writer.Write([]byte(formatOpenAIStreamChunk(chunk)))
 			flusher.Flush()
 
 			// Continue streaming the rest
@@ -793,7 +818,7 @@ func (h *OpenAIAPIHandler) handleCompletionsStreamingResponse(c *gin.Context, ra
 			// Write the first chunk
 			converted := convertChatCompletionsStreamChunkToCompletions(chunk)
 			if converted != nil {
-				_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(converted))
+				_, _ = c.Writer.Write([]byte(formatOpenAIStreamChunk(converted)))
 				flusher.Flush()
 			}
 
@@ -836,7 +861,7 @@ func (h *OpenAIAPIHandler) handleCompletionsStreamingResponse(c *gin.Context, ra
 func (h *OpenAIAPIHandler) handleStreamResult(c *gin.Context, flusher http.Flusher, cancel func(error), data <-chan []byte, errs <-chan *interfaces.ErrorMessage) {
 	h.ForwardStream(c, flusher, cancel, data, errs, handlers.StreamForwardOptions{
 		WriteChunk: func(chunk []byte) {
-			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(chunk))
+			_, _ = c.Writer.Write([]byte(formatOpenAIStreamChunk(chunk)))
 		},
 		WriteTerminalError: func(errMsg *interfaces.ErrorMessage) {
 			if errMsg == nil {
@@ -851,7 +876,7 @@ func (h *OpenAIAPIHandler) handleStreamResult(c *gin.Context, flusher http.Flush
 				errText = errMsg.Error.Error()
 			}
 			body := handlers.BuildErrorResponseBody(status, errText)
-			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(body))
+			_, _ = c.Writer.Write([]byte(formatOpenAIStreamChunk(body)))
 		},
 		WriteDone: func() {
 			_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")

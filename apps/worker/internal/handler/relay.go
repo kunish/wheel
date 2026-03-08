@@ -144,6 +144,7 @@ func (h *RelayHandler) RegisterRelayRoutes(r *gin.Engine) {
 	// Relay endpoints
 	v1.GET("/models", h.handleModels)
 	v1.POST("/chat/completions", h.handleRelay)
+	v1.POST("/completions", h.handleRelay)
 	v1.POST("/messages", h.handleRelay)
 	v1.POST("/embeddings", h.handleRelay)
 	v1.POST("/responses", h.handleRelay)
