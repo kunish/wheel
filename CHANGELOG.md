@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.1](https://github.com/kunish/wheel/compare/v1.26.0...v1.26.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* tighten runtime OpenAI compatibility ([20d4d72](https://github.com/kunish/wheel/commit/20d4d7288b38bc6d6fb9427ba86c9c5d97179821))
+
 ## [1.26.0](https://github.com/kunish/wheel/compare/v1.25.0...v1.26.0) (2026-03-07)
 
 
