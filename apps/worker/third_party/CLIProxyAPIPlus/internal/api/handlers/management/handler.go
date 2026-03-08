@@ -139,6 +139,44 @@ func (h *Handler) RegisterRoutes(mgmt *gin.RouterGroup) {
 	if h == nil || mgmt == nil {
 		return
 	}
+	h.RegisterRoutesWithoutOAuthSessionRoutes(mgmt)
+	mgmt.GET("/anthropic-auth-url", h.RequestAnthropicToken)
+	mgmt.GET("/codex-auth-url", h.RequestCodexToken)
+	mgmt.GET("/github-auth-url", h.RequestGitHubToken)
+	mgmt.GET("/gemini-cli-auth-url", h.RequestGeminiCLIToken)
+	mgmt.GET("/antigravity-auth-url", h.RequestAntigravityToken)
+	mgmt.GET("/qwen-auth-url", h.RequestQwenToken)
+	mgmt.GET("/kilo-auth-url", h.RequestKiloToken)
+	mgmt.GET("/kimi-auth-url", h.RequestKimiToken)
+	mgmt.GET("/iflow-auth-url", h.RequestIFlowToken)
+	mgmt.POST("/iflow-auth-url", h.RequestIFlowCookieToken)
+	mgmt.GET("/kiro-auth-url", h.RequestKiroToken)
+	mgmt.POST("/oauth-callback", h.PostOAuthCallback)
+	mgmt.GET("/get-auth-status", h.GetAuthStatus)
+}
+
+// RegisterRoutesWithoutOAuthCallback attaches management endpoints except OAuth callback and status polling routes.
+func (h *Handler) RegisterRoutesWithoutOAuthCallback(mgmt *gin.RouterGroup) {
+	h.RegisterRoutesWithoutOAuthSessionRoutes(mgmt)
+	mgmt.GET("/anthropic-auth-url", h.RequestAnthropicToken)
+	mgmt.GET("/codex-auth-url", h.RequestCodexToken)
+	mgmt.GET("/github-auth-url", h.RequestGitHubToken)
+	mgmt.GET("/gemini-cli-auth-url", h.RequestGeminiCLIToken)
+	mgmt.GET("/antigravity-auth-url", h.RequestAntigravityToken)
+	mgmt.GET("/qwen-auth-url", h.RequestQwenToken)
+	mgmt.GET("/kilo-auth-url", h.RequestKiloToken)
+	mgmt.GET("/kimi-auth-url", h.RequestKimiToken)
+	mgmt.GET("/iflow-auth-url", h.RequestIFlowToken)
+	mgmt.POST("/iflow-auth-url", h.RequestIFlowCookieToken)
+	mgmt.GET("/kiro-auth-url", h.RequestKiroToken)
+	mgmt.GET("/get-auth-status", h.GetAuthStatus)
+}
+
+// RegisterRoutesWithoutOAuthSessionRoutes attaches management endpoints except OAuth session routes.
+func (h *Handler) RegisterRoutesWithoutOAuthSessionRoutes(mgmt *gin.RouterGroup) {
+	if h == nil || mgmt == nil {
+		return
+	}
 
 	mgmt.GET("/usage", h.GetUsageStatistics)
 	mgmt.GET("/usage/export", h.ExportUsageStatistics)
@@ -284,19 +322,6 @@ func (h *Handler) RegisterRoutes(mgmt *gin.RouterGroup) {
 	mgmt.PATCH("/auth-files/fields", h.PatchAuthFileFields)
 	mgmt.POST("/vertex/import", h.ImportVertexCredential)
 
-	mgmt.GET("/anthropic-auth-url", h.RequestAnthropicToken)
-	mgmt.GET("/codex-auth-url", h.RequestCodexToken)
-	mgmt.GET("/gemini-cli-auth-url", h.RequestGeminiCLIToken)
-	mgmt.GET("/antigravity-auth-url", h.RequestAntigravityToken)
-	mgmt.GET("/qwen-auth-url", h.RequestQwenToken)
-	mgmt.GET("/kilo-auth-url", h.RequestKiloToken)
-	mgmt.GET("/kimi-auth-url", h.RequestKimiToken)
-	mgmt.GET("/iflow-auth-url", h.RequestIFlowToken)
-	mgmt.POST("/iflow-auth-url", h.RequestIFlowCookieToken)
-	mgmt.GET("/kiro-auth-url", h.RequestKiroToken)
-	mgmt.GET("/github-auth-url", h.RequestGitHubToken)
-	mgmt.POST("/oauth-callback", h.PostOAuthCallback)
-	mgmt.GET("/get-auth-status", h.GetAuthStatus)
 }
 
 // Middleware enforces access control for management endpoints.
