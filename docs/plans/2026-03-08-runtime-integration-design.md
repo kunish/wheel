@@ -10,10 +10,10 @@ Turn the embedded runtime from a vendored third-party tree into an officially ow
 
 - Wheel embeds the runtime through `apps/worker/internal/codexruntime/service.go`.
 - The worker module depends on `github.com/router-for-me/CLIProxyAPI/v6` and rewires it locally through `apps/worker/go.mod` with:
-  - `replace github.com/router-for-me/CLIProxyAPI/v6 => ./third_party/CLIProxyAPIPlus`
+  - `replace github.com/router-for-me/CLIProxyAPI/v6 => ./internal/runtime`
 - Wheel-specific fixes currently live in two places:
   - worker-owned relay/runtime glue under `apps/worker/internal/...`
-  - vendored runtime patches under `apps/worker/third_party/CLIProxyAPIPlus/...`
+  - vendored runtime patches under `apps/worker/internal/runtime/...`
 - This makes ownership unclear and increases the chance that runtime behavior drifts across duplicate logic paths.
 
 ## Problems To Solve
@@ -144,8 +144,8 @@ Then update `apps/worker/internal/codexruntime/service.go` to depend only on Whe
 
 Only after all startup and runtime imports are first-party:
 
-- remove `replace github.com/router-for-me/CLIProxyAPI/v6 => ./third_party/CLIProxyAPIPlus`
-- delete `apps/worker/third_party/CLIProxyAPIPlus`
+- remove `replace github.com/router-for-me/CLIProxyAPI/v6 => ./internal/runtime`
+- delete `apps/worker/internal/runtime`
 - remove compatibility shims and temporary forwarding code
 
 ### 4. Behavior-preservation strategy
@@ -278,7 +278,7 @@ Verify:
 
 - Wheel embeds and starts the runtime using only Wheel-owned runtime packages.
 - `apps/worker/go.mod` no longer uses the vendored `replace` for runtime ownership.
-- `apps/worker/third_party/CLIProxyAPIPlus` is removed.
+- `apps/worker/internal/runtime` is removed.
 - OpenAI-compatible behavior remains stable at both `:8787` and `:8317`.
 - Codex/Copilot management flows continue to work.
 - The runtime is clearly maintained as a first-party subsystem of Wheel.

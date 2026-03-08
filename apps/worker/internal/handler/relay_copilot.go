@@ -17,7 +17,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
 	"github.com/kunish/wheel/apps/worker/internal/types"
-	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
+	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
 	"github.com/uptrace/bun"
 )
 

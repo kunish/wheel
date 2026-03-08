@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
+	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
 	log "github.com/sirupsen/logrus"
 )
 

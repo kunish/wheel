@@ -3,7 +3,7 @@ package runtimeauth
 import (
 	"sync"
 
-	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	coreauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
 )
 
 var (

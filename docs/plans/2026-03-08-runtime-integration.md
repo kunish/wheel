@@ -40,7 +40,7 @@ Inventory checklist:
   - `apps/worker/internal/handler/codex.go` importing `github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth`
 - [x] The current module boundary is still the vendored runtime:
   - `apps/worker/go.mod` requires `github.com/router-for-me/CLIProxyAPI/v6 v6.8.47`
-  - `apps/worker/go.mod` replaces it with `./third_party/CLIProxyAPIPlus`
+  - `apps/worker/go.mod` replaces it with `./internal/runtime`
 - [x] Current embedded runtime boot path runs through `apps/worker/internal/codexruntime/service.go` and `apps/worker/internal/codexruntime/runtime.go`:
   - `EnsureManagedConfig` writes the managed runtime config and auth directory
   - `ManagedConfigPath` points the generated config at port `8317`
@@ -52,14 +52,14 @@ Inventory checklist:
   - OAuth start/status flows
   - management bridge calls to `/v0/management/auth-files`, `/auth-files/models`, `/api-call`, `/copilot-quota`, `/codex-auth-url`, and `/get-auth-status`
 - [x] OpenAI-compatible API behavior that must not regress remains in the vendored runtime for now:
-  - routing for `/v1/models`, `/v1/chat/completions`, `/v1/completions`, and `/v1/responses` in `apps/worker/third_party/CLIProxyAPIPlus/internal/api/server.go`
-  - handler implementations in `apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers/openai/openai_handlers.go` and `apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers/openai/openai_responses_handlers.go`
-  - regression coverage in `apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers/openai/openai_model_validation_test.go`, `apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers/openai/openai_stream_sse_test.go`, and `apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers/openai/openai_responses_handlers_stream_error_test.go`
-- [x] Inventory finding from the verification command: worker-owned direct imports are narrow, while most remaining dependency surface is still inside `apps/worker/third_party/CLIProxyAPIPlus`, including runtime boot, management internals, watcher/auth/executor code, and OpenAI-compatible API handlers/tests targeted by later migration tasks.
+  - routing for `/v1/models`, `/v1/chat/completions`, `/v1/completions`, and `/v1/responses` in `apps/worker/internal/runtime/internal/api/server.go`
+  - handler implementations in `apps/worker/internal/runtime/sdk/api/handlers/openai/openai_handlers.go` and `apps/worker/internal/runtime/sdk/api/handlers/openai/openai_responses_handlers.go`
+  - regression coverage in `apps/worker/internal/runtime/sdk/api/handlers/openai/openai_model_validation_test.go`, `apps/worker/internal/runtime/sdk/api/handlers/openai/openai_stream_sse_test.go`, and `apps/worker/internal/runtime/sdk/api/handlers/openai/openai_responses_handlers_stream_error_test.go`
+- [x] Inventory finding from the verification command: worker-owned direct imports are narrow, while most remaining dependency surface is still inside `apps/worker/internal/runtime`, including runtime boot, management internals, watcher/auth/executor code, and OpenAI-compatible API handlers/tests targeted by later migration tasks.
 
 **Step 2: Verify the dependency surface**
 
-Run: `rg 'github.com/router-for-me/CLIProxyAPI/v6|third_party/CLIProxyAPIPlus' apps/worker -g'*.go'`
+Run: `rg 'github.com/router-for-me/CLIProxyAPI/v6|internal/runtime' apps/worker -g'*.go'`
 
 Expected: a concrete list of imports and vendored touchpoints to migrate.
 
@@ -259,7 +259,7 @@ Expected: PASS.
 
 - Modify: `apps/worker/go.mod`
 - Modify: `apps/worker/go.sum`
-- Delete: `apps/worker/third_party/CLIProxyAPIPlus/...`
+- Delete: `apps/worker/internal/runtime/...`
 - Modify: any remaining imports under `apps/worker/...`
 
 **Step 1: Write the failing verification**
@@ -271,13 +271,13 @@ Add a verification checklist item asserting that:
 
 **Step 2: Verify remaining vendored imports exist before removal**
 
-Run: `rg 'github.com/router-for-me/CLIProxyAPI/v6|third_party/CLIProxyAPIPlus' apps/worker -g'*.go'`
+Run: `rg 'github.com/router-for-me/CLIProxyAPI/v6|internal/runtime' apps/worker -g'*.go'`
 
 Expected: remaining hits before final cleanup.
 
 **Step 3: Remove the replace and rewrite imports**
 
-- delete the `replace github.com/router-for-me/CLIProxyAPI/v6 => ./third_party/CLIProxyAPIPlus` line from `apps/worker/go.mod`
+- delete the `replace github.com/router-for-me/CLIProxyAPI/v6 => ./internal/runtime` line from `apps/worker/go.mod`
 - update all remaining imports to Wheel-owned packages
 - only then delete the vendored tree
 

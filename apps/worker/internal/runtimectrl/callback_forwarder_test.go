@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
+	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
 )
 
 func TestStartCallbackForwarder_ListensAndRedirects(t *testing.T) {

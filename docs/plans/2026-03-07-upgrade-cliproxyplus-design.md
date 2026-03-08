@@ -4,11 +4,11 @@
 
 ## Goal
 
-Upgrade the vendored `CLIProxyAPIPlus` runtime in `apps/worker/third_party/CLIProxyAPIPlus` to the latest upstream version so Wheel can inherit newly added runtime models such as `gpt-5.4`, while preserving Wheel's existing Codex/Copilot runtime integrations.
+Upgrade the vendored `CLIProxyAPIPlus` runtime in `apps/worker/internal/runtime` to the latest upstream version so Wheel can inherit newly added runtime models such as `gpt-5.4`, while preserving Wheel's existing Codex/Copilot runtime integrations.
 
 ## Current State
 
-- `apps/worker/go.mod` depends on `github.com/router-for-me/CLIProxyAPI/v6`, but the module is redirected with a local `replace` to `./third_party/CLIProxyAPIPlus`.
+- `apps/worker/go.mod` depends on `github.com/router-for-me/CLIProxyAPI/v6`, but the module is redirected with a local `replace` to `./internal/runtime`.
 - Wheel therefore runs against the vendored code, not directly against the published upstream module source.
 - The current vendored model registry does not define `gpt-5.4`.
 - Wheel has its own runtime-facing integration layer around the vendored runtime, especially in `apps/worker/internal/handler/codex.go` and related runtime UI/API paths.
@@ -42,7 +42,7 @@ The important artifact is the vendored source tree, not just the version in `go.
 
 The upgrade should:
 
-- sync `apps/worker/third_party/CLIProxyAPIPlus` to latest upstream
+- sync `apps/worker/internal/runtime` to latest upstream
 - keep the local `replace` in place
 - update `apps/worker/go.mod` to reflect the vendored upstream version when appropriate
 

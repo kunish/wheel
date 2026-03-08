@@ -14,9 +14,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers"
-	sdkopenai "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers/openai"
-	cliproxyexecutor "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/executor"
+	"github.com/kunish/wheel/apps/worker/internal/runtime/sdk/api/handlers"
+	sdkopenai "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/api/handlers/openai"
+	cliproxyexecutor "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/executor"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )

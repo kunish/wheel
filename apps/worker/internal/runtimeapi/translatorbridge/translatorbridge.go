@@ -4,8 +4,8 @@ import (
 	"context"
 
 	runtimetranslator "github.com/kunish/wheel/apps/worker/internal/runtimecore/translator"
-	sdktranslator "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/translator"
-	_ "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/translator/builtin"
+	sdktranslator "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/translator"
+	_ "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/translator/builtin"
 )
 
 type Adapter struct{}

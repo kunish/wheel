@@ -6,7 +6,7 @@ import (
 	"time"
 
 	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
-	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	coreauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
 )
 
 var ErrRefreshNotSupported = errors.New("cliproxy auth: refresh not supported")

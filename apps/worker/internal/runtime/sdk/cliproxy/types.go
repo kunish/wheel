@@ -1,0 +1,236 @@
+// Package cliproxy provides the core service implementation for the CLI Proxy API.
+// It includes service lifecycle management, authentication handling, file watching,
+// and integration with various AI service providers through a unified interface.
+package cliproxy
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/api"
+	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/watcher"
+	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/wsrelay"
+	sdkaccess "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/access"
+	"github.com/kunish/wheel/apps/worker/internal/runtime/sdk/api/handlers"
+	coreauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
+	"github.com/kunish/wheel/apps/worker/internal/runtime/sdk/config"
+)
+
+// ExecutorBinder allows hosts to intercept provider executor binding for specific auth entries.
+// Return true when the binder handled registration and the default binding path should stop.
+type ExecutorBinder func(cfg *config.Config, manager *coreauth.Manager, auth *coreauth.Auth, forceReplace bool) bool
+
+// ServerRuntime captures the subset of API server behavior required by the embedded runtime service.
+type ServerRuntime interface {
+	Start() error
+	Stop(ctx context.Context) error
+	UpdateClients(cfg *config.Config)
+	AttachWebsocketRoute(path string, handler http.Handler)
+	SetWebsocketAuthChangeHandler(func(oldEnabled, newEnabled bool))
+}
+
+// ServerFactory constructs the HTTP API server for the embedded runtime.
+type ServerFactory func(cfg *config.Config, authManager *coreauth.Manager, accessManager *sdkaccess.Manager, configFilePath string, opts ...api.ServerOption) ServerRuntime
+
+// WebsocketGateway captures the websocket relay behavior required by the embedded runtime service.
+type WebsocketGateway interface {
+	Path() string
+	Handler() http.Handler
+	DisconnectAll(ctx context.Context) error
+	NonStream(ctx context.Context, provider string, req *wsrelay.HTTPRequest) (*wsrelay.HTTPResponse, error)
+	Stream(ctx context.Context, provider string, req *wsrelay.HTTPRequest) (<-chan wsrelay.StreamEvent, error)
+}
+
+// WebsocketGatewayOptions configures websocket gateway construction.
+type WebsocketGatewayOptions struct {
+	Path           string
+	OnConnected    func(string)
+	OnDisconnected func(string, error)
+	LogDebugf      func(string, ...any)
+	LogInfof       func(string, ...any)
+	LogWarnf       func(string, ...any)
+}
+
+// WebsocketGatewayFactory constructs the websocket relay gateway used by the embedded runtime.
+type WebsocketGatewayFactory func(opts WebsocketGatewayOptions) WebsocketGateway
+
+type OpenAIHandlerRoutes interface {
+	OpenAIModels(*gin.Context)
+	ChatCompletions(*gin.Context)
+	Completions(*gin.Context)
+}
+
+type OpenAIResponsesHandlerRoutes interface {
+	ResponsesWebsocket(*gin.Context)
+	Responses(*gin.Context)
+	Compact(*gin.Context)
+}
+
+type ManagementHandlerRoutes interface {
+	Middleware() gin.HandlerFunc
+	RegisterRoutes(*gin.RouterGroup)
+	SetConfig(*config.Config)
+	SetAuthManager(*coreauth.Manager)
+	SetLocalPassword(string)
+	SetLogDirectory(string)
+	SetPostAuthHook(coreauth.PostAuthHook)
+}
+
+type ManagementHandlerFactory func(*config.Config, string, *coreauth.Manager) ManagementHandlerRoutes
+
+type OAuthCallbackWriter func(authDir, provider, state, code, errorMessage string) (string, error)
+
+type OpenAIHandlerFactory func(*handlers.BaseAPIHandler) OpenAIHandlerRoutes
+
+type OpenAIResponsesHandlerFactory func(*handlers.BaseAPIHandler) OpenAIResponsesHandlerRoutes
+
+// TokenClientProvider loads clients backed by stored authentication tokens.
+// It provides an interface for loading authentication tokens from various sources
+// and creating clients for AI service providers.
+type TokenClientProvider interface {
+	// Load loads token-based clients from the configured source.
+	//
+	// Parameters:
+	//   - ctx: The context for the loading operation
+	//   - cfg: The application configuration
+	//
+	// Returns:
+	//   - *TokenClientResult: The result containing loaded clients
+	//   - error: An error if loading fails
+	Load(ctx context.Context, cfg *config.Config) (*TokenClientResult, error)
+}
+
+// TokenClientResult represents clients generated from persisted tokens.
+// It contains metadata about the loading operation and the number of successful authentications.
+type TokenClientResult struct {
+	// SuccessfulAuthed is the number of successfully authenticated clients.
+	SuccessfulAuthed int
+}
+
+// APIKeyClientProvider loads clients backed directly by configured API keys.
+// It provides an interface for loading API key-based clients for various AI service providers.
+type APIKeyClientProvider interface {
+	// Load loads API key-based clients from the configuration.
+	//
+	// Parameters:
+	//   - ctx: The context for the loading operation
+	//   - cfg: The application configuration
+	//
+	// Returns:
+	//   - *APIKeyClientResult: The result containing loaded clients
+	//   - error: An error if loading fails
+	Load(ctx context.Context, cfg *config.Config) (*APIKeyClientResult, error)
+}
+
+// APIKeyClientResult is returned by APIKeyClientProvider.Load()
+type APIKeyClientResult struct {
+	// GeminiKeyCount is the number of Gemini API keys loaded
+	GeminiKeyCount int
+
+	// VertexCompatKeyCount is the number of Vertex-compatible API keys loaded
+	VertexCompatKeyCount int
+
+	// ClaudeKeyCount is the number of Claude API keys loaded
+	ClaudeKeyCount int
+
+	// CodexKeyCount is the number of Codex API keys loaded
+	CodexKeyCount int
+
+	// OpenAICompatCount is the number of OpenAI compatibility API keys loaded
+	OpenAICompatCount int
+}
+
+// WatcherFactory creates a watcher for configuration and token changes.
+// The reload callback receives the updated configuration when changes are detected.
+//
+// Parameters:
+//   - configPath: The path to the configuration file to watch
+//   - authDir: The directory containing authentication tokens to watch
+//   - reload: The callback function to call when changes are detected
+//
+// Returns:
+//   - *WatcherWrapper: A watcher wrapper instance
+//   - error: An error if watcher creation fails
+type WatcherFactory func(configPath, authDir string, reload func(*config.Config)) (*WatcherWrapper, error)
+
+// WatcherWrapper exposes the subset of watcher methods required by the SDK.
+type WatcherWrapper struct {
+	start func(ctx context.Context) error
+	stop  func() error
+
+	setConfig             func(cfg *config.Config)
+	snapshotAuths         func() []*coreauth.Auth
+	setUpdateQueue        func(queue chan<- watcher.AuthUpdate)
+	dispatchRuntimeUpdate func(update watcher.AuthUpdate) bool
+	notifyTokenRefreshed  func(tokenID, accessToken, refreshToken, expiresAt string) // 方案 A: 后台刷新通知
+}
+
+// Start proxies to the underlying watcher Start implementation.
+func (w *WatcherWrapper) Start(ctx context.Context) error {
+	if w == nil || w.start == nil {
+		return nil
+	}
+	return w.start(ctx)
+}
+
+// Stop proxies to the underlying watcher Stop implementation.
+func (w *WatcherWrapper) Stop() error {
+	if w == nil || w.stop == nil {
+		return nil
+	}
+	return w.stop()
+}
+
+// SetConfig updates the watcher configuration cache.
+func (w *WatcherWrapper) SetConfig(cfg *config.Config) {
+	if w == nil || w.setConfig == nil {
+		return
+	}
+	w.setConfig(cfg)
+}
+
+// DispatchRuntimeAuthUpdate forwards runtime auth updates (e.g., websocket providers)
+// into the watcher-managed auth update queue when available.
+// Returns true if the update was enqueued successfully.
+func (w *WatcherWrapper) DispatchRuntimeAuthUpdate(update watcher.AuthUpdate) bool {
+	if w == nil || w.dispatchRuntimeUpdate == nil {
+		return false
+	}
+	return w.dispatchRuntimeUpdate(update)
+}
+
+// SetClients updates the watcher file-backed clients registry.
+// SetClients and SetAPIKeyClients removed; watcher manages its own caches
+
+// SnapshotClients returns the current combined clients snapshot from the underlying watcher.
+// SnapshotClients removed; use SnapshotAuths
+
+// SnapshotAuths returns the current auth entries derived from legacy clients.
+func (w *WatcherWrapper) SnapshotAuths() []*coreauth.Auth {
+	if w == nil || w.snapshotAuths == nil {
+		return nil
+	}
+	return w.snapshotAuths()
+}
+
+// SetAuthUpdateQueue registers the channel used to propagate auth updates.
+func (w *WatcherWrapper) SetAuthUpdateQueue(queue chan<- watcher.AuthUpdate) {
+	if w == nil || w.setUpdateQueue == nil {
+		return
+	}
+	w.setUpdateQueue(queue)
+}
+
+// NotifyTokenRefreshed 通知 Watcher 后台刷新器已更新 token
+// 这是方案 A 的核心方法，用于解决后台刷新与内存 Auth 对象的时间差问题
+// tokenID: token 文件名（如 kiro-xxx.json）
+// accessToken: 新的 access token
+// refreshToken: 新的 refresh token
+// expiresAt: 新的过期时间（RFC3339 格式）
+func (w *WatcherWrapper) NotifyTokenRefreshed(tokenID, accessToken, refreshToken, expiresAt string) {
+	if w == nil || w.notifyTokenRefreshed == nil {
+		return
+	}
+	w.notifyTokenRefreshed(tokenID, accessToken, refreshToken, expiresAt)
+}

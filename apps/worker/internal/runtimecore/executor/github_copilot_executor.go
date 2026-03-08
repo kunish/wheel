@@ -16,9 +16,9 @@ import (
 	translatorbridge "github.com/kunish/wheel/apps/worker/internal/runtimeapi/translatorbridge"
 	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	runtimetranslator "github.com/kunish/wheel/apps/worker/internal/runtimecore/translator"
-	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
-	cliproxyauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
-	cliproxyexecutor "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/executor"
+	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
+	cliproxyauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
+	cliproxyexecutor "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/executor"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )

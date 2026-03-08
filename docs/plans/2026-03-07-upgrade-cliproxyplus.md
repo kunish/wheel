@@ -42,13 +42,13 @@ Expected: PASS if it is a lock-in baseline, or FAIL in a controlled way if it en
 
 **Files:**
 
-- Modify: `apps/worker/third_party/CLIProxyAPIPlus/**`
+- Modify: `apps/worker/internal/runtime/**`
 - Modify: `apps/worker/go.mod`
 - Modify: `apps/worker/go.sum`
 
 **Step 1: Refresh vendored source from upstream**
 
-- Replace or sync `apps/worker/third_party/CLIProxyAPIPlus` to the latest upstream source.
+- Replace or sync `apps/worker/internal/runtime` to the latest upstream source.
 - Keep module path and local `replace` workflow intact.
 
 **Step 2: Align module metadata**

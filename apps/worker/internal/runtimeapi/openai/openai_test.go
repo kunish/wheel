@@ -12,9 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/config"
-	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers"
-	sdkopenai "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers/openai"
+	sdkconfig "github.com/kunish/wheel/apps/worker/internal/runtime/corelib/config"
+	"github.com/kunish/wheel/apps/worker/internal/runtime/sdk/api/handlers"
+	sdkopenai "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/api/handlers/openai"
 	"github.com/tidwall/gjson"
 )
 

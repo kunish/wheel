@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	cliproxyauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	cliproxyauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
 )
 
 func TestRegisterTokenStoreSaveAndListAuth(t *testing.T) {
