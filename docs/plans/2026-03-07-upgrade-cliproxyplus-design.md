@@ -1,3 +1,5 @@
+> **Note**: This plan has been completed. The vendored module has been absorbed into the worker module. Import paths referenced below are historical.
+
 # Upgrade CLIProxyAPIPlus Design
 
 ## Goal

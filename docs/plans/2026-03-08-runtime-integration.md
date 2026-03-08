@@ -1,3 +1,5 @@
+> **Note**: This plan has been completed. The vendored module has been absorbed into the worker module. Import paths referenced below are historical.
+
 # Runtime Integration Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

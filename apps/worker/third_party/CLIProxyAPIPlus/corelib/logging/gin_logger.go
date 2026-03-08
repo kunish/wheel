@@ -112,20 +112,30 @@ func isAIAPIPath(path string) bool {
 // Returns:
 //   - gin.HandlerFunc: A middleware handler for panic recovery
 func GinLogrusRecovery() gin.HandlerFunc {
-	return gin.CustomRecovery(func(c *gin.Context, recovered interface{}) {
-		if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
-			// Let net/http handle ErrAbortHandler so the connection is aborted without noisy stack logs.
-			panic(http.ErrAbortHandler)
-		}
+	// Use a raw middleware instead of gin.CustomRecovery so that re-panicking
+	// with http.ErrAbortHandler actually escapes ServeHTTP.
+	// gin.CustomRecovery's internal recovery catches the re-panic before it
+	// can propagate out.
+	return func(c *gin.Context) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+					// Let net/http handle ErrAbortHandler so the connection is
+					// aborted without noisy stack logs.
+					panic(http.ErrAbortHandler)
+				}
 
-		log.WithFields(log.Fields{
-			"panic": recovered,
-			"stack": string(debug.Stack()),
-			"path":  c.Request.URL.Path,
-		}).Error("recovered from panic")
+				log.WithFields(log.Fields{
+					"panic": recovered,
+					"stack": string(debug.Stack()),
+					"path":  c.Request.URL.Path,
+				}).Error("recovered from panic")
 
-		c.AbortWithStatus(http.StatusInternalServerError)
-	})
+				c.AbortWithStatus(http.StatusInternalServerError)
+			}
+		}()
+		c.Next()
+	}
 }
 
 // SkipGinRequestLogging marks the provided Gin context so that GinLogrusLogger

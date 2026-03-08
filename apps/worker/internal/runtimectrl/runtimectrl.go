@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/config"
 	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
 	sdkcliproxyauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
-	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
 	log "github.com/sirupsen/logrus"
 )
 

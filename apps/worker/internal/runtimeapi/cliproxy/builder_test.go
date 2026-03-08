@@ -11,11 +11,11 @@ import (
 
 	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
 	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
+	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/config"
 	sdkaccess "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/access"
 	sdkauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/auth"
 	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
 	sdkcliproxyauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
-	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
 )
 
 func TestBuilderBuildForwardsRuntimeInputs(t *testing.T) {

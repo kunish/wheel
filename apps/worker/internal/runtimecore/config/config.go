@@ -13,7 +13,7 @@ import (
 	"strings"
 	"syscall"
 
-	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
+	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/config"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
