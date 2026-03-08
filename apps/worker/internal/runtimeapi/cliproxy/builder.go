@@ -10,12 +10,12 @@ import (
 	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	runtimeexecutor "github.com/kunish/wheel/apps/worker/internal/runtimecore/executor"
 	"github.com/kunish/wheel/apps/worker/internal/runtimectrl"
-	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
-	sdkapihandlers "github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers"
-	sdkauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/auth"
-	sdkcliproxy "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy"
-	sdkcliproxyauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
-	sdkconfig "github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
+	sdkaccess "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/access"
+	sdkapihandlers "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers"
+	sdkauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/auth"
+	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
+	sdkcliproxyauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
 )
 
 type sdkServiceRunner interface {

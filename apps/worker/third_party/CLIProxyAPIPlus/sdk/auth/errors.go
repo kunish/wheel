@@ -3,7 +3,7 @@ package auth
 import (
 	"fmt"
 
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/interfaces"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/interfaces"
 )
 
 // ProjectSelectionError indicates that the user must choose a specific project ID.

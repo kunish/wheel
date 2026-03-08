@@ -24,14 +24,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api"
-	sdkAuth "github.com/router-for-me/CLIProxyAPI/v6/sdk/auth"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
-	clipexec "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/logging"
-	sdktr "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/api"
+	sdkAuth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/auth"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
+	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	clipexec "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/executor"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/logging"
+	sdktr "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/translator"
 )
 
 const (

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	baseauth "github.com/router-for-me/CLIProxyAPI/v6/internal/auth"
+	baseauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/auth"
 )
 
 // PostAuthHook defines a function that is called after an Auth record is created

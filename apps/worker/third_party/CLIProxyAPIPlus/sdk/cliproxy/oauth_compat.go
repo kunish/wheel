@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
-	management "github.com/router-for-me/CLIProxyAPI/v6/internal/api/handlers/management"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
+	management "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/api/handlers/management"
+	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
 )
 
 func RegisterOAuthSession(state, provider string) {

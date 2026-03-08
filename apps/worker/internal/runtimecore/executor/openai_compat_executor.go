@@ -12,8 +12,8 @@ import (
 	translatorbridge "github.com/kunish/wheel/apps/worker/internal/runtimeapi/translatorbridge"
 	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	runtimetranslator "github.com/kunish/wheel/apps/worker/internal/runtimecore/translator"
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
-	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
+	cliproxyauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	cliproxyexecutor "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/executor"
 )
 
 type OpenAICompatExecutor struct {

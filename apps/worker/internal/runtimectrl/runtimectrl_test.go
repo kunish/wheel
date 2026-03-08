@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	sdkcliproxy "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy"
-	sdkcliproxyauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
-	sdkconfig "github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
+	sdkcliproxy "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy"
+	sdkcliproxyauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
 )
 
 func TestNewManagementHandlerProvidesManagementRoutes(t *testing.T) {
@@ -185,11 +185,25 @@ func TestManagementHandlerRegistersOwnedCodexAuthURLRoute(t *testing.T) {
 
 	router.ServeHTTP(rr, req)
 
+	// Codex is now first-party: should return 200 with url+state, not delegate to inner
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	if !fake.requestCodexTokenCalled {
-		t.Fatal("expected wrapper to route codex-auth-url through owned registration")
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("body status = %v, want ok", body["status"])
+	}
+	if body["url"] == nil || body["url"] == "" {
+		t.Fatal("expected url in response")
+	}
+	if body["state"] == nil || body["state"] == "" {
+		t.Fatal("expected state in response")
+	}
+	if fake.requestCodexTokenCalled {
+		t.Fatal("expected first-party handler, not delegation to inner")
 	}
 }
 
@@ -229,14 +243,26 @@ func TestManagementHandlerRegistersOwnedAnthropicAuthURLRoute(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/v0/management/anthropic-auth-url", nil)
 	rr := httptest.NewRecorder()
-
 	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	if !fake.requestAnthropicTokenCalled {
-		t.Fatal("expected wrapper to route anthropic-auth-url through owned registration")
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("body status = %v, want ok", body["status"])
+	}
+	if body["url"] == nil || body["url"] == "" {
+		t.Fatal("expected url in response")
+	}
+	if body["state"] == nil || body["state"] == "" {
+		t.Fatal("expected state in response")
+	}
+	if fake.requestAnthropicTokenCalled {
+		t.Fatal("expected first-party handler, not delegation to inner")
 	}
 }
 
@@ -281,14 +307,23 @@ func TestManagementHandlerRegistersOwnedAntigravityAuthURLRoute(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/v0/management/antigravity-auth-url", nil)
 	rr := httptest.NewRecorder()
-
 	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	if !fake.requestAntigravityTokenCalled {
-		t.Fatal("expected wrapper to route antigravity-auth-url through owned registration")
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("body status = %v, want ok", body["status"])
+	}
+	if body["url"] == nil || body["url"] == "" {
+		t.Fatal("expected url in response")
+	}
+	if fake.requestAntigravityTokenCalled {
+		t.Fatal("expected first-party handler, not delegation to inner")
 	}
 }
 
@@ -381,7 +416,7 @@ func TestManagementHandlerRegistersOwnedIFlowAuthURLRoute(t *testing.T) {
 	mgmt.Use(handler.Middleware())
 	handler.RegisterRoutes(mgmt)
 
-	// Test GET /iflow-auth-url
+	// Test GET /iflow-auth-url — first-party OAuth handler
 	req := httptest.NewRequest(http.MethodGet, "/v0/management/iflow-auth-url", nil)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -389,21 +424,32 @@ func TestManagementHandlerRegistersOwnedIFlowAuthURLRoute(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	if !fake.requestIFlowTokenCalled {
-		t.Fatal("expected wrapper to route GET iflow-auth-url through owned registration")
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("GET body status = %v, want ok", body["status"])
+	}
+	if body["url"] == nil || body["url"] == "" {
+		t.Fatal("expected url in GET response")
+	}
+	if fake.requestIFlowTokenCalled {
+		t.Fatal("expected first-party handler for GET, not delegation")
 	}
 
-	// Test POST /iflow-auth-url
+	// Test POST /iflow-auth-url — first-party cookie handler
 	req = httptest.NewRequest(http.MethodPost, "/v0/management/iflow-auth-url", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("POST status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	// POST with empty body should return 400 (cookie required)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("POST status = %d, want %d body=%s", rr.Code, http.StatusBadRequest, rr.Body.String())
 	}
-	if !fake.requestIFlowCookieTokenCalled {
-		t.Fatal("expected wrapper to route POST iflow-auth-url through owned registration")
+	if fake.requestIFlowCookieTokenCalled {
+		t.Fatal("expected first-party handler for POST, not delegation")
 	}
 }
 

@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	internalapi "github.com/router-for-me/CLIProxyAPI/v6/internal/api"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/logging"
+	internalapi "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/api"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/api/handlers"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/logging"
 )
 
 // ServerOption customises HTTP server construction.

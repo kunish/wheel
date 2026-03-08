@@ -14,14 +14,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/interfaces"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/thinking"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/util"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
-	coreexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
-	"github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
-	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/interfaces"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/logging"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/thinking"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/util"
+	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
+	coreexecutor "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/executor"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
+	sdktranslator "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/translator"
 	"golang.org/x/net/context"
 )
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/copilot"
-	sdkconfig "github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/auth/copilot"
+	sdkconfig "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/config"
 )
 
 // CopilotDeviceCode holds the device authorization details for the GitHub Copilot flow.

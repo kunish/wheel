@@ -3,7 +3,7 @@ package openai
 import (
 	"testing"
 
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/registry"
 )
 
 func TestResolveEndpointOverrideExported(t *testing.T) {

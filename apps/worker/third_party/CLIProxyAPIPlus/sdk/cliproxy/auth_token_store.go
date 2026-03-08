@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	sdkAuth "github.com/router-for-me/CLIProxyAPI/v6/sdk/auth"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
+	sdkAuth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/auth"
+	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
 )
 
 // TokenStore returns the global token store singleton with its base directory

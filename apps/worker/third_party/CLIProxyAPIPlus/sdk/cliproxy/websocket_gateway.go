@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/wsrelay"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/wsrelay"
 )
 
 type vendoredWebsocketGateway struct {

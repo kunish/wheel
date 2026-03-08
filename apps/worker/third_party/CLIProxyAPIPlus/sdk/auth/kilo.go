@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/kilo"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/auth/kilo"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/config"
+	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
 )
 
 // KiloAuthenticator implements the login flow for Kilo AI accounts.

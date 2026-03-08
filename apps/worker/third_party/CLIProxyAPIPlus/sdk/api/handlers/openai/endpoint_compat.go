@@ -1,6 +1,6 @@
 package openai
 
-import "github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
+import "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/registry"
 
 const (
 	openAIChatEndpoint      = "/chat/completions"

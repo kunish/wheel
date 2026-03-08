@@ -3,7 +3,7 @@ package cliproxy
 import (
 	"context"
 
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/kilo"
+	"github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/auth/kilo"
 )
 
 // KiloDeviceFlow holds the device authorization details for the Kilo device code flow.

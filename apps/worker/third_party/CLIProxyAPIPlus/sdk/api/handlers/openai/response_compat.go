@@ -3,8 +3,8 @@ package openai
 import (
 	"context"
 
-	codexconverter "github.com/router-for-me/CLIProxyAPI/v6/internal/translator/codex/openai/chat-completions"
-	responsesconverter "github.com/router-for-me/CLIProxyAPI/v6/internal/translator/openai/openai/responses"
+	codexconverter "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/translator/codex/openai/chat-completions"
+	responsesconverter "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/corelib/translator/openai/openai/responses"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
+	coreauth "github.com/kunish/wheel/apps/worker/third_party/CLIProxyAPIPlus/sdk/cliproxy/auth"
 	"gopkg.in/yaml.v3"
 )
 
