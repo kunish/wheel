@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.3](https://github.com/kunish/wheel/compare/v1.27.2...v1.27.3) (2026-03-09)
+
+
+### Bug Fixes
+
+* remove stale CLIProxyAPIPlus COPY from worker Dockerfile ([424b291](https://github.com/kunish/wheel/commit/424b2911733cd46d553eb29431750419de3a6e2f))
+
 ## [1.27.2](https://github.com/kunish/wheel/compare/v1.27.1...v1.27.2) (2026-03-09)
 
 
