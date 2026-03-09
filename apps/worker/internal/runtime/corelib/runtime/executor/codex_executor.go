@@ -591,8 +591,28 @@ func (e *CodexExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth) (*
 	// Use unified key in files
 	auth.Metadata["expired"] = td.Expire
 	auth.Metadata["type"] = "codex"
-	now := time.Now().Format(time.RFC3339)
-	auth.Metadata["last_refresh"] = now
+	now := time.Now()
+	auth.Metadata["last_refresh"] = now.Format(time.RFC3339)
+
+	// Set NextRefreshAfter to prevent the background refresh loop from
+	// immediately re-triggering a refresh with the old (now-rotated) refresh
+	// token, which would cause a "refresh_token_reused" error.
+	// Strategy: refresh again when 80% of the token lifetime has elapsed,
+	// with a minimum delay of 2 minutes to avoid tight loops.
+	if td.Expire != "" {
+		if expTime, parseErr := time.Parse(time.RFC3339, td.Expire); parseErr == nil {
+			lifetime := expTime.Sub(now)
+			nextRefresh := now.Add(time.Duration(float64(lifetime) * 0.8))
+			minNextRefresh := now.Add(2 * time.Minute)
+			if nextRefresh.Before(minNextRefresh) {
+				nextRefresh = minNextRefresh
+			}
+			auth.NextRefreshAfter = nextRefresh
+			log.Debugf("codex executor: token refreshed, expires at %s, next refresh after %s (in %v)",
+				td.Expire, nextRefresh.Format(time.RFC3339), time.Until(nextRefresh))
+		}
+	}
+
 	return auth, nil
 }
 
