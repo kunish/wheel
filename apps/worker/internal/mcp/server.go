@@ -32,7 +32,9 @@ func NewServer(mgr *Manager) *Server {
 		manager: mgr,
 	}
 
-	s.sse = mcpserver.NewSSEServer(inner)
+	s.sse = mcpserver.NewSSEServer(inner,
+		mcpserver.WithStaticBasePath("/mcp"),
+	)
 	return s
 }
 
