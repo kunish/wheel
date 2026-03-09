@@ -70,6 +70,13 @@ func GinLogrusLogger() gin.HandlerFunc {
 		}
 
 		statusCode := c.Writer.Status()
+
+		// Skip info-level logging for management endpoints to reduce noise;
+		// only log when the response indicates an error (>= 400).
+		if isManagementPath(path) && statusCode < http.StatusBadRequest {
+			return
+		}
+
 		clientIP := c.ClientIP()
 		method := c.Request.Method
 		errorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
@@ -103,6 +110,12 @@ func isAIAPIPath(path string) bool {
 		}
 	}
 	return false
+}
+
+// isManagementPath returns true for management API endpoints whose
+// successful responses should be silenced to reduce log noise.
+func isManagementPath(path string) bool {
+	return strings.HasPrefix(path, "/v0/management") || strings.HasPrefix(path, "/management")
 }
 
 // GinLogrusRecovery returns a Gin middleware handler that recovers from panics and logs
