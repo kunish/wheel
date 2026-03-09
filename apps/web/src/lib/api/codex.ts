@@ -123,6 +123,7 @@ export function listCodexAuthFiles(
   params?: {
     provider?: string
     search?: string
+    disabled?: string
     page?: number
     pageSize?: number
     channelType?: number
@@ -132,6 +133,7 @@ export function listCodexAuthFiles(
   const query = new URLSearchParams()
   if (params?.provider) query.set("provider", params.provider)
   if (params?.search) query.set("search", params.search)
+  if (params?.disabled) query.set("disabled", params.disabled)
   if (params?.page) query.set("page", String(params.page))
   if (params?.pageSize) query.set("pageSize", String(params.pageSize))
   const suffix = query.toString()

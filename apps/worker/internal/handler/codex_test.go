@@ -94,7 +94,7 @@ func TestFilterAndPaginateAuthFiles(t *testing.T) {
 		{Name: "c.json", Provider: "gemini"},
 	}
 
-	items, total := filterAndPaginateAuthFiles(files, "codex", "", 1, 1)
+	items, total := filterAndPaginateAuthFiles(files, "codex", "", "", 1, 1)
 	if total != 2 {
 		t.Fatalf("total = %d, want 2", total)
 	}
@@ -108,7 +108,7 @@ func TestFilterAndPaginateAuthFiles_CopilotProviderAlias(t *testing.T) {
 		{Name: "copilot.json", Provider: "github-copilot"},
 	}
 
-	items, total := filterAndPaginateAuthFiles(files, "copilot", "", 1, 20)
+	items, total := filterAndPaginateAuthFiles(files, "copilot", "", "", 1, 20)
 	if total != 1 {
 		t.Fatalf("total = %d, want 1", total)
 	}

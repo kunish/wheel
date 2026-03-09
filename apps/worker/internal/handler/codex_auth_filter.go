@@ -38,8 +38,8 @@ func parseAuthFiles(files []map[string]any) []codexAuthFile {
 	return out
 }
 
-func filterAndPaginateAuthFiles(files []codexAuthFile, provider string, search string, page int, pageSize int) ([]codexAuthFile, int) {
-	filtered := filterCodexAuthFiles(files, provider, search)
+func filterAndPaginateAuthFiles(files []codexAuthFile, provider string, search string, disabled string, page int, pageSize int) ([]codexAuthFile, int) {
+	filtered := filterCodexAuthFiles(files, provider, search, disabled)
 
 	total := len(filtered)
 	if total == 0 {
@@ -62,9 +62,10 @@ func filterAndPaginateAuthFiles(files []codexAuthFile, provider string, search s
 	return filtered[start:end], total
 }
 
-func filterCodexAuthFiles(files []codexAuthFile, provider string, search string) []codexAuthFile {
+func filterCodexAuthFiles(files []codexAuthFile, provider string, search string, disabled string) []codexAuthFile {
 	provider = canonicalRuntimeProvider(provider)
 	search = strings.ToLower(strings.TrimSpace(search))
+	disabled = strings.ToLower(strings.TrimSpace(disabled))
 
 	filtered := make([]codexAuthFile, 0, len(files))
 	for _, file := range files {
@@ -81,6 +82,12 @@ func filterCodexAuthFiles(files []codexAuthFile, provider string, search string)
 				continue
 			}
 		}
+		if disabled == "true" && !file.Disabled {
+			continue
+		}
+		if disabled == "false" && file.Disabled {
+			continue
+		}
 		filtered = append(filtered, file)
 	}
 	return filtered
@@ -88,7 +95,7 @@ func filterCodexAuthFiles(files []codexAuthFile, provider string, search string)
 
 func selectCodexAuthFilesForBatch(files []codexAuthFile, scope codexAuthBatchScope) ([]codexAuthFile, error) {
 	if scope.AllMatching {
-		filtered := filterCodexAuthFiles(files, scope.Provider, scope.Search)
+		filtered := filterCodexAuthFiles(files, scope.Provider, scope.Search, "")
 		excluded := make(map[string]struct{}, len(scope.ExcludeNames))
 		for _, name := range scope.ExcludeNames {
 			name = strings.TrimSpace(name)

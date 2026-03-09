@@ -25,6 +25,7 @@ func (h *Handler) ListCodexAuthFiles(c *gin.Context) {
 
 	provider := strings.TrimSpace(c.Query("provider"))
 	search := strings.TrimSpace(c.Query("search"))
+	disabled := strings.TrimSpace(c.Query("disabled"))
 	page := parsePositiveInt(c.Query("page"), 1)
 	pageSize := parsePositiveInt(c.Query("pageSize"), 20)
 	if pageSize > 200 {
@@ -54,7 +55,7 @@ func (h *Handler) ListCodexAuthFiles(c *gin.Context) {
 		files = parseAuthFiles(resp.Files)
 	}
 
-	items, total := filterAndPaginateAuthFiles(files, provider, search, page, pageSize)
+	items, total := filterAndPaginateAuthFiles(files, provider, search, disabled, page, pageSize)
 	successJSON(c, gin.H{"files": items, "total": total, "page": page, "pageSize": pageSize, "capabilities": capabilities})
 }
 

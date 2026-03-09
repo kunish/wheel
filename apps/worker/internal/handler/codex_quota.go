@@ -52,7 +52,7 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 		files = parseAuthFiles(resp.Files)
 	}
 
-	paged, total := filterAndPaginateAuthFiles(files, providerFilter, search, page, pageSize)
+	paged, total := filterAndPaginateAuthFiles(files, providerFilter, search, "", page, pageSize)
 
 	if channel.Type == types.OutboundCopilot {
 		items := h.collectCopilotQuotaItems(c.Request.Context(), paged, codexQuotaFetchConcurrency, func(ctx context.Context, file codexAuthFile) ([]quotaSnapshot, string, string, error) {

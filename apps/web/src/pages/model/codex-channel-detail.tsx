@@ -12,7 +12,7 @@ import {
   Upload,
   XCircle,
 } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -84,6 +84,7 @@ export function CodexChannelDetail({
   const [authPage, setAuthPage] = useState(1)
   const [authPageSize, setAuthPageSize] = useState(AUTH_FILES_PAGE_SIZE)
   const [authSearch, setAuthSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("")
   const [selection, setSelection] = useState(createRuntimeAuthSelection)
   const providerKey = getRuntimeProviderKey(channelType)
   const providerLabel = providerKey ? t(`typeLabels.${channelType}`) : t("typeLabels.33")
@@ -95,11 +96,13 @@ export function CodexChannelDetail({
       pageSize: authPageSize,
       search: authSearch,
       channelType,
+      disabled: statusFilter === "disabled" ? "true" : undefined,
     }),
     queryFn: () =>
       listCodexAuthFiles(channelId, {
         provider: providerFilter,
         search: authSearch || undefined,
+        disabled: statusFilter === "disabled" ? "true" : undefined,
         page: authPage,
         pageSize: authPageSize,
         channelType,
@@ -336,9 +339,31 @@ export function CodexChannelDetail({
   const quotaItems = quotaQuery.data?.data.items ?? []
   const quotaMap = new Map(quotaItems.map((item) => [item.name, item]))
   const capabilities = authQuery.data?.data.capabilities
+
+  // Client-side post-filtering for quota-based filters (error / exhausted)
+  // These conditions require quota data which is fetched separately per-page
+  const filteredAuthFiles = useMemo(() => {
+    if (statusFilter === "error") {
+      return authFiles.filter((file) => {
+        const quota = quotaMap.get(file.name)
+        return quota?.error
+      })
+    }
+    if (statusFilter === "exhausted") {
+      return authFiles.filter((file) => {
+        const quota = quotaMap.get(file.name)
+        if (!quota) return false
+        if (quota.weekly.limitReached || quota.codeReview.limitReached) return true
+        if (quota.snapshots?.some((s) => !s.unlimited && s.percentRemaining <= 0)) return true
+        return false
+      })
+    }
+    return authFiles
+  }, [authFiles, quotaMap, statusFilter])
+
   const authTotal = authQuery.data?.data.total ?? 0
   const authTotalPages = Math.max(1, Math.ceil(authTotal / authPageSize))
-  const pageNames = authFiles.map((file) => file.name)
+  const pageNames = filteredAuthFiles.map((file) => file.name)
   const currentPageSelectionState = getCurrentPageSelectionState(selection, pageNames)
   const selectedCount = getSelectedCount(selection, authTotal)
   const canPromoteSelection =
@@ -360,7 +385,7 @@ export function CodexChannelDetail({
 
   useEffect(() => {
     setSelection(clearRuntimeAuthSelection())
-  }, [authPageSize, authSearch, providerFilter])
+  }, [authPageSize, authSearch, providerFilter, statusFilter])
 
   const handleRefresh = useCallback(() => {
     if (modelCount === 0 && authFiles.length > 0) {
@@ -392,11 +417,11 @@ export function CodexChannelDetail({
     <div className="mt-2 space-y-3">
       {/* Auth Files Section */}
       <div className="space-y-2">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-2">
           <h5 className="text-muted-foreground shrink-0 text-xs font-medium tracking-wide whitespace-nowrap uppercase">
             {t("runtime.authFiles", { provider: providerLabel })}
           </h5>
-          <div className="flex flex-wrap items-center gap-1 lg:justify-end">
+          <div className="grid grid-cols-2 gap-1">
             <Button
               type="button"
               variant="outline"
@@ -463,7 +488,7 @@ export function CodexChannelDetail({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2">
           <Input
             value={authSearch}
             onChange={(e) => {
@@ -471,33 +496,34 @@ export function CodexChannelDetail({
               setAuthPage(1)
             }}
             placeholder={t("runtime.searchAuthFiles")}
-            className="h-8 text-xs sm:max-w-xs"
+            className="h-8 text-xs"
           />
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <span className="text-muted-foreground text-[11px]">{t("runtime.pageSize")}</span>
-            <Select
-              value={String(authPageSize)}
-              onValueChange={(value) => {
-                setAuthPageSize(Number(value))
-                setAuthPage(1)
-              }}
-            >
-              <SelectTrigger className="h-8 w-20 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {AUTH_PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center gap-1">
+            {(
+              [
+                ["", "runtime.filterAll"],
+                ["disabled", "runtime.filterDisabled"],
+                ["error", "runtime.filterError"],
+                ["exhausted", "runtime.filterExhausted"],
+              ] as const
+            ).map(([value, labelKey]) => (
+              <Badge
+                key={value}
+                variant={statusFilter === value ? "default" : "outline"}
+                className="cursor-pointer text-[11px] select-none"
+                onClick={() => {
+                  setStatusFilter(value)
+                  setAuthPage(1)
+                }}
+              >
+                {t(labelKey)}
+              </Badge>
+            ))}
           </div>
         </div>
 
         {selectedCount > 0 ? (
-          <div className="flex flex-col gap-2 rounded-md border border-dashed px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 rounded-md border border-dashed px-3 py-2 text-xs">
             <div className="space-y-1">
               <p className="font-medium">
                 {selection.mode === "allMatching"
@@ -527,7 +553,7 @@ export function CodexChannelDetail({
                 </Button>
               ) : null}
             </div>
-            <div className="flex flex-wrap items-center gap-1 sm:justify-end">
+            <div className="flex flex-wrap items-center gap-1">
               <Button
                 type="button"
                 variant="outline"
@@ -579,32 +605,32 @@ export function CodexChannelDetail({
           </div>
         ) : (
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between rounded-md border px-2.5 py-2 text-xs">
-              <div className="flex items-center gap-2 font-medium">
-                <Checkbox
-                  checked={currentPageSelectionState}
-                  onCheckedChange={(checked) =>
-                    setSelection((current) =>
-                      setCurrentPageSelection(current, pageNames, checked === true),
-                    )
-                  }
-                  disabled={authMutationPending}
-                />
-                <span>{t("runtime.selectPage")}</span>
-              </div>
+            <div className="flex items-center gap-2 px-2.5 py-1 text-xs">
+              <Checkbox
+                checked={currentPageSelectionState}
+                onCheckedChange={(checked) =>
+                  setSelection((current) =>
+                    setCurrentPageSelection(current, pageNames, checked === true),
+                  )
+                }
+                disabled={authMutationPending}
+              />
+              <span className="text-muted-foreground text-[11px] font-medium">
+                {t("runtime.selectPage")}
+              </span>
               {authQuery.isFetching ? (
-                <span className="text-muted-foreground">
+                <span className="text-muted-foreground ml-auto text-[11px]">
                   {t("actions.loading", { ns: "common" })}
                 </span>
               ) : null}
             </div>
-            {authFiles.map((file) => {
+            {filteredAuthFiles.map((file) => {
               const disabled = !!file.disabled
               const quota = quotaMap.get(file.name)
               return (
                 <div
                   key={file.name}
-                  className="flex flex-col gap-2 rounded-md border px-2.5 py-1.5 text-sm lg:flex-row lg:items-center lg:justify-between"
+                  className="flex flex-col gap-2 rounded-md border px-2.5 py-1.5 text-sm"
                 >
                   <div className="flex min-w-0 flex-1 items-start gap-2">
                     <Checkbox
@@ -638,7 +664,7 @@ export function CodexChannelDetail({
                       )}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center justify-end gap-1 self-end lg:self-auto">
+                  <div className="flex shrink-0 items-center justify-end gap-1 self-end">
                     {capabilities?.modelsEnabled !== false && (
                       <Button
                         type="button"
@@ -677,6 +703,11 @@ export function CodexChannelDetail({
               pageSize={authPageSize}
               total={authTotal}
               onPageChange={setAuthPage}
+              pageSizeOptions={AUTH_PAGE_SIZE_OPTIONS}
+              onPageSizeChange={(size) => {
+                setAuthPageSize(size)
+                setAuthPage(1)
+              }}
             />
           </div>
         )}
@@ -873,20 +904,22 @@ function RuntimePagination({
   const to = Math.min(total, currentPage * pageSize)
 
   return (
-    <div className="flex flex-col gap-2 pt-1 text-xs sm:flex-row sm:items-center sm:justify-between">
-      <div className="text-muted-foreground flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+    <div className="flex flex-col gap-1.5 pt-1 text-xs">
+      <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5">
         <span>{t("pagination.showing", { ns: "common", from, to, total })}</span>
         <span>
           {t("pagination.page", { ns: "common", current: currentPage, total: totalPages })}
         </span>
+      </div>
+      <div className="flex items-center justify-between">
         {pageSizeOptions && onPageSizeChange ? (
-          <div className="flex items-center gap-2">
+          <div className="text-muted-foreground flex items-center gap-1.5">
             <span>{t("runtime.pageSize")}</span>
             <Select
               value={String(pageSize)}
               onValueChange={(value) => onPageSizeChange(Number(value))}
             >
-              <SelectTrigger className="h-7 w-20 text-xs">
+              <SelectTrigger className="h-7 w-16 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -898,29 +931,31 @@ function RuntimePagination({
               </SelectContent>
             </Select>
           </div>
-        ) : null}
-      </div>
-      <div className="flex items-center gap-1 self-end sm:self-auto">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-          disabled={currentPage <= 1}
-        >
-          {t("pagination.previous", { ns: "common" })}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-          disabled={currentPage >= totalPages}
-        >
-          {t("pagination.next", { ns: "common" })}
-        </Button>
+        ) : (
+          <div />
+        )}
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage <= 1}
+          >
+            {t("pagination.previous", { ns: "common" })}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage >= totalPages}
+          >
+            {t("pagination.next", { ns: "common" })}
+          </Button>
+        </div>
       </div>
     </div>
   )
