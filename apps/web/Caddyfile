@@ -36,7 +36,9 @@
 		reverse_proxy worker:8787
 	}
 
-	root * /srv
-	file_server
-	try_files {path} /index.html
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }
