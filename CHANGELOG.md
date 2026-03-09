@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/kunish/wheel/compare/v1.28.0...v1.29.0) (2026-03-09)
+
+
+### Features
+
+* cache-only quota status filter for auth files ([ef748b7](https://github.com/kunish/wheel/commit/ef748b7ebab24acbbfdb3db3ecc14f93c666b931))
+
 ## [1.28.0](https://github.com/kunish/wheel/compare/v1.27.4...v1.28.0) (2026-03-09)
 
 
