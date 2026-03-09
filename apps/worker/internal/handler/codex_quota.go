@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -61,6 +62,7 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 			}
 			return h.fetchCopilotQuota(ctx, file.AuthIndex)
 		})
+		h.storeQuotaCache(channel.ID, paged, items)
 		successJSON(c, gin.H{"items": items, "total": total, "page": page, "pageSize": pageSize})
 		return
 	}
@@ -75,6 +77,7 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 		}
 		return h.fetchCodexQuota(ctx, file.AuthIndex, accountID)
 	})
+	h.storeQuotaCache(channel.ID, paged, items)
 
 	successJSON(c, gin.H{"items": items, "total": total, "page": page, "pageSize": pageSize})
 }
@@ -83,6 +86,9 @@ func (h *Handler) collectCodexQuotaItems(ctx context.Context, files []codexAuthF
 	items := make([]codexQuotaItem, len(files))
 	if concurrency <= 1 {
 		for i, file := range files {
+			if ctx.Err() != nil {
+				break
+			}
 			items[i] = buildCodexQuotaItem(ctx, file, fetch)
 		}
 		return items
@@ -91,13 +97,20 @@ func (h *Handler) collectCodexQuotaItems(ctx context.Context, files []codexAuthF
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for i, file := range files {
+		if ctx.Err() != nil {
+			break
+		}
 		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int, file codexAuthFile) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			items[i] = buildCodexQuotaItem(ctx, file, fetch)
-		}(i, file)
+		select {
+		case sem <- struct{}{}:
+			go func(i int, file codexAuthFile) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				items[i] = buildCodexQuotaItem(ctx, file, fetch)
+			}(i, file)
+		case <-ctx.Done():
+			wg.Done()
+		}
 	}
 	wg.Wait()
 	return items
@@ -107,6 +120,9 @@ func (h *Handler) collectCopilotQuotaItems(ctx context.Context, files []codexAut
 	items := make([]codexQuotaItem, len(files))
 	if concurrency <= 1 {
 		for i, file := range files {
+			if ctx.Err() != nil {
+				break
+			}
 			items[i] = buildCopilotQuotaItem(ctx, file, fetch)
 		}
 		return items
@@ -115,13 +131,20 @@ func (h *Handler) collectCopilotQuotaItems(ctx context.Context, files []codexAut
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for i, file := range files {
+		if ctx.Err() != nil {
+			break
+		}
 		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int, file codexAuthFile) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			items[i] = buildCopilotQuotaItem(ctx, file, fetch)
-		}(i, file)
+		select {
+		case sem <- struct{}{}:
+			go func(i int, file codexAuthFile) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				items[i] = buildCopilotQuotaItem(ctx, file, fetch)
+			}(i, file)
+		case <-ctx.Done():
+			wg.Done()
+		}
 	}
 	wg.Wait()
 	return items
@@ -498,4 +521,40 @@ func parseQuotaWindow(raw map[string]any) codexQuotaWindow {
 		ResetAfterSeconds:  int64FromMap(raw, "reset_after_seconds", "resetAfterSeconds"),
 		ResetAt:            stringFromMap(raw, "reset_at", "resetAt"),
 	}
+}
+
+// ──── Quota Cache ────
+
+// quotaCacheKey builds a cache key for a given channel and auth file name.
+func quotaCacheKey(channelID int, name string) string {
+	return strconv.Itoa(channelID) + ":" + name
+}
+
+// storeQuotaCache writes quota items for the given channel into the cache.
+func (h *Handler) storeQuotaCache(channelID int, files []codexAuthFile, items []codexQuotaItem) {
+	now := time.Now()
+	for i, item := range items {
+		if i >= len(files) {
+			break
+		}
+		h.quotaCache.Store(quotaCacheKey(channelID, files[i].Name), quotaCacheEntry{
+			Item:      item,
+			FetchedAt: now,
+		})
+	}
+}
+
+// loadQuotaCache retrieves a cached quota item. Returns the item and true if
+// the entry exists and has not expired; otherwise returns zero value and false.
+func (h *Handler) loadQuotaCache(channelID int, name string) (codexQuotaItem, bool) {
+	v, ok := h.quotaCache.Load(quotaCacheKey(channelID, name))
+	if !ok {
+		return codexQuotaItem{}, false
+	}
+	entry, ok := v.(quotaCacheEntry)
+	if !ok || time.Since(entry.FetchedAt) > quotaCacheTTL {
+		h.quotaCache.Delete(quotaCacheKey(channelID, name))
+		return codexQuotaItem{}, false
+	}
+	return entry.Item, true
 }

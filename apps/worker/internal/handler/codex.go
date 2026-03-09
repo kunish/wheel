@@ -79,6 +79,15 @@ type codexOAuthSession struct {
 
 const codexOAuthSessionTTL = 15 * time.Minute
 
+// quotaCacheTTL is the time-to-live for cached quota entries.
+const quotaCacheTTL = 5 * time.Minute
+
+// quotaCacheEntry wraps a codexQuotaItem with a timestamp for TTL-based expiry.
+type quotaCacheEntry struct {
+	Item      codexQuotaItem
+	FetchedAt time.Time
+}
+
 type codexUploadFile struct {
 	Name    string
 	Content []byte

@@ -251,6 +251,7 @@
     "searchAuthFiles": "Search auth files by name or email",
     "pageSize": "Page size",
     "selectPage": "Select current page",
+    "cachedPartial": "Cached {{cached}}/{{total}}",
     "selectAllMatching": "Select all {{count}} matching auth files",
     "cancelSelectAllMatching": "Cancel cross-page selection",
     "selectedAuthFiles_one": "{{count}} auth file selected",

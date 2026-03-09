@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kunish/wheel/apps/worker/internal/cache"
@@ -25,6 +26,10 @@ type Handler struct {
 	CircuitBreakers *relay.CircuitBreakerManager
 	DLock           *db.DistributedLock
 	codexQuotaDo    func(*http.Request) (*http.Response, error)
+	// quotaCache stores quota results keyed by "channelID:fileName".
+	// Values are quotaCacheEntry. Populated during normal browsing,
+	// used for instant status filtering.
+	quotaCache sync.Map
 }
 
 // JSON helpers

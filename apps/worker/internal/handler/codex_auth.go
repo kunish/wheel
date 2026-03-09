@@ -21,11 +21,11 @@ func (h *Handler) ListCodexAuthFiles(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	_ = channel // channel validated but not used for filtering
 
 	provider := strings.TrimSpace(c.Query("provider"))
 	search := strings.TrimSpace(c.Query("search"))
 	disabled := strings.TrimSpace(c.Query("disabled"))
+	status := strings.TrimSpace(c.Query("status")) // "error" or "exhausted"
 	page := parsePositiveInt(c.Query("page"), 1)
 	pageSize := parsePositiveInt(c.Query("pageSize"), 20)
 	if pageSize > 200 {
@@ -53,6 +53,56 @@ func (h *Handler) ListCodexAuthFiles(c *gin.Context) {
 			return
 		}
 		files = parseAuthFiles(resp.Files)
+	}
+
+	// When status filter is active, use cached quota data for instant filtering.
+	// No scanning of uncached files — cache is populated during normal page browsing.
+	if status == "error" || status == "exhausted" {
+		filtered := filterCodexAuthFiles(files, provider, search, disabled)
+
+		var matchingFiles []codexAuthFile
+		var matchingQuota []codexQuotaItem
+		cachedCount := 0
+
+		for _, file := range filtered {
+			item, ok := h.loadQuotaCache(channel.ID, file.Name)
+			if !ok {
+				continue
+			}
+			cachedCount++
+			match := false
+			switch status {
+			case "error":
+				match = item.Error != ""
+			case "exhausted":
+				if item.Weekly.LimitReached || item.CodeReview.LimitReached {
+					match = true
+				}
+				for _, s := range item.Snapshots {
+					if !s.Unlimited && s.PercentRemaining <= 0 {
+						match = true
+						break
+					}
+				}
+			}
+			if match {
+				matchingFiles = append(matchingFiles, file)
+				matchingQuota = append(matchingQuota, item)
+			}
+		}
+
+		total := len(matchingFiles)
+		start := (page - 1) * pageSize
+		if start >= total {
+			successJSON(c, gin.H{"files": []codexAuthFile{}, "total": total, "page": page, "pageSize": pageSize, "capabilities": capabilities, "quotaItems": []codexQuotaItem{}, "cachedCount": cachedCount, "totalUnfiltered": len(filtered)})
+			return
+		}
+		end := start + pageSize
+		if end > total {
+			end = total
+		}
+		successJSON(c, gin.H{"files": matchingFiles[start:end], "total": total, "page": page, "pageSize": pageSize, "capabilities": capabilities, "quotaItems": matchingQuota[start:end], "cachedCount": cachedCount, "totalUnfiltered": len(filtered)})
+		return
 	}
 
 	items, total := filterAndPaginateAuthFiles(files, provider, search, disabled, page, pageSize)

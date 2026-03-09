@@ -12,7 +12,7 @@ import {
   Upload,
   XCircle,
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -90,6 +90,9 @@ export function CodexChannelDetail({
   const providerLabel = providerKey ? t(`typeLabels.${channelType}`) : t("typeLabels.33")
   const providerFilter = runtimeProviderFilter(channelType)
 
+  const quotaStatusFilter =
+    statusFilter === "error" || statusFilter === "exhausted" ? statusFilter : undefined
+
   const authQuery = useQuery({
     queryKey: codexAuthFilesQueryKey(channelId, {
       page: authPage,
@@ -97,12 +100,14 @@ export function CodexChannelDetail({
       search: authSearch,
       channelType,
       disabled: statusFilter === "disabled" ? "true" : undefined,
+      status: quotaStatusFilter,
     }),
     queryFn: () =>
       listCodexAuthFiles(channelId, {
         provider: providerFilter,
         search: authSearch || undefined,
         disabled: statusFilter === "disabled" ? "true" : undefined,
+        status: quotaStatusFilter,
         page: authPage,
         pageSize: authPageSize,
         channelType,
@@ -124,6 +129,7 @@ export function CodexChannelDetail({
         channelType,
       }),
     placeholderData: keepPreviousData,
+    enabled: !quotaStatusFilter, // quota-based filters use inline quota from auth endpoint
   })
 
   const modelsQuery = useQuery({
@@ -336,34 +342,17 @@ export function CodexChannelDetail({
   )
 
   const authFiles = authQuery.data?.data.files ?? []
-  const quotaItems = quotaQuery.data?.data.items ?? []
+  const inlineQuotaItems = authQuery.data?.data.quotaItems
+  const externalQuotaItems = quotaQuery.data?.data.items ?? []
+  const quotaItems = inlineQuotaItems ?? externalQuotaItems
   const quotaMap = new Map(quotaItems.map((item) => [item.name, item]))
   const capabilities = authQuery.data?.data.capabilities
-
-  // Client-side post-filtering for quota-based filters (error / exhausted)
-  // These conditions require quota data which is fetched separately per-page
-  const filteredAuthFiles = useMemo(() => {
-    if (statusFilter === "error") {
-      return authFiles.filter((file) => {
-        const quota = quotaMap.get(file.name)
-        return quota?.error
-      })
-    }
-    if (statusFilter === "exhausted") {
-      return authFiles.filter((file) => {
-        const quota = quotaMap.get(file.name)
-        if (!quota) return false
-        if (quota.weekly.limitReached || quota.codeReview.limitReached) return true
-        if (quota.snapshots?.some((s) => !s.unlimited && s.percentRemaining <= 0)) return true
-        return false
-      })
-    }
-    return authFiles
-  }, [authFiles, quotaMap, statusFilter])
+  const cachedCount = authQuery.data?.data.cachedCount
+  const totalUnfiltered = authQuery.data?.data.totalUnfiltered
 
   const authTotal = authQuery.data?.data.total ?? 0
   const authTotalPages = Math.max(1, Math.ceil(authTotal / authPageSize))
-  const pageNames = filteredAuthFiles.map((file) => file.name)
+  const pageNames = authFiles.map((file) => file.name)
   const currentPageSelectionState = getCurrentPageSelectionState(selection, pageNames)
   const selectedCount = getSelectedCount(selection, authTotal)
   const canPromoteSelection =
@@ -622,9 +611,16 @@ export function CodexChannelDetail({
                 <span className="text-muted-foreground ml-auto text-[11px]">
                   {t("actions.loading", { ns: "common" })}
                 </span>
+              ) : quotaStatusFilter && cachedCount !== undefined ? (
+                <span className="text-muted-foreground ml-auto text-[11px]">
+                  {t("runtime.cachedPartial", {
+                    cached: cachedCount,
+                    total: totalUnfiltered ?? 0,
+                  })}
+                </span>
               ) : null}
             </div>
-            {filteredAuthFiles.map((file) => {
+            {authFiles.map((file) => {
               const disabled = !!file.disabled
               const quota = quotaMap.get(file.name)
               return (

@@ -124,6 +124,7 @@ export function listCodexAuthFiles(
     provider?: string
     search?: string
     disabled?: string
+    status?: string
     page?: number
     pageSize?: number
     channelType?: number
@@ -134,6 +135,7 @@ export function listCodexAuthFiles(
   if (params?.provider) query.set("provider", params.provider)
   if (params?.search) query.set("search", params.search)
   if (params?.disabled) query.set("disabled", params.disabled)
+  if (params?.status) query.set("status", params.status)
   if (params?.page) query.set("page", String(params.page))
   if (params?.pageSize) query.set("pageSize", String(params.pageSize))
   const suffix = query.toString()
@@ -145,6 +147,9 @@ export function listCodexAuthFiles(
       page: number
       pageSize: number
       capabilities: CodexCapabilities
+      quotaItems?: CodexQuotaItem[]
+      cachedCount?: number
+      totalUnfiltered?: number
     }
   }>(`/api/v1/channel/${channelId}/${prefix}/auth-files${suffix ? `?${suffix}` : ""}`)
 }

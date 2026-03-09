@@ -251,6 +251,7 @@
     "searchAuthFiles": "按名称或邮箱搜索认证文件",
     "pageSize": "每页数量",
     "selectPage": "选择当前页",
+    "cachedPartial": "已缓存 {{cached}}/{{total}}",
     "selectAllMatching": "选择全部 {{count}} 个匹配的认证文件",
     "cancelSelectAllMatching": "取消跨页选择",
     "selectedAuthFiles_one": "已选择 {{count}} 个认证文件",

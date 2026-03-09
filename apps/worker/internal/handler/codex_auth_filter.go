@@ -93,6 +93,35 @@ func filterCodexAuthFiles(files []codexAuthFile, provider string, search string,
 	return filtered
 }
 
+// filterByQuotaStatus keeps only auth files whose quota matches the given status.
+// files and quotaItems must be parallel slices (same length, same order).
+func filterByQuotaStatus(files []codexAuthFile, quotaItems []codexQuotaItem, status string) ([]codexAuthFile, []codexQuotaItem) {
+	matchingFiles := make([]codexAuthFile, 0, len(files))
+	matchingQuota := make([]codexQuotaItem, 0, len(files))
+	for i, item := range quotaItems {
+		match := false
+		switch status {
+		case "error":
+			match = item.Error != ""
+		case "exhausted":
+			if item.Weekly.LimitReached || item.CodeReview.LimitReached {
+				match = true
+			}
+			for _, s := range item.Snapshots {
+				if !s.Unlimited && s.PercentRemaining <= 0 {
+					match = true
+					break
+				}
+			}
+		}
+		if match {
+			matchingFiles = append(matchingFiles, files[i])
+			matchingQuota = append(matchingQuota, item)
+		}
+	}
+	return matchingFiles, matchingQuota
+}
+
 func selectCodexAuthFilesForBatch(files []codexAuthFile, scope codexAuthBatchScope) ([]codexAuthFile, error) {
 	if scope.AllMatching {
 		filtered := filterCodexAuthFiles(files, scope.Provider, scope.Search, "")

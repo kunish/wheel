@@ -4,6 +4,7 @@ interface RuntimeListQueryKeyInput {
   search?: string
   channelType?: number
   disabled?: string
+  status?: string
 }
 
 export const codexAuthFilesQueryKey = (channelId: number, input?: RuntimeListQueryKeyInput) =>
