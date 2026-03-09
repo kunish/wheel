@@ -626,10 +626,10 @@ export function CodexChannelDetail({
                       disabled={authMutationPending}
                       className="mt-0.5"
                     />
-                    <div className="flex items-center gap-1.5">
+                    <div className="min-w-0 flex-1">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
                             {file.provider || "codex"}
                           </Badge>
                           <span className="truncate text-xs font-medium">{file.name}</span>
