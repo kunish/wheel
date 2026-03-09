@@ -1,7 +1,6 @@
 package mgmthandler
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -22,12 +21,11 @@ func (h *ManagementHandler) RequestGeminiCLIToken(c *gin.Context) {
 }
 
 func (h *ManagementHandler) RequestIFlowCookieToken(c *gin.Context) {
-	if h == nil || h.cfg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler not initialized"})
+	if !h.guardHandler(c) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := newAuthContext(c)
 
 	var payload struct {
 		Cookie string `json:"cookie"`

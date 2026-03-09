@@ -19,8 +19,7 @@ type oauthCallbackRequest struct {
 }
 
 func (h *ManagementHandler) PostOAuthCallback(c *gin.Context) {
-	if h == nil || h.cfg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "error": "handler not initialized"})
+	if !h.guardHandler(c) {
 		return
 	}
 

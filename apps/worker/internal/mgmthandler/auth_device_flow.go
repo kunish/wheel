@@ -1,9 +1,7 @@
 package mgmthandler
 
 import (
-	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,19 +11,18 @@ import (
 )
 
 func (h *ManagementHandler) RequestGitHubToken(c *gin.Context) {
-	if h == nil || h.cfg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler not initialized"})
+	if !h.guardHandler(c) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := newAuthContext(c)
 	state := fmt.Sprintf("gh-%d", time.Now().UnixNano())
 
 	deviceClient := sdkcliproxy.NewCopilotAuthProvider(h.cfg)
 	deviceCode, err := deviceClient.RequestDeviceCode(ctx)
 	if err != nil {
 		log.Errorf("Failed to initiate device flow: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initiate device flow"})
+		c.JSON(500, gin.H{"error": "failed to initiate device flow"})
 		return
 	}
 
@@ -72,41 +69,25 @@ func (h *ManagementHandler) RequestGitHubToken(c *gin.Context) {
 			},
 		}
 
-		_, errSave := sdkcliproxy.SaveTokenRecord(ctx, h.cfg.AuthDir, record, h.postAuthHook)
-		if errSave != nil {
-			log.Errorf("Failed to save authentication tokens: %v", errSave)
-			sdkcliproxy.SetOAuthSessionError(state, "Failed to save authentication tokens")
-			return
-		}
-		sdkcliproxy.CompleteOAuthSession(state)
-		sdkcliproxy.CompleteOAuthSessionsByProvider("github-copilot")
+		h.saveAndCompleteAuth(ctx, state, "github-copilot", record)
 	}()
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":           "ok",
-		"url":              authURL,
-		"state":            state,
-		"user_code":        userCode,
-		"verification_uri": authURL,
-	})
+	respondDeviceFlow(c, authURL, state, userCode)
 }
 
 func (h *ManagementHandler) RequestQwenToken(c *gin.Context) {
-	if h == nil || h.cfg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler not initialized"})
+	if !h.guardHandler(c) {
 		return
 	}
 
-	ctx := context.Background()
-	ctx = sdkcliproxy.PopulateAuthContext(ctx, c)
-
+	ctx := newAuthContext(c)
 	state := fmt.Sprintf("gem-%d", time.Now().UnixNano())
 
 	qwenAuth := sdkcliproxy.NewQwenAuthProvider(h.cfg)
 	deviceFlow, err := qwenAuth.InitiateDeviceFlow(ctx)
 	if err != nil {
 		log.Errorf("Failed to generate authorization URL: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate authorization url"})
+		c.JSON(500, gin.H{"error": "failed to generate authorization url"})
 		return
 	}
 
@@ -130,32 +111,26 @@ func (h *ManagementHandler) RequestQwenToken(c *gin.Context) {
 			Storage:  tokenStorage,
 			Metadata: map[string]any{"email": tokenStorage.Email},
 		}
-		_, errSave := sdkcliproxy.SaveTokenRecord(ctx, h.cfg.AuthDir, record, h.postAuthHook)
-		if errSave != nil {
-			log.Errorf("Failed to save authentication tokens: %v", errSave)
-			sdkcliproxy.SetOAuthSessionError(state, "Failed to save authentication tokens")
-			return
-		}
-		sdkcliproxy.CompleteOAuthSession(state)
+
+		h.saveAndCompleteAuth(ctx, state, "qwen", record)
 	}()
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "url": authURL, "state": state})
+	respondAuthURL(c, authURL, state)
 }
 
 func (h *ManagementHandler) RequestKiloToken(c *gin.Context) {
-	if h == nil || h.cfg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler not initialized"})
+	if !h.guardHandler(c) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := newAuthContext(c)
 	state := fmt.Sprintf("kil-%d", time.Now().UnixNano())
 
 	kiloAuth := sdkcliproxy.NewKiloAuthProvider()
 	resp, err := kiloAuth.InitiateDeviceFlow(ctx)
 	if err != nil {
 		log.Errorf("Failed to initiate device flow: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initiate device flow"})
+		c.JSON(500, gin.H{"error": "failed to initiate device flow"})
 		return
 	}
 
@@ -206,41 +181,25 @@ func (h *ManagementHandler) RequestKiloToken(c *gin.Context) {
 			},
 		}
 
-		_, errSave := sdkcliproxy.SaveTokenRecord(ctx, h.cfg.AuthDir, record, h.postAuthHook)
-		if errSave != nil {
-			log.Errorf("Failed to save authentication tokens: %v", errSave)
-			sdkcliproxy.SetOAuthSessionError(state, "Failed to save authentication tokens")
-			return
-		}
-		sdkcliproxy.CompleteOAuthSession(state)
-		sdkcliproxy.CompleteOAuthSessionsByProvider("kilo")
+		h.saveAndCompleteAuth(ctx, state, "kilo", record)
 	}()
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":           "ok",
-		"url":              resp.VerificationURL,
-		"state":            state,
-		"user_code":        resp.Code,
-		"verification_uri": resp.VerificationURL,
-	})
+	respondDeviceFlow(c, resp.VerificationURL, state, resp.Code)
 }
 
 func (h *ManagementHandler) RequestKimiToken(c *gin.Context) {
-	if h == nil || h.cfg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler not initialized"})
+	if !h.guardHandler(c) {
 		return
 	}
 
-	ctx := context.Background()
-	ctx = sdkcliproxy.PopulateAuthContext(ctx, c)
-
+	ctx := newAuthContext(c)
 	state := fmt.Sprintf("kmi-%d", time.Now().UnixNano())
 	kimiAuth := sdkcliproxy.NewKimiAuthProvider(h.cfg)
 
 	deviceFlow, err := kimiAuth.StartDeviceFlow(ctx)
 	if err != nil {
 		log.Errorf("Failed to generate authorization URL: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate authorization url"})
+		c.JSON(500, gin.H{"error": "failed to generate authorization url"})
 		return
 	}
 
@@ -272,15 +231,8 @@ func (h *ManagementHandler) RequestKimiToken(c *gin.Context) {
 			Metadata: metadata,
 		}
 
-		_, errSave := sdkcliproxy.SaveTokenRecord(ctx, h.cfg.AuthDir, record, h.postAuthHook)
-		if errSave != nil {
-			log.Errorf("Failed to save authentication tokens: %v", errSave)
-			sdkcliproxy.SetOAuthSessionError(state, "Failed to save authentication tokens")
-			return
-		}
-		sdkcliproxy.CompleteOAuthSession(state)
-		sdkcliproxy.CompleteOAuthSessionsByProvider("kimi")
+		h.saveAndCompleteAuth(ctx, state, "kimi", record)
 	}()
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "url": authURL, "state": state})
+	respondAuthURL(c, authURL, state)
 }
