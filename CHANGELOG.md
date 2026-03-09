@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.29.2](https://github.com/kunish/wheel/compare/v1.29.1...v1.29.2) (2026-03-09)
+
+
+### Bug Fixes
+
+* convert OpenAI SSE to Anthropic SSE for non-Anthropic channels ([c3dd0ae](https://github.com/kunish/wheel/commit/c3dd0ae600b4c9e1fcad5af1a76fa594d5b59dd0))
+* handle tool_calls in OpenAI-to-Anthropic SSE converter ([cf3df41](https://github.com/kunish/wheel/commit/cf3df415a66b47a91da1911e320e31989758eeab))
+
 ## [1.29.1](https://github.com/kunish/wheel/compare/v1.29.0...v1.29.1) (2026-03-09)
 
 
