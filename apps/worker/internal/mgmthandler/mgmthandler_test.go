@@ -1,4 +1,4 @@
-package runtimectrl
+package mgmthandler
 
 import (
 	"encoding/json"

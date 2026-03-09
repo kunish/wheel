@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"strings"
 
-	translatorbridge "github.com/kunish/wheel/apps/worker/internal/runtimeapi/translatorbridge"
-	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
-	runtimetranslator "github.com/kunish/wheel/apps/worker/internal/runtimecore/translator"
 	cliproxyauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/executor"
+	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
+	runtimetranslator "github.com/kunish/wheel/apps/worker/internal/runtimecore/translator"
+	translatorbridge "github.com/kunish/wheel/apps/worker/internal/runtimecore/translatorbridge"
 )
 
 type OpenAICompatExecutor struct {

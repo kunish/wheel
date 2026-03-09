@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"strings"
 
-	runtimeopenai "github.com/kunish/wheel/apps/worker/internal/runtimeapi/openai"
-	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
-	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
-	runtimeexecutor "github.com/kunish/wheel/apps/worker/internal/runtimecore/executor"
-	"github.com/kunish/wheel/apps/worker/internal/runtimectrl"
+	"github.com/kunish/wheel/apps/worker/internal/mgmthandler"
 	sdkconfig "github.com/kunish/wheel/apps/worker/internal/runtime/corelib/config"
 	sdkaccess "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/access"
 	sdkapihandlers "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/api/handlers"
 	sdkauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/auth"
 	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
 	sdkcliproxyauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
+	runtimeopenai "github.com/kunish/wheel/apps/worker/internal/runtimeapi/openai"
+	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
+	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
+	runtimeexecutor "github.com/kunish/wheel/apps/worker/internal/runtimecore/executor"
 )
 
 type sdkServiceRunner interface {
@@ -185,9 +185,9 @@ func (b *Builder) Build() (*Service, error) {
 			return runtimeopenai.NewResponsesHandler(base)
 		}).
 		WithManagementHandlerFactory(func(cfg *sdkconfig.Config, configFilePath string, authManager *sdkcliproxyauth.Manager) sdkcliproxy.ManagementHandlerRoutes {
-			return runtimectrl.NewManagementHandler(cfg, configFilePath, authManager)
+			return mgmthandler.NewManagementHandler(cfg, configFilePath, authManager)
 		}).
-		WithOAuthCallbackWriter(runtimectrl.WriteOAuthCallback).
+		WithOAuthCallbackWriter(mgmthandler.WriteOAuthCallback).
 		Build()
 	if err != nil {
 		return nil, err

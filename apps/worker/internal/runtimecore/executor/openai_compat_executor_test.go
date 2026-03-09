@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	translatorbridge "github.com/kunish/wheel/apps/worker/internal/runtimeapi/translatorbridge"
-	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	cliproxyauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/executor"
 	sdktranslator "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/translator"
+	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
+	translatorbridge "github.com/kunish/wheel/apps/worker/internal/runtimecore/translatorbridge"
 	"github.com/tidwall/gjson"
 )
 
