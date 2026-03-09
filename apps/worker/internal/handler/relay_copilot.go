@@ -336,6 +336,339 @@ func copyCopilotBody(body map[string]any) map[string]any {
 	return out
 }
 
+// convertAnthropicBodyToOpenAI translates an Anthropic Messages request body
+// into OpenAI Chat Completions format so that Copilot /chat/completions can
+// consume it.  The conversion covers messages, system, tools, and tool_choice.
+func convertAnthropicBodyToOpenAI(body map[string]any) map[string]any {
+	out := make(map[string]any, len(body))
+
+	// --- messages -----------------------------------------------------------
+	var openAIMessages []any
+
+	// Hoist top-level "system" into a system message.
+	if sys := body["system"]; sys != nil {
+		sysStr := ""
+		switch v := sys.(type) {
+		case string:
+			sysStr = v
+		case []any:
+			// Anthropic system can be an array of content blocks.
+			for _, blk := range v {
+				if m, ok := blk.(map[string]any); ok {
+					if t, ok := m["text"].(string); ok {
+						if sysStr != "" {
+							sysStr += "\n"
+						}
+						sysStr += t
+					}
+				}
+			}
+		default:
+			b, _ := json.Marshal(sys)
+			sysStr = string(b)
+		}
+		if sysStr != "" {
+			openAIMessages = append(openAIMessages, map[string]any{
+				"role":    "system",
+				"content": sysStr,
+			})
+		}
+	}
+
+	if msgs, ok := body["messages"].([]any); ok {
+		for _, m := range msgs {
+			msg, ok := m.(map[string]any)
+			if !ok {
+				continue
+			}
+			role, _ := msg["role"].(string)
+			switch role {
+			case "assistant":
+				openAIMessages = append(openAIMessages, convertAnthropicAssistantToOpenAI(msg))
+			case "user":
+				// convertAnthropicUserToOpenAI may return a single message or a []any slice
+				// (when tool_result blocks are mixed with text). Flatten into the result.
+				userResult := convertAnthropicUserToOpenAI(msg)
+				if slice, ok := userResult.([]any); ok {
+					openAIMessages = append(openAIMessages, slice...)
+				} else {
+					openAIMessages = append(openAIMessages, userResult)
+				}
+			default:
+				// Pass through as-is (e.g. "system" inside messages).
+				openAIMessages = append(openAIMessages, msg)
+			}
+		}
+	}
+	out["messages"] = openAIMessages
+
+	// --- tools --------------------------------------------------------------
+	if tools, ok := body["tools"].([]any); ok {
+		out["tools"] = convertAnthropicToolsToOpenAI(tools)
+	}
+
+	// --- tool_choice --------------------------------------------------------
+	if tc := body["tool_choice"]; tc != nil {
+		out["tool_choice"] = normalizeToolChoiceForOpenAI(tc)
+	}
+
+	// --- scalar fields that are directly compatible -------------------------
+	for _, key := range []string{
+		"model", "stream", "temperature", "top_p", "max_tokens",
+		"top_k", "metadata",
+	} {
+		if v, ok := body[key]; ok {
+			out[key] = v
+		}
+	}
+
+	// Map Anthropic "stop_sequences" → OpenAI "stop".
+	if ss, ok := body["stop_sequences"]; ok {
+		out["stop"] = ss
+	}
+
+	return out
+}
+
+// convertAnthropicAssistantToOpenAI converts an Anthropic assistant message
+// (possibly with tool_use content blocks) to an OpenAI assistant message.
+func convertAnthropicAssistantToOpenAI(msg map[string]any) map[string]any {
+	content := msg["content"]
+
+	// Simple string content — pass through.
+	if s, ok := content.(string); ok {
+		return map[string]any{"role": "assistant", "content": s}
+	}
+
+	// Content blocks.
+	blocks, ok := content.([]any)
+	if !ok || len(blocks) == 0 {
+		return map[string]any{"role": "assistant", "content": ""}
+	}
+
+	var textParts []string
+	var toolCalls []any
+	tcIdx := 0
+	for _, b := range blocks {
+		blk, ok := b.(map[string]any)
+		if !ok {
+			continue
+		}
+		bType, _ := blk["type"].(string)
+		switch bType {
+		case "text":
+			if t, ok := blk["text"].(string); ok {
+				textParts = append(textParts, t)
+			}
+		case "tool_use":
+			id, _ := blk["id"].(string)
+			if id == "" {
+				id = fmt.Sprintf("call_%d", tcIdx)
+			}
+			name, _ := blk["name"].(string)
+			inputJSON, _ := json.Marshal(blk["input"])
+			toolCalls = append(toolCalls, map[string]any{
+				"id":   id,
+				"type": "function",
+				"function": map[string]any{
+					"name":      name,
+					"arguments": string(inputJSON),
+				},
+			})
+			tcIdx++
+		}
+	}
+
+	result := map[string]any{"role": "assistant"}
+	text := strings.Join(textParts, "")
+	if text != "" {
+		result["content"] = text
+	} else {
+		result["content"] = nil
+	}
+	if len(toolCalls) > 0 {
+		result["tool_calls"] = toolCalls
+	}
+	return result
+}
+
+// convertAnthropicUserToOpenAI converts an Anthropic user message to OpenAI format.
+// Handles both simple text and content blocks (including tool_result).
+func convertAnthropicUserToOpenAI(msg map[string]any) any {
+	content := msg["content"]
+
+	// Simple string content.
+	if s, ok := content.(string); ok {
+		return map[string]any{"role": "user", "content": s}
+	}
+
+	blocks, ok := content.([]any)
+	if !ok || len(blocks) == 0 {
+		return map[string]any{"role": "user", "content": ""}
+	}
+
+	// Check for tool_result blocks — each becomes a separate "tool" role message.
+	// If mixed with text, we split them out.
+	var result []any
+	var textParts []string
+
+	for _, b := range blocks {
+		blk, ok := b.(map[string]any)
+		if !ok {
+			continue
+		}
+		bType, _ := blk["type"].(string)
+		switch bType {
+		case "tool_result":
+			// Flush pending text.
+			if len(textParts) > 0 {
+				result = append(result, map[string]any{
+					"role":    "user",
+					"content": strings.Join(textParts, ""),
+				})
+				textParts = nil
+			}
+			toolUseID, _ := blk["tool_use_id"].(string)
+			var contentStr string
+			switch c := blk["content"].(type) {
+			case string:
+				contentStr = c
+			case []any:
+				// Extract text from content blocks.
+				for _, cb := range c {
+					if cm, ok := cb.(map[string]any); ok {
+						if t, ok := cm["text"].(string); ok {
+							contentStr += t
+						}
+					}
+				}
+			default:
+				if blk["content"] != nil {
+					b, _ := json.Marshal(blk["content"])
+					contentStr = string(b)
+				}
+			}
+			result = append(result, map[string]any{
+				"role":         "tool",
+				"tool_call_id": toolUseID,
+				"content":      contentStr,
+			})
+		case "text":
+			if t, ok := blk["text"].(string); ok {
+				textParts = append(textParts, t)
+			}
+		case "image":
+			// Pass image content through as OpenAI image_url format.
+			if src, ok := blk["source"].(map[string]any); ok {
+				mediaType, _ := src["media_type"].(string)
+				data, _ := src["data"].(string)
+				result = append(result, map[string]any{
+					"role": "user",
+					"content": []any{
+						map[string]any{
+							"type": "image_url",
+							"image_url": map[string]any{
+								"url": "data:" + mediaType + ";base64," + data,
+							},
+						},
+					},
+				})
+			}
+		}
+	}
+
+	// Flush remaining text.
+	if len(textParts) > 0 {
+		result = append(result, map[string]any{
+			"role":    "user",
+			"content": strings.Join(textParts, ""),
+		})
+	}
+
+	if len(result) == 1 {
+		return result[0]
+	}
+	return result
+}
+
+// convertAnthropicToolsToOpenAI converts Anthropic tools (with input_schema)
+// to OpenAI function-calling tools format.
+func convertAnthropicToolsToOpenAI(tools []any) []any {
+	var result []any
+	for _, t := range tools {
+		tool, ok := t.(map[string]any)
+		if !ok {
+			continue
+		}
+		// Already in OpenAI format (has "function" key) — pass through.
+		if _, hasFn := tool["function"]; hasFn {
+			result = append(result, tool)
+			continue
+		}
+		name, _ := tool["name"].(string)
+		desc, _ := tool["description"].(string)
+		params := tool["input_schema"]
+		if params == nil {
+			params = map[string]any{"type": "object", "properties": map[string]any{}}
+		}
+		result = append(result, map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        name,
+				"description": desc,
+				"parameters":  params,
+			},
+		})
+	}
+	return result
+}
+
+// normalizeToolChoiceForOpenAI converts Anthropic tool_choice format to OpenAI format.
+//
+//	Anthropic {"type": "auto"}    → OpenAI "auto"
+//	Anthropic {"type": "any"}     → OpenAI "required"
+//	Anthropic {"type": "none"}    → OpenAI "none"
+//	Anthropic {"type": "tool", "name": "X"} → OpenAI {"type": "function", "function": {"name": "X"}}
+//	string values pass through as-is.
+func normalizeToolChoiceForOpenAI(tc any) any {
+	// Already a string (OpenAI format) — pass through.
+	if s, ok := tc.(string); ok {
+		return s
+	}
+
+	tcMap, ok := tc.(map[string]any)
+	if !ok {
+		return "auto"
+	}
+
+	tcType, _ := tcMap["type"].(string)
+	switch tcType {
+	case "auto":
+		return "auto"
+	case "any":
+		return "required"
+	case "none":
+		return "none"
+	case "tool":
+		name, _ := tcMap["name"].(string)
+		if name == "" {
+			return "auto"
+		}
+		return map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name": name,
+			},
+		}
+	default:
+		// Unknown type — check if it looks like an OpenAI function call object.
+		if tcType == "function" {
+			return tcMap
+		}
+		return "auto"
+	}
+}
+
 // executeCopilotNonStreaming is called by the non-stream strategy for Copilot channels.
 func (h *RelayHandler) executeCopilotNonStreaming(p *relayAttemptParams) (*relayResult, error) {
 	accessToken, err := h.CopilotRelay.ResolveAccessToken(p.C.Request.Context(), p.Channel.ID, p.SelectedKey.ChannelKey)
@@ -343,11 +676,16 @@ func (h *RelayHandler) executeCopilotNonStreaming(p *relayAttemptParams) (*relay
 		return nil, &relay.ProxyError{Message: fmt.Sprintf("resolve copilot access token: %v", err), StatusCode: http.StatusUnauthorized}
 	}
 
+	body := p.Body
+	if p.IsAnthropicInbound {
+		body = convertAnthropicBodyToOpenAI(body)
+	}
+
 	result, proxyErr := h.CopilotRelay.ProxyNonStreaming(
 		p.C.Request.Context(),
 		accessToken,
 		p.TargetModel,
-		p.Body,
+		body,
 		p.Channel.Type,
 	)
 	if proxyErr != nil {
@@ -414,12 +752,17 @@ func (h *RelayHandler) executeCopilotStreaming(p *relayAttemptParams) (*relayRes
 		}
 	}
 
+	body := p.Body
+	if p.IsAnthropicInbound {
+		body = convertAnthropicBodyToOpenAI(body)
+	}
+
 	streamInfo, proxyErr := h.CopilotRelay.ProxyStreaming(
 		p.C.Writer,
 		p.C.Request.Context(),
 		accessToken,
 		p.TargetModel,
-		p.Body,
+		body,
 		p.Channel.Type,
 		onContent,
 	)
