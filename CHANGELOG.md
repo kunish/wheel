@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.3](https://github.com/kunish/wheel/compare/v1.29.2...v1.29.3) (2026-03-09)
+
+
+### Bug Fixes
+
+* set MCP SSE server base path to resolve 404 on /mcp/sse ([1e0e591](https://github.com/kunish/wheel/commit/1e0e591e7ab37db9a9d76c8a663ad76a4bc66341))
+
 ## [1.29.2](https://github.com/kunish/wheel/compare/v1.29.1...v1.29.2) (2026-03-09)
 
 
