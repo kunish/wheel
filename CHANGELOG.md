@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.27.2](https://github.com/kunish/wheel/compare/v1.27.1...v1.27.2) (2026-03-09)
+
+
+### Bug Fixes
+
+* add OAuth session TTL and propagate request context across handlers ([22b22ad](https://github.com/kunish/wheel/commit/22b22ada791d6c155207a977ae77e81dbb595dd9))
+* auth file list text overflow by completing min-w-0 truncation chain ([872e3e1](https://github.com/kunish/wheel/commit/872e3e13c0f7f042eb1269271cf81e704944f250))
+* wrap static file serving in catch-all handle to avoid API rewrite ([05dab40](https://github.com/kunish/wheel/commit/05dab40c8a6da927de01c1392b6f0f03e49c091c))
+
 ## [1.27.1](https://github.com/kunish/wheel/compare/v1.27.0...v1.27.1) (2026-03-08)
 
 
