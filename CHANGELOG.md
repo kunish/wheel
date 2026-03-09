@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.27.4](https://github.com/kunish/wheel/compare/v1.27.3...v1.27.4) (2026-03-09)
+
+
+### Bug Fixes
+
+* use correct management API path for auth file models endpoint ([9047222](https://github.com/kunish/wheel/commit/90472229601b01d52c2786052803e80a02f1f44c))
+
+
+### Performance Improvements
+
+* optimize bulk auth file upload with batch upsert and async model sync ([05c9136](https://github.com/kunish/wheel/commit/05c91366ed17215bfe5d9c87e25ebfd4c3823093))
+
 ## [1.27.3](https://github.com/kunish/wheel/compare/v1.27.2...v1.27.3) (2026-03-09)
 
 
