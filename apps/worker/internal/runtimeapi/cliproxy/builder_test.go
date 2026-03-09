@@ -9,13 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
-	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	sdkconfig "github.com/kunish/wheel/apps/worker/internal/runtime/corelib/config"
 	sdkaccess "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/access"
 	sdkauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/auth"
 	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
 	sdkcliproxyauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
+	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 )
 
 func TestBuilderBuildForwardsRuntimeInputs(t *testing.T) {
@@ -55,14 +54,11 @@ func TestBuilderBuildForwardsRuntimeInputs(t *testing.T) {
 
 func TestBuilderBuildInjectsOwnedDefaultCoreAuthManager(t *testing.T) {
 	originalBuilder := newSDKBuilder
-	originalStore := runtimeauth.GetTokenStore()
 	t.Cleanup(func() {
 		newSDKBuilder = originalBuilder
-		runtimeauth.RegisterTokenStore(originalStore)
 	})
 
 	store := &fakeRuntimeStore{}
-	runtimeauth.RegisterTokenStore(store)
 
 	fakeBuilder := &fakeSDKBuilder{service: &fakeSDKService{}}
 	newSDKBuilder = func() sdkBuilder { return fakeBuilder }
@@ -70,6 +66,7 @@ func TestBuilderBuildInjectsOwnedDefaultCoreAuthManager(t *testing.T) {
 	_, err := NewBuilder().
 		WithConfig(&runtimeconfig.Config{AuthDir: "/tmp/runtime-auth"}).
 		WithConfigPath("/tmp/runtime-config.yaml").
+		WithTokenStore(store).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -333,7 +330,7 @@ func TestDefaultWatcherFactoryBuildsUsableWrapper(t *testing.T) {
 }
 
 func TestNewDefaultCoreAuthManagerUsesFillFirstSelector(t *testing.T) {
-	manager := newDefaultCoreAuthManager(&runtimeconfig.Config{Routing: runtimeconfig.RoutingConfig{Strategy: "fill-first"}})
+	manager := newDefaultCoreAuthManager(&runtimeconfig.Config{Routing: runtimeconfig.RoutingConfig{Strategy: "fill-first"}}, &fakeRuntimeStore{})
 	if manager == nil {
 		t.Fatal("expected non-nil manager")
 	}
@@ -343,7 +340,7 @@ func TestNewDefaultCoreAuthManagerUsesFillFirstSelector(t *testing.T) {
 }
 
 func TestNewDefaultCoreAuthManagerDefaultsToRoundRobinSelector(t *testing.T) {
-	manager := newDefaultCoreAuthManager(&runtimeconfig.Config{Routing: runtimeconfig.RoutingConfig{Strategy: "round-robin"}})
+	manager := newDefaultCoreAuthManager(&runtimeconfig.Config{Routing: runtimeconfig.RoutingConfig{Strategy: "round-robin"}}, &fakeRuntimeStore{})
 	if manager == nil {
 		t.Fatal("expected non-nil manager")
 	}

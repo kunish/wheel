@@ -127,6 +127,7 @@ type Builder struct {
 	cfg                     *runtimeconfig.Config
 	configPath              string
 	localManagementPassword string
+	tokenStore              sdkcliproxyauth.Store
 }
 
 func NewBuilder() *Builder {
@@ -148,6 +149,13 @@ func (b *Builder) WithLocalManagementPassword(password string) *Builder {
 	return b
 }
 
+// WithTokenStore sets an explicit token store for the runtime. If not set,
+// a default file-based token store is created during Build().
+func (b *Builder) WithTokenStore(store sdkcliproxyauth.Store) *Builder {
+	b.tokenStore = store
+	return b
+}
+
 func (b *Builder) Build() (*Service, error) {
 	if b == nil {
 		return nil, fmt.Errorf("cliproxy runtime builder is nil")
@@ -163,9 +171,14 @@ func (b *Builder) Build() (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	authManager := runtimeauth.NewLegacyAuthManager()
+
+	store := b.tokenStore
+	if store == nil {
+		store = runtimeauth.NewFileTokenStore()
+	}
+	authManager := runtimeauth.NewLegacyAuthManager(store)
 	accessManager := sdkaccess.NewManager()
-	coreManager := newDefaultCoreAuthManager(b.cfg)
+	coreManager := newDefaultCoreAuthManager(b.cfg, store)
 
 	runner, err := newSDKBuilder().
 		WithConfig(sdkCfg).
@@ -208,8 +221,7 @@ func (s *Service) Run(ctx context.Context) error {
 	return s.runner.Run(ctx)
 }
 
-func newDefaultCoreAuthManager(cfg *runtimeconfig.Config) *sdkcliproxyauth.Manager {
-	store := runtimeauth.GetTokenStore()
+func newDefaultCoreAuthManager(cfg *runtimeconfig.Config, store sdkcliproxyauth.Store) *sdkcliproxyauth.Manager {
 	if dirSetter, ok := store.(interface{ SetBaseDir(string) }); ok && cfg != nil {
 		dirSetter.SetBaseDir(cfg.AuthDir)
 	}

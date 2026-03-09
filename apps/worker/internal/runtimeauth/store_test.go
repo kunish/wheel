@@ -8,14 +8,12 @@ import (
 	cliproxyauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
 )
 
-func TestRegisterTokenStoreSaveAndListAuth(t *testing.T) {
+func TestFileTokenStoreSaveAndList(t *testing.T) {
 	t.Parallel()
 
 	authDir := t.TempDir()
 	store := NewFileTokenStore()
 	store.SetBaseDir(authDir)
-	RegisterTokenStore(store)
-	t.Cleanup(func() { RegisterTokenStore(nil) })
 
 	record := &cliproxyauth.Auth{
 		ID:       "github-copilot.json",
@@ -28,7 +26,7 @@ func TestRegisterTokenStoreSaveAndListAuth(t *testing.T) {
 		},
 	}
 
-	savedPath, err := GetTokenStore().Save(context.Background(), record)
+	savedPath, err := store.Save(context.Background(), record)
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -51,14 +49,12 @@ func TestRegisterTokenStoreSaveAndListAuth(t *testing.T) {
 	}
 }
 
-func TestNewLegacyAuthManagerUsesOwnedRegisteredStore(t *testing.T) {
+func TestNewLegacyAuthManagerUsesInjectedStore(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeStore{}
-	RegisterTokenStore(store)
-	t.Cleanup(func() { RegisterTokenStore(nil) })
 
-	mgr := NewLegacyAuthManager()
+	mgr := NewLegacyAuthManager(store)
 	if mgr == nil {
 		t.Fatal("expected manager")
 	}

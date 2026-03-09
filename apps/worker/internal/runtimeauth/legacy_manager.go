@@ -1,10 +1,14 @@
 package runtimeauth
 
-import sdkauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/auth"
+import (
+	sdkauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/auth"
+	coreauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
+)
 
-func NewLegacyAuthManager() *sdkauth.Manager {
+// NewLegacyAuthManager creates a legacy auth manager backed by the given token store.
+func NewLegacyAuthManager(store coreauth.Store) *sdkauth.Manager {
 	return sdkauth.NewManager(
-		GetTokenStore(),
+		store,
 		sdkauth.NewGeminiAuthenticator(),
 		sdkauth.NewCodexAuthenticator(),
 		sdkauth.NewClaudeAuthenticator(),
