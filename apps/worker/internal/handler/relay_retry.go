@@ -150,6 +150,16 @@ func (h *RelayHandler) executeWithRetry(
 
 			// Build upstream request
 			isAnthropicPassthrough := isAnthropicInbound && channel.Type == types.OutboundAnthropic
+
+			// For Anthropic inbound to non-Anthropic outbound channels, convert the
+			// request body from Anthropic Messages format to OpenAI Chat Completions
+			// format so that downstream proxy paths and upstream APIs receive the
+			// correct schema (tool_choice, tools, messages, system, etc.).
+			attemptBody := body
+			if isAnthropicInbound && !isAnthropicPassthrough {
+				attemptBody = convertAnthropicBodyToOpenAI(body)
+			}
+
 			channelConfig := relay.ChannelConfig{
 				Type:          channel.Type,
 				BaseUrls:      []types.BaseUrl(channel.BaseUrls),
@@ -159,7 +169,7 @@ func (h *RelayHandler) executeWithRetry(
 			upstream := relay.BuildUpstreamRequest(
 				channelConfig,
 				selectedKey.ChannelKey,
-				body,
+				attemptBody,
 				c.Request.URL.Path,
 				targetModel,
 				isAnthropicPassthrough,
@@ -205,7 +215,7 @@ func (h *RelayHandler) executeWithRetry(
 				SelectedKey:            selectedKey,
 				TargetModel:            targetModel,
 				RequestModel:           model,
-				Body:                   body,
+				Body:                   attemptBody,
 				UpstreamBodyForLog:     upstreamBodyForLog,
 				IsAnthropicPassthrough: isAnthropicPassthrough,
 				IsAnthropicInbound:     isAnthropicInbound,

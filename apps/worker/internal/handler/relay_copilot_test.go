@@ -184,6 +184,7 @@ func TestCopilotRelay_ProxyStreaming_StreamsSSE(t *testing.T) {
 		"claude-opus-4-6",
 		map[string]any{"model": "claude-opus-4-6", "messages": []any{map[string]any{"role": "user", "content": "hi"}}},
 		types.OutboundCopilot,
+		false,
 		nil,
 	)
 	if err != nil {
@@ -203,6 +204,69 @@ func TestCopilotRelay_ProxyStreaming_StreamsSSE(t *testing.T) {
 	respBody := w.Body.String()
 	if !strings.Contains(respBody, "data: ") {
 		t.Errorf("response body should contain SSE data lines, got: %s", respBody)
+	}
+}
+
+func TestCopilotRelay_ProxyStreaming_AnthropicInbound(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		flusher, _ := w.(http.Flusher)
+		lines := []string{
+			`data: {"id":"chatcmpl-1","model":"gpt-5.4","choices":[{"delta":{"content":"hello"}}]}`,
+			`data: {"id":"chatcmpl-1","model":"gpt-5.4","choices":[{"delta":{"content":" world"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`,
+			`data: [DONE]`,
+		}
+		for _, l := range lines {
+			_, _ = w.Write([]byte(l + "\n"))
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}))
+	defer ts.Close()
+
+	cr := NewCopilotRelay(nil)
+	cr.tokenCache["test-access"] = &copilotCachedToken{
+		token:       "test-api-token",
+		apiEndpoint: ts.URL,
+		expiresAt:   time.Now().Add(copilotRelayTokenCacheTTL),
+	}
+
+	w := httptest.NewRecorder()
+	info, err := cr.ProxyStreaming(
+		w,
+		context.Background(),
+		"test-access",
+		"gpt-5.4",
+		map[string]any{"model": "gpt-5.4", "messages": []any{map[string]any{"role": "user", "content": "hi"}}},
+		types.OutboundCopilot,
+		true, // anthropicInbound
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("ProxyStreaming error: %v", err)
+	}
+	if info.ResponseContent != "hello world" {
+		t.Errorf("ResponseContent = %q, want 'hello world'", info.ResponseContent)
+	}
+
+	// Verify Anthropic SSE events were written.
+	respBody := w.Body.String()
+	if !strings.Contains(respBody, "event: message_start") {
+		t.Errorf("response should contain 'event: message_start', got:\n%s", respBody)
+	}
+	if !strings.Contains(respBody, "event: content_block_delta") {
+		t.Errorf("response should contain 'event: content_block_delta', got:\n%s", respBody)
+	}
+	if !strings.Contains(respBody, "event: message_stop") {
+		t.Errorf("response should contain 'event: message_stop', got:\n%s", respBody)
+	}
+	// Should NOT contain raw OpenAI SSE format.
+	if strings.Contains(respBody, `"choices"`) {
+		t.Errorf("response should NOT contain raw OpenAI 'choices' in Anthropic mode, got:\n%s", respBody)
 	}
 }
 

@@ -59,6 +59,13 @@ func toIntOr(v any, fallback int) int {
 
 // ── OpenAI SSE → Anthropic SSE Converter ──────────────────────────
 
+// CreateOpenAIToAnthropicSSEConverter creates a stateful converter
+// from OpenAI SSE chunks to Anthropic SSE event lines.
+// Exported for use by CopilotRelay and other direct-proxy paths.
+func CreateOpenAIToAnthropicSSEConverter() func(string) []string {
+	return createOpenAIToAnthropicSSEConverter()
+}
+
 // createOpenAIToAnthropicSSEConverter returns a stateful converter
 // from OpenAI SSE chunks to Anthropic SSE event lines.
 func createOpenAIToAnthropicSSEConverter() func(string) []string {

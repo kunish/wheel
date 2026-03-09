@@ -196,6 +196,7 @@ func (cr *CopilotRelay) ProxyStreaming(
 	model string,
 	body map[string]any,
 	channelType types.OutboundType,
+	anthropicInbound bool,
 	onContent relay.StreamContentCallback,
 ) (*relay.StreamCompleteInfo, error) {
 	apiToken, baseURL, err := cr.ensureAPIToken(ctx, accessToken)
@@ -241,6 +242,12 @@ func (cr *CopilotRelay) ProxyStreaming(
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 256*1024), 1024*1024)
 
+	// When the inbound is Anthropic format, convert OpenAI SSE to Anthropic SSE.
+	var convertToAnthropic func(string) []string
+	if anthropicInbound {
+		convertToAnthropic = relay.CreateOpenAIToAnthropicSSEConverter()
+	}
+
 	var inputTokens, outputTokens int
 	var firstTokenTime int
 	started := time.Now()
@@ -249,18 +256,38 @@ func (cr *CopilotRelay) ProxyStreaming(
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		_, _ = w.Write(line)
-		_, _ = w.Write([]byte("\n"))
-		if flusher != nil {
-			flusher.Flush()
+
+		// --- Write to client ---
+		if convertToAnthropic != nil {
+			// Anthropic mode: convert data: lines through the SSE converter.
+			if bytes.HasPrefix(line, []byte("data: ")) {
+				data := string(line[6:])
+				converted := convertToAnthropic(data)
+				for _, l := range converted {
+					fmt.Fprintf(w, "%s\n", l)
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			// Non-data lines (empty lines, etc.) are skipped;
+			// the converter handles Anthropic event formatting internally.
+		} else {
+			// OpenAI passthrough mode: write raw lines.
+			_, _ = w.Write(line)
+			_, _ = w.Write([]byte("\n"))
+			if flusher != nil {
+				flusher.Flush()
+			}
 		}
 
+		// --- Track first token time ---
 		if !firstTokenSent && bytes.HasPrefix(line, []byte("data: ")) {
 			firstTokenTime = int(time.Since(started).Milliseconds())
 			firstTokenSent = true
 		}
 
-		// Try to extract usage from final chunk.
+		// --- Extract usage and content from original data ---
 		if bytes.HasPrefix(line, []byte("data: ")) {
 			chunk := line[6:]
 			if !bytes.Equal(chunk, []byte("[DONE]")) {
@@ -676,16 +703,11 @@ func (h *RelayHandler) executeCopilotNonStreaming(p *relayAttemptParams) (*relay
 		return nil, &relay.ProxyError{Message: fmt.Sprintf("resolve copilot access token: %v", err), StatusCode: http.StatusUnauthorized}
 	}
 
-	body := p.Body
-	if p.IsAnthropicInbound {
-		body = convertAnthropicBodyToOpenAI(body)
-	}
-
 	result, proxyErr := h.CopilotRelay.ProxyNonStreaming(
 		p.C.Request.Context(),
 		accessToken,
 		p.TargetModel,
-		body,
+		p.Body,
 		p.Channel.Type,
 	)
 	if proxyErr != nil {
@@ -752,18 +774,14 @@ func (h *RelayHandler) executeCopilotStreaming(p *relayAttemptParams) (*relayRes
 		}
 	}
 
-	body := p.Body
-	if p.IsAnthropicInbound {
-		body = convertAnthropicBodyToOpenAI(body)
-	}
-
 	streamInfo, proxyErr := h.CopilotRelay.ProxyStreaming(
 		p.C.Writer,
 		p.C.Request.Context(),
 		accessToken,
 		p.TargetModel,
-		body,
+		p.Body,
 		p.Channel.Type,
+		p.IsAnthropicInbound,
 		onContent,
 	)
 	if proxyErr != nil {
