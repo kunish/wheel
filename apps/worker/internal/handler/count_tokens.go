@@ -43,7 +43,7 @@ func (h *RelayHandler) HandleCountTokens(c *gin.Context) {
 	apiKeyID, _ := apiKeyIDRaw.(int)
 
 	var result *relay.CountTokensResponse
-	err = h.executeFeatureWithRetry(req.Model, apiKeyID, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+	err = h.executeFeatureWithRetry(c.Request.Context(), req.Model, apiKeyID, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		if channel.Type != types.OutboundAnthropic && channel.Type != types.OutboundBedrock &&
 			channel.Type != types.OutboundGemini && channel.Type != types.OutboundVertex {
 			result = &relay.CountTokensResponse{

@@ -10,12 +10,13 @@ import (
 )
 
 func (h *RelayHandler) executeFeatureWithRetry(
+	ctx context.Context,
 	model string,
 	apiKeyID int,
 	exec func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error,
 ) error {
-	allChannels := h.loadChannels()
-	allGroups := h.loadGroups()
+	allChannels := h.loadChannels(ctx)
+	allGroups := h.loadGroups(ctx)
 
 	group := relay.MatchGroup(model, allGroups)
 	if group == nil || len(group.Items) == 0 {
@@ -28,7 +29,7 @@ func (h *RelayHandler) executeFeatureWithRetry(
 		channelMap[allChannels[i].ID] = &allChannels[i]
 	}
 
-	cbBaseSec, cbMaxSec := h.CircuitBreakers.GetCooldownConfig(context.Background(), h.DB)
+	cbBaseSec, cbMaxSec := h.CircuitBreakers.GetCooldownConfig(ctx, h.DB)
 	var lastErr error
 
 	for round := 1; round <= maxRetryRounds; round++ {
@@ -67,11 +68,11 @@ func (h *RelayHandler) executeFeatureWithRetry(
 				}
 
 				lastErr = err
-				h.CircuitBreakers.RecordFailure(channel.ID, selectedKey.ID, targetModel, context.Background(), h.DB)
+				h.CircuitBreakers.RecordFailure(channel.ID, selectedKey.ID, targetModel, ctx, h.DB)
 
 				if pe.StatusCode == 429 {
 					if h.DB != nil {
-						_ = dal.UpdateChannelKeyStatus(context.Background(), h.DB, selectedKey.ID, 429)
+						_ = dal.UpdateChannelKeyStatus(ctx, h.DB, selectedKey.ID, 429)
 					}
 					if h.Cache != nil {
 						h.Cache.Delete("channels")
@@ -83,7 +84,7 @@ func (h *RelayHandler) executeFeatureWithRetry(
 			h.CircuitBreakers.RecordSuccess(channel.ID, selectedKey.ID, targetModel)
 			if selectedKey.StatusCode == 429 {
 				if h.DB != nil {
-					_ = dal.UpdateChannelKeyStatus(context.Background(), h.DB, selectedKey.ID, 0)
+					_ = dal.UpdateChannelKeyStatus(ctx, h.DB, selectedKey.ID, 0)
 				}
 				if h.Cache != nil {
 					h.Cache.Delete("channels")

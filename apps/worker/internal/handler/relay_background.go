@@ -20,8 +20,8 @@ func (h *RelayHandler) executeBackgroundNonStream(
 		return nil, fmt.Errorf("background execution does not support audio endpoint %s", requestPath)
 	}
 
-	allChannels := h.loadChannels()
-	allGroups := h.loadGroups()
+	allChannels := h.loadChannels(context.Background())
+	allGroups := h.loadGroups(context.Background())
 
 	group := relay.MatchGroup(requestModel, allGroups)
 	if group == nil || len(group.Items) == 0 {

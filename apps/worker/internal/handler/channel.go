@@ -278,7 +278,7 @@ func (h *Handler) FetchModel(c *gin.Context) {
 		return
 	}
 
-	models, _, err := fetchModelsFromChannel(channel, h.Cache)
+	models, _, err := fetchModelsFromChannel(c.Request.Context(), channel, h.Cache)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -329,7 +329,7 @@ func (h *Handler) FetchModelPreview(c *gin.Context) {
 		},
 	}
 
-	models, isFallback, err := fetchModelsFromChannel(pseudoChannel, h.Cache)
+	models, isFallback, err := fetchModelsFromChannel(c.Request.Context(), pseudoChannel, h.Cache)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -402,7 +402,7 @@ func fallbackModelsFromMetadata(kv *cache.MemoryKV, providerKey string) []string
 // fetchModelsFromChannel returns (models, isFallback, error).
 // isFallback is true when the result came from models.dev metadata
 // instead of the real upstream API (e.g. Anthropic API blocked by Cloudflare).
-func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]string, bool, error) {
+func fetchModelsFromChannel(ctx context.Context, channel *types.Channel, kv *cache.MemoryKV) ([]string, bool, error) {
 	var key *types.ChannelKey
 	for i := range channel.Keys {
 		if channel.Keys[i].Enabled {
@@ -422,7 +422,7 @@ func fetchModelsFromChannel(channel *types.Channel, kv *cache.MemoryKV) ([]strin
 		return []string{}, false, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	switch channel.Type {

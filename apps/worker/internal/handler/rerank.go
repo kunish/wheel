@@ -41,7 +41,7 @@ func (h *RelayHandler) HandleRerank(c *gin.Context) {
 	apiKeyID, _ := apiKeyIDRaw.(int)
 
 	var result *relay.RerankResponse
-	err = h.executeFeatureWithRetry(req.Model, apiKeyID, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+	err = h.executeFeatureWithRetry(c.Request.Context(), req.Model, apiKeyID, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		baseURL := relay.SelectBaseUrl([]types.BaseUrl(channel.BaseUrls), channel.Type)
 		upstreamURL := baseURL + "/v1/rerank"
 		if channel.Type == types.OutboundCohere {

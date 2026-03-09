@@ -47,7 +47,7 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 		errorJSON(c, http.StatusBadGateway, err.Error())
 		return
 	}
-	codexOAuthSessions.Store(resp.State, codexOAuthSession{ChannelID: channel.ID, Existing: snapshot})
+	storeOAuthSession(resp.State, codexOAuthSession{ChannelID: channel.ID, Existing: snapshot})
 	successJSON(c, gin.H{"url": resp.URL, "state": resp.State})
 }
 
@@ -81,12 +81,10 @@ func (h *Handler) GetCodexOAuthStatus(c *gin.Context) {
 		return
 	}
 	if resp.Status == "ok" {
-		if v, ok := codexOAuthSessions.LoadAndDelete(state); ok {
-			if session, ok := v.(codexOAuthSession); ok {
-				if err := h.importOAuthAuthFilesToDB(c.Request.Context(), session.ChannelID, session.Existing); err != nil {
-					errorJSON(c, http.StatusInternalServerError, err.Error())
-					return
-				}
+		if session, ok := loadAndDeleteOAuthSession(state); ok {
+			if err := h.importOAuthAuthFilesToDB(c.Request.Context(), session.ChannelID, session.Existing); err != nil {
+				errorJSON(c, http.StatusInternalServerError, err.Error())
+				return
 			}
 		}
 	}

@@ -126,7 +126,7 @@ func (p *SemanticCachePlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 	// 2. Try similarity match if enabled
 	if p.config.SimilarityMode {
 		queryText := buildQueryText(ctx.RequestModel, ctx.Body["messages"])
-		embedding, err := p.embedder.Embed(context.Background(), queryText)
+		embedding, err := p.embedder.Embed(ctx.GinCtx.Request.Context(), queryText)
 		if err != nil {
 			log.Printf("[semantic_cache] embedding error: %v", err)
 			return nil
@@ -178,7 +178,7 @@ func (p *SemanticCachePlugin) PostHook(ctx *RelayContext, resp *RelayPluginRespo
 	// If similarity mode is on and we don't have an embedding yet, compute one
 	if p.config.SimilarityMode && embedding == nil {
 		queryText := buildQueryText(ctx.RequestModel, ctx.Body["messages"])
-		emb, err := p.embedder.Embed(context.Background(), queryText)
+		emb, err := p.embedder.Embed(ctx.GinCtx.Request.Context(), queryText)
 		if err != nil {
 			log.Printf("[semantic_cache] embedding error on store: %v", err)
 		} else {

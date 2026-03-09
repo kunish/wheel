@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestExecuteFeatureWithRetry_NonProxyErrorStopsImmediately(t *testing.T) {
 
 	calls := 0
 	execErr := errors.New("payload build failed")
-	err := h.executeFeatureWithRetry(model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+	err := h.executeFeatureWithRetry(context.Background(), model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		calls++
 		return execErr
 	})
@@ -44,7 +45,7 @@ func TestExecuteFeatureWithRetry_ProxyErrorRetries(t *testing.T) {
 	)
 
 	calls := 0
-	err := h.executeFeatureWithRetry(model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+	err := h.executeFeatureWithRetry(context.Background(), model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		calls++
 		return &relay.ProxyError{Message: "upstream failed", StatusCode: 500}
 	})
@@ -67,7 +68,7 @@ func TestExecuteFeatureWithRetry_Proxy429WithNilDBDoesNotPanic(t *testing.T) {
 	h.DB = nil
 
 	calls := 0
-	err := h.executeFeatureWithRetry(model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+	err := h.executeFeatureWithRetry(context.Background(), model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		calls++
 		return &relay.ProxyError{Message: "rate limited", StatusCode: 429}
 	})
@@ -94,7 +95,7 @@ func TestExecuteFeatureWithRetry_Proxy4xxStopsImmediately(t *testing.T) {
 	)
 
 	calls := 0
-	err := h.executeFeatureWithRetry(model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+	err := h.executeFeatureWithRetry(context.Background(), model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		calls++
 		return &relay.ProxyError{Message: "unauthorized", StatusCode: 401}
 	})
@@ -121,7 +122,7 @@ func TestExecuteFeatureWithRetry_ClientDisconnectStopsImmediately(t *testing.T) 
 	)
 
 	calls := 0
-	err := h.executeFeatureWithRetry(model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+	err := h.executeFeatureWithRetry(context.Background(), model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		calls++
 		return &relay.ProxyError{Message: "client disconnected", StatusCode: 499}
 	})

@@ -74,7 +74,10 @@ type quotaSnapshot struct {
 type codexOAuthSession struct {
 	ChannelID int
 	Existing  map[string]struct{}
+	createdAt time.Time
 }
+
+const codexOAuthSessionTTL = 15 * time.Minute
 
 type codexUploadFile struct {
 	Name    string
@@ -103,6 +106,35 @@ type codexAuthBatchScope struct {
 }
 
 var codexOAuthSessions sync.Map
+
+// storeOAuthSession stores a session with a creation timestamp and sweeps expired entries.
+func storeOAuthSession(state string, session codexOAuthSession) {
+	session.createdAt = time.Now()
+	codexOAuthSessions.Store(state, session)
+
+	// Best-effort sweep: delete any expired sessions.
+	codexOAuthSessions.Range(func(key, value any) bool {
+		if s, ok := value.(codexOAuthSession); ok {
+			if time.Since(s.createdAt) > codexOAuthSessionTTL {
+				codexOAuthSessions.Delete(key)
+			}
+		}
+		return true
+	})
+}
+
+// loadAndDeleteOAuthSession retrieves and deletes a session, returning false if missing or expired.
+func loadAndDeleteOAuthSession(state string) (codexOAuthSession, bool) {
+	v, ok := codexOAuthSessions.LoadAndDelete(state)
+	if !ok {
+		return codexOAuthSession{}, false
+	}
+	session, ok := v.(codexOAuthSession)
+	if !ok || time.Since(session.createdAt) > codexOAuthSessionTTL {
+		return codexOAuthSession{}, false
+	}
+	return session, true
+}
 
 func (h *Handler) codexCapabilities() codexCapabilities {
 	managementEnabled := h != nil && h.Config != nil && strings.TrimSpace(h.Config.CodexRuntimeManagementKey) != ""

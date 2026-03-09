@@ -19,9 +19,9 @@ func (h *ManagementHandler) guardHandler(c *gin.Context) bool {
 	return true
 }
 
-// newAuthContext creates a background context populated with auth info from the request.
+// newAuthContext creates a context derived from the request, populated with auth info.
 func newAuthContext(c *gin.Context) context.Context {
-	ctx := context.Background()
+	ctx := c.Request.Context()
 	return sdkcliproxy.PopulateAuthContext(ctx, c)
 }
 

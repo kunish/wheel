@@ -15,9 +15,9 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/codexruntime"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
+	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
 	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
 	"github.com/kunish/wheel/apps/worker/internal/types"
-	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
 	"github.com/uptrace/bun"
 )
 
@@ -378,7 +378,7 @@ func (h *RelayHandler) executeCopilotStreaming(p *relayAttemptParams) (*relayRes
 	bodyJSON, _ := json.Marshal(p.Body)
 	estimatedInputTokens := len(bodyJSON) / 3
 	var inputPrice, outputPrice float64
-	if mp := relay.LookupModelPrice(p.TargetModel, context.Background(), h.DB); mp != nil {
+	if mp := relay.LookupModelPrice(p.TargetModel, p.C.Request.Context(), h.DB); mp != nil {
 		inputPrice = mp.InputPrice
 		outputPrice = mp.OutputPrice
 	}

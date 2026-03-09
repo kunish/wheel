@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -77,7 +76,7 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 
 	// Lookup model pricing for real-time cost estimation
 	var inputPrice, outputPrice float64
-	if mp := relay.LookupModelPrice(p.TargetModel, context.Background(), h.DB); mp != nil {
+	if mp := relay.LookupModelPrice(p.TargetModel, p.C.Request.Context(), h.DB); mp != nil {
 		inputPrice = mp.InputPrice
 		outputPrice = mp.OutputPrice
 	}

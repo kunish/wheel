@@ -49,8 +49,8 @@ type channelSelection struct {
 // selectChannels loads channels/groups, matches the model, applies balancing and session stickiness.
 // Returns nil if an error response was already written to the client.
 func (h *RelayHandler) selectChannels(c *gin.Context, model string, apiKeyId int, isAnthropicInbound bool) *channelSelection {
-	allChannels := h.loadChannels()
-	allGroups := h.loadGroups()
+	allChannels := h.loadChannels(c.Request.Context())
+	allGroups := h.loadGroups(c.Request.Context())
 
 	group := relay.MatchGroup(model, allGroups)
 	if group == nil || len(group.Items) == 0 {
@@ -195,7 +195,7 @@ func (h *RelayHandler) RegisterRelayAdminRoutes(r *gin.Engine) {
 // ── GET /v1/models ──────────────────────────────────────────────
 
 func (h *RelayHandler) handleModels(c *gin.Context) {
-	allGroups := h.loadGroups()
+	allGroups := h.loadGroups(c.Request.Context())
 
 	// Collect unique model names
 	modelSet := make(map[string]bool)
@@ -417,13 +417,13 @@ func (h *RelayHandler) handleRelay(c *gin.Context) {
 
 // ── Cache Helpers ───────────────────────────────────────────────
 
-func (h *RelayHandler) loadChannels() []types.Channel {
+func (h *RelayHandler) loadChannels(ctx context.Context) []types.Channel {
 	channels, ok := cache.Get[[]types.Channel](h.Cache, "channels")
 	if ok && channels != nil {
 		return *channels
 	}
 
-	ch, err := dal.ListChannels(context.Background(), h.DB)
+	ch, err := dal.ListChannels(ctx, h.DB)
 	if err != nil {
 		return nil
 	}
@@ -431,7 +431,7 @@ func (h *RelayHandler) loadChannels() []types.Channel {
 	return ch
 }
 
-func (h *RelayHandler) loadGroups() []types.Group {
+func (h *RelayHandler) loadGroups(ctx context.Context) []types.Group {
 	groups, ok := cache.Get[[]types.Group](h.Cache, "groups")
 	if ok && groups != nil {
 		return *groups
@@ -439,13 +439,13 @@ func (h *RelayHandler) loadGroups() []types.Group {
 
 	// Read active_profile_id from settings to filter groups
 	profileID := 0
-	if val, _ := dal.GetSetting(context.Background(), h.DB, "active_profile_id"); val != nil {
+	if val, _ := dal.GetSetting(ctx, h.DB, "active_profile_id"); val != nil {
 		if id, err := strconv.Atoi(*val); err == nil {
 			profileID = id
 		}
 	}
 
-	g, err := dal.ListGroups(context.Background(), h.DB, profileID)
+	g, err := dal.ListGroups(ctx, h.DB, profileID)
 	if err != nil {
 		return nil
 	}

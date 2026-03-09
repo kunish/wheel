@@ -420,7 +420,7 @@ func (h *Handler) PatchCodexAuthFileStatusBatch(c *gin.Context) {
 	response := codexAuthUploadResponse{Total: len(selected), Results: make([]codexAuthUploadResult, 0, len(selected))}
 	if h.codexCapabilities().LocalEnabled {
 		for _, file := range selected {
-			result := h.patchCodexLocalAuthFileStatus(file, req.Disabled)
+			result := h.patchCodexLocalAuthFileStatus(c.Request.Context(), file, req.Disabled)
 			response.Results = append(response.Results, result)
 			if result.Status == "ok" {
 				response.SuccessCount++
@@ -754,7 +754,7 @@ func (h *Handler) listAllCodexAuthFiles(ctx context.Context, channelID int) ([]c
 	return parseAuthFiles(resp.Files), nil
 }
 
-func (h *Handler) patchCodexLocalAuthFileStatus(file codexAuthFile, disabled bool) codexAuthUploadResult {
+func (h *Handler) patchCodexLocalAuthFileStatus(ctx context.Context, file codexAuthFile, disabled bool) codexAuthUploadResult {
 	result := codexAuthUploadResult{Name: file.Name}
 	_, _, _, _, raw, err := parseCodexAuthContent([]byte(file.RawContent))
 	if err != nil {
@@ -769,7 +769,7 @@ func (h *Handler) patchCodexLocalAuthFileStatus(file codexAuthFile, disabled boo
 		result.Error = "failed to encode auth file"
 		return result
 	}
-	if err := dal.UpdateCodexAuthFile(context.Background(), h.DB, file.ID, map[string]any{"disabled": disabled, "content": string(encoded)}); err != nil {
+	if err := dal.UpdateCodexAuthFile(ctx, h.DB, file.ID, map[string]any{"disabled": disabled, "content": string(encoded)}); err != nil {
 		result.Status = "error"
 		result.Error = err.Error()
 		return result
