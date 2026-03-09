@@ -392,16 +392,19 @@ func (h *Handler) GetCodexAuthFileModels(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	_ = channel
 
 	if err := h.ensureCodexManagementConfigured(); err != nil {
 		errorJSON(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	query := url.Values{}
+	if name := c.Query("name"); name != "" {
+		query.Set("name", managedAuthRelativeName(channel.ID, name))
+	}
 	var resp struct {
 		Models []map[string]any `json:"models"`
 	}
-	if err := h.codexManagementCall(c, http.MethodGet, "/models", nil, nil, &resp); err != nil {
+	if err := h.codexManagementCall(c, http.MethodGet, "/auth-files/models", query, nil, &resp); err != nil {
 		errorJSON(c, http.StatusBadGateway, err.Error())
 		return
 	}
