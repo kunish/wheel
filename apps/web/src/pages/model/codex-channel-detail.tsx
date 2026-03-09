@@ -1,4 +1,4 @@
-import type { CodexAuthFile } from "@/lib/api"
+import type { CodexAuthFile, CodexQuotaItem } from "@/lib/api"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Check,
@@ -65,9 +65,7 @@ import {
 } from "./runtime-auth-selection"
 
 const AUTH_FILES_PAGE_SIZE = 8
-const QUOTA_PAGE_SIZE = 6
 const AUTH_PAGE_SIZE_OPTIONS = [8, 20, 50, 100]
-const QUOTA_PAGE_SIZE_OPTIONS = [6, 12, 24]
 
 interface CodexChannelDetailProps {
   channelId: number
@@ -86,8 +84,6 @@ export function CodexChannelDetail({
   const [authPage, setAuthPage] = useState(1)
   const [authPageSize, setAuthPageSize] = useState(AUTH_FILES_PAGE_SIZE)
   const [authSearch, setAuthSearch] = useState("")
-  const [quotaPage, setQuotaPage] = useState(1)
-  const [quotaPageSize, setQuotaPageSize] = useState(QUOTA_PAGE_SIZE)
   const [selection, setSelection] = useState(createRuntimeAuthSelection)
   const providerKey = getRuntimeProviderKey(channelType)
   const providerLabel = providerKey ? t(`typeLabels.${channelType}`) : t("typeLabels.33")
@@ -113,12 +109,17 @@ export function CodexChannelDetail({
 
   const quotaQuery = useQuery({
     queryKey: codexQuotaQueryKey(channelId, {
-      page: quotaPage,
-      pageSize: quotaPageSize,
+      page: authPage,
+      pageSize: authPageSize,
       channelType,
     }),
     queryFn: () =>
-      listCodexQuota(channelId, { page: quotaPage, pageSize: quotaPageSize, channelType }),
+      listCodexQuota(channelId, {
+        search: authSearch || undefined,
+        page: authPage,
+        pageSize: authPageSize,
+        channelType,
+      }),
     placeholderData: keepPreviousData,
   })
 
@@ -333,11 +334,10 @@ export function CodexChannelDetail({
 
   const authFiles = authQuery.data?.data.files ?? []
   const quotaItems = quotaQuery.data?.data.items ?? []
+  const quotaMap = new Map(quotaItems.map((item) => [item.name, item]))
   const capabilities = authQuery.data?.data.capabilities
   const authTotal = authQuery.data?.data.total ?? 0
-  const quotaTotal = quotaQuery.data?.data.total ?? 0
   const authTotalPages = Math.max(1, Math.ceil(authTotal / authPageSize))
-  const quotaTotalPages = Math.max(1, Math.ceil(quotaTotal / quotaPageSize))
   const pageNames = authFiles.map((file) => file.name)
   const currentPageSelectionState = getCurrentPageSelectionState(selection, pageNames)
   const selectedCount = getSelectedCount(selection, authTotal)
@@ -357,12 +357,6 @@ export function CodexChannelDetail({
       setAuthPage(authTotalPages)
     }
   }, [authPage, authTotalPages])
-
-  useEffect(() => {
-    if (quotaPage > quotaTotalPages) {
-      setQuotaPage(quotaTotalPages)
-    }
-  }, [quotaPage, quotaTotalPages])
 
   useEffect(() => {
     setSelection(clearRuntimeAuthSelection())
@@ -393,12 +387,6 @@ export function CodexChannelDetail({
     },
     [t, uploadMut],
   )
-
-  const remainingPercent = (usedPercent?: number) =>
-    Math.max(0, 100 - Math.min(usedPercent || 0, 100))
-
-  const hasCodexQuotaWindows = (item: (typeof quotaItems)[number]) =>
-    item.weekly.limitWindowSeconds > 0 || item.codeReview.limitWindowSeconds > 0
 
   return (
     <div className="mt-2 space-y-3">
@@ -612,6 +600,7 @@ export function CodexChannelDetail({
             </div>
             {authFiles.map((file) => {
               const disabled = !!file.disabled
+              const quota = quotaMap.get(file.name)
               return (
                 <div
                   key={file.name}
@@ -633,11 +622,20 @@ export function CodexChannelDetail({
                             {file.provider || "codex"}
                           </Badge>
                           <span className="truncate text-xs font-medium">{file.name}</span>
+                          {quota?.planType && (
+                            <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px]">
+                              {quota.planType}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-muted-foreground mt-0.5 text-[10px]">
                           {file.email || t("codex.noEmail")}
                         </p>
                       </div>
+                      {quota && !quota.error && <InlineQuota quota={quota} />}
+                      {quota?.error && (
+                        <p className="text-destructive mt-1 text-[10px]">{quota.error}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center justify-end gap-1 self-end lg:self-auto">
@@ -683,98 +681,6 @@ export function CodexChannelDetail({
           </div>
         )}
       </div>
-
-      {/* Quota Section */}
-      {quotaItems.length > 0 && (
-        <div className="space-y-2">
-          <h5 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            {t("runtime.remainingQuota", { provider: providerLabel })}
-          </h5>
-          <div className="grid gap-1.5 lg:grid-cols-2">
-            {quotaItems.map((item) => (
-              <div key={item.name} className="rounded-md border px-2.5 py-2 text-xs">
-                <div className="mb-1.5 flex items-center justify-between gap-1">
-                  <span className="truncate font-medium">{item.name}</span>
-                  {item.planType && (
-                    <Badge variant="outline" className="px-1 py-0 text-[10px]">
-                      {item.planType}
-                    </Badge>
-                  )}
-                </div>
-                {item.error ? (
-                  <p className="text-destructive text-[10px]">{item.error}</p>
-                ) : item.snapshots && item.snapshots.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {item.snapshots.map((snapshot) => (
-                      <div key={snapshot.id}>
-                        <div className="mb-0.5 flex items-center justify-between text-[10px]">
-                          <span>{snapshot.label}</span>
-                          <span>
-                            {snapshot.unlimited
-                              ? t("runtime.unlimited")
-                              : `${Math.max(0, Math.min(snapshot.percentRemaining, 100)).toFixed(1)}%`}
-                          </span>
-                        </div>
-                        <Progress
-                          value={
-                            snapshot.unlimited
-                              ? 100
-                              : Math.max(0, Math.min(snapshot.percentRemaining, 100))
-                          }
-                          className="h-1.5"
-                        />
-                      </div>
-                    ))}
-                    {item.resetAt ? (
-                      <p className="text-muted-foreground text-[10px]">
-                        {t("runtime.resetAt", { resetAt: item.resetAt })}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : hasCodexQuotaWindows(item) ? (
-                  <div className="space-y-1.5">
-                    <div>
-                      <div className="mb-0.5 flex items-center justify-between text-[10px]">
-                        <span>{t("codex.weekly")}</span>
-                        <span>{remainingPercent(item.weekly.usedPercent).toFixed(1)}%</span>
-                      </div>
-                      <Progress
-                        value={remainingPercent(item.weekly.usedPercent)}
-                        className="h-1.5"
-                      />
-                    </div>
-                    <div>
-                      <div className="mb-0.5 flex items-center justify-between text-[10px]">
-                        <span>{t("codex.codeReview")}</span>
-                        <span>{remainingPercent(item.codeReview.usedPercent).toFixed(1)}%</span>
-                      </div>
-                      <Progress
-                        value={remainingPercent(item.codeReview.usedPercent)}
-                        className="h-1.5"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-[10px]">
-                    {t("runtime.quotaUnavailable")}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-          <RuntimePagination
-            currentPage={quotaPage}
-            pageSize={quotaPageSize}
-            total={quotaTotal}
-            onPageChange={setQuotaPage}
-            pageSizeOptions={QUOTA_PAGE_SIZE_OPTIONS}
-            onPageSizeChange={(pageSize) => {
-              setQuotaPageSize(pageSize)
-              setQuotaPage(1)
-            }}
-          />
-        </div>
-      )}
 
       {/* Models Dialog */}
       <Dialog open={!!modelsDialogFile} onOpenChange={(open) => !open && setModelsDialogFile(null)}>
@@ -877,6 +783,68 @@ export function CodexChannelDetail({
       </Dialog>
     </div>
   )
+}
+
+function InlineQuota({ quota }: { quota: CodexQuotaItem }) {
+  const { t } = useTranslation("model")
+
+  const remainingPercent = (usedPercent?: number) =>
+    Math.max(0, 100 - Math.min(usedPercent || 0, 100))
+
+  const hasWindows = quota.weekly.limitWindowSeconds > 0 || quota.codeReview.limitWindowSeconds > 0
+
+  if (quota.snapshots && quota.snapshots.length > 0) {
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+        {quota.snapshots.map((snapshot) => (
+          <div key={snapshot.id} className="flex min-w-0 items-center gap-1.5">
+            <span className="text-muted-foreground shrink-0 text-[10px]">{snapshot.label}</span>
+            <Progress
+              value={
+                snapshot.unlimited ? 100 : Math.max(0, Math.min(snapshot.percentRemaining, 100))
+              }
+              className="h-1 w-16"
+            />
+            <span className="shrink-0 text-[10px] font-medium">
+              {snapshot.unlimited
+                ? t("runtime.unlimited")
+                : `${Math.max(0, Math.min(snapshot.percentRemaining, 100)).toFixed(0)}%`}
+            </span>
+          </div>
+        ))}
+        {quota.resetAt ? (
+          <span className="text-muted-foreground text-[10px]">
+            {t("runtime.resetAt", { resetAt: quota.resetAt })}
+          </span>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (hasWindows) {
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground shrink-0 text-[10px]">{t("codex.weekly")}</span>
+          <Progress value={remainingPercent(quota.weekly.usedPercent)} className="h-1 w-16" />
+          <span className="shrink-0 text-[10px] font-medium">
+            {remainingPercent(quota.weekly.usedPercent).toFixed(0)}%
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground shrink-0 text-[10px]">
+            {t("codex.codeReview")}
+          </span>
+          <Progress value={remainingPercent(quota.codeReview.usedPercent)} className="h-1 w-16" />
+          <span className="shrink-0 text-[10px] font-medium">
+            {remainingPercent(quota.codeReview.usedPercent).toFixed(0)}%
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  return null
 }
 
 function RuntimePagination({
