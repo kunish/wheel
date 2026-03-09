@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	codexruntime "github.com/kunish/wheel/apps/worker/internal/codexruntime"
@@ -402,4 +403,89 @@ func (h *Handler) deleteCodexManagedAuthFile(c *gin.Context, name string) codexA
 	}
 	result.Status = "ok"
 	return result
+}
+
+// batchUploadCodexLocalAuthFiles parses all files, then batch-upserts
+// valid items into the database in a single operation instead of
+// issuing one INSERT per file.
+func (h *Handler) batchUploadCodexLocalAuthFiles(ctx context.Context, channelID int, files []codexUploadFile) codexAuthUploadResponse {
+	response := codexAuthUploadResponse{
+		Total:   len(files),
+		Results: make([]codexAuthUploadResult, 0, len(files)),
+	}
+
+	// Phase 1: parse all files (CPU-only, fast)
+	validItems := make([]types.CodexAuthFile, 0, len(files))
+	validIndices := make([]int, 0, len(files))
+	for _, file := range files {
+		result := codexAuthUploadResult{Name: file.Name}
+		provider, email, disabled, normalized, _, err := parseCodexAuthContent(file.Content)
+		if err != nil {
+			result.Status = "error"
+			result.Error = err.Error()
+			response.Results = append(response.Results, result)
+			response.FailedCount++
+			continue
+		}
+		validIndices = append(validIndices, len(response.Results))
+		response.Results = append(response.Results, codexAuthUploadResult{Name: file.Name})
+		validItems = append(validItems, types.CodexAuthFile{
+			ChannelID: channelID,
+			Name:      file.Name,
+			Provider:  provider,
+			Email:     email,
+			Disabled:  disabled,
+			Content:   normalized,
+		})
+	}
+
+	// Phase 2: batch upsert (single SQL per 500-item chunk)
+	if len(validItems) > 0 {
+		if err := dal.UpsertCodexAuthFiles(ctx, h.DB, validItems); err != nil {
+			// Batch failed — mark all valid items as error
+			for _, idx := range validIndices {
+				response.Results[idx].Status = "error"
+				response.Results[idx].Error = err.Error()
+			}
+			response.FailedCount += len(validItems)
+			return response
+		}
+		for _, idx := range validIndices {
+			response.Results[idx].Status = "ok"
+		}
+		response.SuccessCount = len(validItems)
+	}
+	return response
+}
+
+// concurrentUploadCodexManagedAuthFiles uploads files to the codex
+// runtime management API using a bounded worker pool for concurrency.
+func (h *Handler) concurrentUploadCodexManagedAuthFiles(ctx context.Context, files []codexUploadFile) codexAuthUploadResponse {
+	const maxWorkers = 10
+	response := codexAuthUploadResponse{
+		Total:   len(files),
+		Results: make([]codexAuthUploadResult, len(files)),
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxWorkers)
+	for i, file := range files {
+		wg.Add(1)
+		sem <- struct{}{} // acquire
+		go func(idx int, f codexUploadFile) {
+			defer wg.Done()
+			defer func() { <-sem }() // release
+			response.Results[idx] = h.uploadCodexManagedAuthFile(ctx, f)
+		}(i, file)
+	}
+	wg.Wait()
+
+	for _, r := range response.Results {
+		if r.Status == "ok" {
+			response.SuccessCount++
+		} else {
+			response.FailedCount++
+		}
+	}
+	return response
 }

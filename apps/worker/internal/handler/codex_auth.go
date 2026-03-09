@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -203,20 +204,13 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 		Results: make([]codexAuthUploadResult, 0, len(files)),
 	}
 	if h.codexCapabilities().LocalEnabled {
-		for _, file := range files {
-			result := h.uploadCodexLocalAuthFile(c.Request.Context(), channel.ID, file)
-			response.Results = append(response.Results, result)
-			if result.Status == "ok" {
-				response.SuccessCount++
-				continue
-			}
-			response.FailedCount++
-		}
+		response = h.batchUploadCodexLocalAuthFiles(c.Request.Context(), channel.ID, files)
 		if response.SuccessCount > 0 {
 			if err := codexruntime.MaterializeChannelAuthFiles(c.Request.Context(), h.DB, channel.ID); err != nil {
 				log.Printf("[codex] materialize channel %d auth files failed: %v", channel.ID, err)
 			} else {
-				h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
+				// Run model sync in a background goroutine to avoid blocking the response.
+				go h.bestEffortSyncCodexChannelModels(context.Background(), channel.ID)
 			}
 		}
 	} else {
@@ -224,15 +218,7 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 			errorJSON(c, http.StatusBadRequest, err.Error())
 			return
 		}
-		for _, file := range files {
-			result := h.uploadCodexManagedAuthFile(c.Request.Context(), file)
-			response.Results = append(response.Results, result)
-			if result.Status == "ok" {
-				response.SuccessCount++
-				continue
-			}
-			response.FailedCount++
-		}
+		response = h.concurrentUploadCodexManagedAuthFiles(c.Request.Context(), files)
 	}
 	successJSON(c, response)
 }

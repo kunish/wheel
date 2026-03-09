@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -918,11 +917,9 @@ func TestUploadCodexAuthFileBatch(t *testing.T) {
 
 	h, mock := newCodexUploadTestHandler(t)
 	expectCodexChannelLookups(mock, 7)
-	expectCodexAuthFileInsert(mock, nil)
-	expectCodexAuthFileInsert(mock, errors.New("duplicate auth file"))
+	expectCodexAuthFileInsert(mock, nil) // single batch upsert for both valid files
 	expectCodexAuthFileListForSync(mock, 7, []string{"valid.json"})
-	expectCodexChannelTypeLookup(mock, 7, types.OutboundCodex)
-	expectCodexAuthFileListForSync(mock, 7, []string{"valid.json"})
+	// model sync runs asynchronously in a goroutine — no SQL expectations
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -964,7 +961,9 @@ func TestUploadCodexAuthFileBatch(t *testing.T) {
 	if !resp.Success {
 		t.Fatalf("success = false, body = %s", rec.Body.String())
 	}
-	if resp.Data.Total != 3 || resp.Data.SuccessCount != 1 || resp.Data.FailedCount != 2 {
+	// With batch upsert, both valid.json files succeed (ON DUPLICATE KEY UPDATE handles duplicates).
+	// Only broken.json fails (parse error). Total=3, Success=2, Failed=1.
+	if resp.Data.Total != 3 || resp.Data.SuccessCount != 2 || resp.Data.FailedCount != 1 {
 		t.Fatalf("unexpected counts: %+v", resp.Data)
 	}
 	if len(resp.Data.Results) != 3 {
@@ -976,7 +975,7 @@ func TestUploadCodexAuthFileBatch(t *testing.T) {
 	if resp.Data.Results[1].Name != "broken.json" || resp.Data.Results[1].Status != "error" || !strings.Contains(resp.Data.Results[1].Error, "invalid auth file json") {
 		t.Fatalf("unexpected second result: %+v", resp.Data.Results[1])
 	}
-	if resp.Data.Results[2].Name != "valid.json" || resp.Data.Results[2].Status != "error" || resp.Data.Results[2].Error == "" {
+	if resp.Data.Results[2].Name != "valid.json" || resp.Data.Results[2].Status != "ok" {
 		t.Fatalf("unexpected third result: %+v", resp.Data.Results[2])
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -989,10 +988,9 @@ func TestUploadCodexAuthFileSingleFileCompatibility(t *testing.T) {
 
 	h, mock := newCodexUploadTestHandler(t)
 	expectCodexChannelLookups(mock, 9)
-	expectCodexAuthFileInsert(mock, nil)
+	expectCodexAuthFileInsert(mock, nil) // single batch upsert
 	expectCodexAuthFileListForSync(mock, 9, []string{"single.json"})
-	expectCodexChannelTypeLookup(mock, 9, types.OutboundCodex)
-	expectCodexAuthFileListForSync(mock, 9, []string{"single.json"})
+	// model sync runs asynchronously — no SQL expectations
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -1045,12 +1043,9 @@ func TestUploadCodexAuthFileBatch_LocalMaterializesAfterLoop(t *testing.T) {
 
 	h, mock := newCodexUploadTestHandler(t)
 	expectCodexChannelLookups(mock, 11)
-	for range 5 {
-		expectCodexAuthFileInsert(mock, nil)
-	}
+	expectCodexAuthFileInsert(mock, nil) // single batch upsert for all 5 files
 	expectCodexAuthFileListForSync(mock, 11, []string{"first.json", "second.json", "third.json", "fourth.json", "fifth.json"})
-	expectCodexChannelTypeLookup(mock, 11, types.OutboundCodex)
-	expectCodexAuthFileListForSync(mock, 11, []string{"first.json", "second.json", "third.json", "fourth.json", "fifth.json"})
+	// model sync runs asynchronously — no SQL expectations
 
 	authDir := codexruntime.ManagedAuthDir()
 	configPath := codexruntime.ManagedConfigPath()
@@ -1149,11 +1144,9 @@ func TestUploadCodexAuthFileBatch_DoesNotDependOnTempMultipartFiles(t *testing.T
 
 	h, mock := newCodexUploadTestHandler(t)
 	expectCodexChannelLookups(mock, 11)
-	expectCodexAuthFileInsert(mock, nil)
-	expectCodexAuthFileInsert(mock, nil)
+	expectCodexAuthFileInsert(mock, nil) // single batch upsert
 	expectCodexAuthFileListForSync(mock, 11, []string{"one.json", "two.json"})
-	expectCodexChannelTypeLookup(mock, 11, types.OutboundCodex)
-	expectCodexAuthFileListForSync(mock, 11, []string{"one.json", "two.json"})
+	// model sync runs asynchronously — no SQL expectations
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -1201,8 +1194,7 @@ func TestUploadCodexAuthFileBatch_MaterializeFailurePreservesPerFileResults(t *t
 
 	h, mock := newCodexUploadTestHandler(t)
 	expectCodexChannelLookups(mock, 12)
-	expectCodexAuthFileInsert(mock, nil)
-	expectCodexAuthFileInsert(mock, nil)
+	expectCodexAuthFileInsert(mock, nil) // single batch upsert
 
 	configPath := codexruntime.ManagedConfigPath()
 	configDir := filepath.Dir(configPath)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/kunish/wheel/apps/worker/internal/types"
 	"github.com/uptrace/bun"
@@ -44,6 +45,35 @@ func GetCodexAuthFileByName(ctx context.Context, db *bun.DB, channelID int, name
 func CreateCodexAuthFile(ctx context.Context, db *bun.DB, item *types.CodexAuthFile) error {
 	_, err := db.NewInsert().Model(item).Exec(ctx)
 	return err
+}
+
+// UpsertCodexAuthFiles performs a batch INSERT ... ON DUPLICATE KEY UPDATE
+// in chunks to avoid exceeding MySQL packet size limits.
+func UpsertCodexAuthFiles(ctx context.Context, db *bun.DB, items []types.CodexAuthFile) error {
+	if len(items) == 0 {
+		return nil
+	}
+	const chunkSize = 500
+	for i := 0; i < len(items); i += chunkSize {
+		end := i + chunkSize
+		if end > len(items) {
+			end = len(items)
+		}
+		chunk := items[i:end]
+		_, err := db.NewInsert().
+			Model(&chunk).
+			On("DUPLICATE KEY UPDATE").
+			Set("provider = VALUES(provider)").
+			Set("email = VALUES(email)").
+			Set("disabled = VALUES(disabled)").
+			Set("content = VALUES(content)").
+			Set("updated_at = CURRENT_TIMESTAMP").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("batch upsert codex auth files (chunk %d-%d): %w", i, end, err)
+		}
+	}
+	return nil
 }
 
 func UpdateCodexAuthFile(ctx context.Context, db *bun.DB, id int, data map[string]any) error {
