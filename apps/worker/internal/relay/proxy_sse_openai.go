@@ -68,47 +68,55 @@ func CreateOpenAIToAnthropicSSEConverter() func(string) []string {
 
 // createOpenAIToAnthropicSSEConverter returns a stateful converter
 // from OpenAI SSE chunks to Anthropic SSE event lines.
+// Handles text content, tool_calls, and mixed content.
 func createOpenAIToAnthropicSSEConverter() func(string) []string {
 	started := false
-	contentBlockOpen := false
+	messageStopped := false
 	msgId := "msg_unknown"
 	msgModel := ""
+
+	// Block tracking: text block is always index 0 (if present).
+	// Tool calls get subsequent indices.
+	textBlockOpen := false
+	nextBlockIndex := 0              // next Anthropic content block index
+	toolBlockIndex := map[int]int{}  // OpenAI tool_call index → Anthropic block index
+	openToolBlocks := map[int]bool{} // Anthropic block indices that are still open
+
+	// closeAllOpenBlocks emits content_block_stop for every open block.
+	closeAllOpenBlocks := func() []string {
+		var out []string
+		if textBlockOpen {
+			b, _ := json.Marshal(map[string]any{"type": "content_block_stop", "index": 0})
+			out = append(out, "event: content_block_stop", "data: "+string(b), "")
+			textBlockOpen = false
+		}
+		for idx := range openToolBlocks {
+			b, _ := json.Marshal(map[string]any{"type": "content_block_stop", "index": idx})
+			out = append(out, "event: content_block_stop", "data: "+string(b), "")
+		}
+		openToolBlocks = map[int]bool{}
+		return out
+	}
 
 	return func(jsonStr string) []string {
 		if jsonStr == "[DONE]" {
 			var lines []string
-			if contentBlockOpen {
-				evt := map[string]any{
-					"type":  "content_block_stop",
-					"index": 0,
-				}
-				b, _ := json.Marshal(evt)
-				lines = append(lines,
-					"event: content_block_stop",
-					"data: "+string(b),
-					"",
-				)
-				contentBlockOpen = false
+			lines = append(lines, closeAllOpenBlocks()...)
+			if !messageStopped {
+				b, _ := json.Marshal(map[string]any{
+					"type":  "message_delta",
+					"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
+					"usage": map[string]any{"output_tokens": 0},
+				})
+				lines = append(lines, "event: message_delta", "data: "+string(b), "")
+				b, _ = json.Marshal(map[string]any{"type": "message_stop"})
+				lines = append(lines, "event: message_stop", "data: "+string(b), "")
+				messageStopped = true
 			}
-			delta := map[string]any{
-				"type":  "message_delta",
-				"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
-				"usage": map[string]any{"output_tokens": 0},
+			if len(lines) > 0 {
+				return lines
 			}
-			b, _ := json.Marshal(delta)
-			lines = append(lines,
-				"event: message_delta",
-				"data: "+string(b),
-				"",
-			)
-			stop := map[string]any{"type": "message_stop"}
-			b, _ = json.Marshal(stop)
-			lines = append(lines,
-				"event: message_stop",
-				"data: "+string(b),
-				"",
-			)
-			return lines
+			return nil
 		}
 
 		var obj map[string]any
@@ -151,73 +159,103 @@ func createOpenAIToAnthropicSSEConverter() func(string) []string {
 		finishReason, _ := choice["finish_reason"].(string)
 
 		if delta != nil {
-			content, _ := delta["content"].(string)
-
-			if content != "" {
-				if !contentBlockOpen {
-					lines = append(lines,
-						openaiToAnthropicBlockStart(0, "text")...)
-					contentBlockOpen = true
+			// --- Text content ---
+			if content, ok := delta["content"].(string); ok && content != "" {
+				if !textBlockOpen {
+					// Reserve index 0 for text block.
+					if nextBlockIndex == 0 {
+						nextBlockIndex = 1
+					}
+					lines = append(lines, openaiToAnthropicBlockStart(0, "text")...)
+					textBlockOpen = true
 				}
-				evt := map[string]any{
+				b, _ := json.Marshal(map[string]any{
 					"type":  "content_block_delta",
 					"index": 0,
-					"delta": map[string]any{
-						"type": "text_delta",
-						"text": content,
-					},
+					"delta": map[string]any{"type": "text_delta", "text": content},
+				})
+				lines = append(lines, "event: content_block_delta", "data: "+string(b), "")
+			}
+
+			// --- Tool calls ---
+			if toolCalls, ok := delta["tool_calls"].([]any); ok {
+				for _, tc := range toolCalls {
+					tcMap, ok := tc.(map[string]any)
+					if !ok {
+						continue
+					}
+					tcIdx := toInt(tcMap["index"])
+
+					// New tool call: emit content_block_start.
+					if _, seen := toolBlockIndex[tcIdx]; !seen {
+						// Close the text block before tool blocks (if open and first tool).
+						if textBlockOpen {
+							b, _ := json.Marshal(map[string]any{"type": "content_block_stop", "index": 0})
+							lines = append(lines, "event: content_block_stop", "data: "+string(b), "")
+							textBlockOpen = false
+						}
+						if nextBlockIndex == 0 {
+							nextBlockIndex = 1 // skip 0 in case text comes later (unlikely)
+						}
+						blockIdx := nextBlockIndex
+						nextBlockIndex++
+						toolBlockIndex[tcIdx] = blockIdx
+						openToolBlocks[blockIdx] = true
+
+						tcId, _ := tcMap["id"].(string)
+						fn, _ := tcMap["function"].(map[string]any)
+						fnName, _ := fn["name"].(string)
+
+						b, _ := json.Marshal(map[string]any{
+							"type":  "content_block_start",
+							"index": blockIdx,
+							"content_block": map[string]any{
+								"type":  "tool_use",
+								"id":    tcId,
+								"name":  fnName,
+								"input": map[string]any{},
+							},
+						})
+						lines = append(lines, "event: content_block_start", "data: "+string(b), "")
+					}
+
+					// Stream argument chunks as input_json_delta.
+					if fn, ok := tcMap["function"].(map[string]any); ok {
+						if args, ok := fn["arguments"].(string); ok && args != "" {
+							blockIdx := toolBlockIndex[tcIdx]
+							b, _ := json.Marshal(map[string]any{
+								"type":  "content_block_delta",
+								"index": blockIdx,
+								"delta": map[string]any{
+									"type":         "input_json_delta",
+									"partial_json": args,
+								},
+							})
+							lines = append(lines, "event: content_block_delta", "data: "+string(b), "")
+						}
+					}
 				}
-				b, _ := json.Marshal(evt)
-				lines = append(lines,
-					"event: content_block_delta",
-					"data: "+string(b),
-					"",
-				)
 			}
 		}
 
 		if finishReason != "" {
-			if contentBlockOpen {
-				evt := map[string]any{
-					"type":  "content_block_stop",
-					"index": 0,
-				}
-				b, _ := json.Marshal(evt)
-				lines = append(lines,
-					"event: content_block_stop",
-					"data: "+string(b),
-					"",
-				)
-				contentBlockOpen = false
-			}
+			lines = append(lines, closeAllOpenBlocks()...)
 
 			usage, _ := obj["usage"].(map[string]any)
 			inTok := toInt(usage["prompt_tokens"])
 			outTok := toInt(usage["completion_tokens"])
 
 			stopReason := mapOpenAIFinishReason(finishReason)
-			md := map[string]any{
+			b, _ := json.Marshal(map[string]any{
 				"type":  "message_delta",
 				"delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil},
-				"usage": map[string]any{
-					"input_tokens":  inTok,
-					"output_tokens": outTok,
-				},
-			}
-			b, _ := json.Marshal(md)
-			lines = append(lines,
-				"event: message_delta",
-				"data: "+string(b),
-				"",
-			)
+				"usage": map[string]any{"input_tokens": inTok, "output_tokens": outTok},
+			})
+			lines = append(lines, "event: message_delta", "data: "+string(b), "")
 
-			stop := map[string]any{"type": "message_stop"}
-			b, _ = json.Marshal(stop)
-			lines = append(lines,
-				"event: message_stop",
-				"data: "+string(b),
-				"",
-			)
+			b, _ = json.Marshal(map[string]any{"type": "message_stop"})
+			lines = append(lines, "event: message_stop", "data: "+string(b), "")
+			messageStopped = true
 		}
 
 		if len(lines) > 0 {
