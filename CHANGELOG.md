@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.28.0](https://github.com/kunish/wheel/compare/v1.27.4...v1.28.0) (2026-03-09)
+
+
+### Features
+
+* add auth file status filter and optimize narrow layout ([7e532fc](https://github.com/kunish/wheel/commit/7e532fcd11909615521091b9b255155c1ddba812))
+
+
+### Bug Fixes
+
+* prevent refresh_token_reused by setting NextRefreshAfter ([5eec453](https://github.com/kunish/wheel/commit/5eec453f668e22ed54b497ae4b7657ed4253b762))
+* suppress management API info-level logs in gin logger ([a327c98](https://github.com/kunish/wheel/commit/a327c98c859126e4bc303ff8cbd5e3e691f1963a))
+
 ## [1.27.4](https://github.com/kunish/wheel/compare/v1.27.3...v1.27.4) (2026-03-09)
 
 
