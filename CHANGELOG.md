@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.1](https://github.com/kunish/wheel/compare/v1.29.0...v1.29.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* translate Anthropic body to OpenAI format for Copilot channels ([c8f8ce8](https://github.com/kunish/wheel/commit/c8f8ce88b28ff7e2f236b43437e58581e1a7be03))
+
 ## [1.29.0](https://github.com/kunish/wheel/compare/v1.28.0...v1.29.0) (2026-03-09)
 
 
