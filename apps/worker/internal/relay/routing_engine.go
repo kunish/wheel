@@ -16,12 +16,12 @@ type RoutingEngine struct {
 	mu            sync.RWMutex
 	rules         []RoutingRule
 	compiledRegex map[string]*regexp.Regexp // cond value -> compiled regex
-	celEngine     *CELEngine
+	celEngine     *celEngine
 }
 
 // NewRoutingEngine creates a new RoutingEngine.
 func NewRoutingEngine() *RoutingEngine {
-	celEngine, err := NewCELEngine()
+	celEngine, err := newCELEngine()
 	if err != nil {
 		log.Printf("[routing] failed to create CEL engine: %v", err)
 	}

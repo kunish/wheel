@@ -33,15 +33,15 @@ func ManagedAuthFileName(channelID int, name string) string {
 	return fmt.Sprintf("channel-%d--%s", channelID, filepath.Base(name))
 }
 
-func ManagedAuthFilePath(item *types.CodexAuthFile) string {
+func managedAuthFilePath(item *types.CodexAuthFile) string {
 	return filepath.Join(ManagedAuthDir(), ManagedAuthFileName(item.ChannelID, item.Name))
 }
 
-func ManagementBaseURL() string {
+func managementBaseURL() string {
 	return "http://codex-internal"
 }
 
-func EnsureManagedConfig(managementKey string) error {
+func ensureManagedConfig(managementKey string) error {
 	configPath := ManagedConfigPath()
 	authDir := ManagedAuthDir()
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
@@ -94,7 +94,7 @@ func MaterializeAuthFiles(ctx context.Context, db *bun.DB) error {
 	if db == nil {
 		return nil
 	}
-	if err := EnsureManagedConfig(""); err != nil {
+	if err := ensureManagedConfig(""); err != nil {
 		return err
 	}
 	channels, err := dal.ListChannels(ctx, db)
@@ -119,7 +119,7 @@ func MaterializeChannelAuthFiles(ctx context.Context, db *bun.DB, channelID int)
 	if db == nil {
 		return nil
 	}
-	if err := EnsureManagedConfig(""); err != nil {
+	if err := ensureManagedConfig(""); err != nil {
 		return err
 	}
 	items, err := dal.ListCodexAuthFiles(ctx, db, channelID)
@@ -133,7 +133,7 @@ func MaterializeOneAuthFile(item *types.CodexAuthFile) error {
 	if item == nil {
 		return nil
 	}
-	if err := EnsureManagedConfig(""); err != nil {
+	if err := ensureManagedConfig(""); err != nil {
 		return err
 	}
 	return writeManagedAuthFile(item)
@@ -143,7 +143,7 @@ func writeManagedAuthFile(item *types.CodexAuthFile) error {
 	if item == nil {
 		return nil
 	}
-	path := ManagedAuthFilePath(item)
+	path := managedAuthFilePath(item)
 	return writeManagedAuthFilePath(path, []byte(item.Content))
 }
 
@@ -322,7 +322,7 @@ func RemoveOneAuthFile(item *types.CodexAuthFile) error {
 	if item == nil {
 		return nil
 	}
-	path := ManagedAuthFilePath(item)
+	path := managedAuthFilePath(item)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove managed auth file: %w", err)
 	}

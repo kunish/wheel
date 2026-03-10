@@ -9,8 +9,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// SanitizePayloadRules validates raw JSON payload rule params and drops invalid rules.
-func (cfg *Config) SanitizePayloadRules() {
+// sanitizePayloadRules validates raw JSON payload rule params and drops invalid rules.
+func (cfg *Config) sanitizePayloadRules() {
 	if cfg == nil {
 		return
 	}
@@ -64,12 +64,12 @@ func payloadRawString(value any) ([]byte, bool) {
 	}
 }
 
-// SanitizeOAuthModelAlias normalizes and deduplicates global OAuth model name aliases.
+// sanitizeOAuthModelAlias normalizes and deduplicates global OAuth model name aliases.
 // It trims whitespace, normalizes channel keys to lower-case, drops empty entries,
 // allows multiple aliases per upstream name, and ensures aliases are unique within each channel.
 // It also injects default aliases for channels that have built-in defaults (e.g., kiro)
 // when no user-configured aliases exist for those channels.
-func (cfg *Config) SanitizeOAuthModelAlias() {
+func (cfg *Config) sanitizeOAuthModelAlias() {
 	if cfg == nil {
 		return
 	}
@@ -134,10 +134,10 @@ func (cfg *Config) SanitizeOAuthModelAlias() {
 	cfg.OAuthModelAlias = out
 }
 
-// SanitizeOpenAICompatibility removes OpenAI-compatibility provider entries that are
+// sanitizeOpenAICompatibility removes OpenAI-compatibility provider entries that are
 // not actionable, specifically those missing a BaseURL. It trims whitespace before
 // evaluation and preserves the relative order of remaining entries.
-func (cfg *Config) SanitizeOpenAICompatibility() {
+func (cfg *Config) sanitizeOpenAICompatibility() {
 	if cfg == nil || len(cfg.OpenAICompatibility) == 0 {
 		return
 	}
@@ -147,7 +147,7 @@ func (cfg *Config) SanitizeOpenAICompatibility() {
 		e.Name = strings.TrimSpace(e.Name)
 		e.Prefix = normalizeModelPrefix(e.Prefix)
 		e.BaseURL = strings.TrimSpace(e.BaseURL)
-		e.Headers = NormalizeHeaders(e.Headers)
+		e.Headers = normalizeHeaders(e.Headers)
 		if e.BaseURL == "" {
 			// Skip providers with no base-url; treated as removed
 			continue
@@ -157,9 +157,9 @@ func (cfg *Config) SanitizeOpenAICompatibility() {
 	cfg.OpenAICompatibility = out
 }
 
-// SanitizeCodexKeys removes Codex API key entries missing a BaseURL.
+// sanitizeCodexKeys removes Codex API key entries missing a BaseURL.
 // It trims whitespace and preserves order for remaining entries.
-func (cfg *Config) SanitizeCodexKeys() {
+func (cfg *Config) sanitizeCodexKeys() {
 	if cfg == nil || len(cfg.CodexKey) == 0 {
 		return
 	}
@@ -168,8 +168,8 @@ func (cfg *Config) SanitizeCodexKeys() {
 		e := cfg.CodexKey[i]
 		e.Prefix = normalizeModelPrefix(e.Prefix)
 		e.BaseURL = strings.TrimSpace(e.BaseURL)
-		e.Headers = NormalizeHeaders(e.Headers)
-		e.ExcludedModels = NormalizeExcludedModels(e.ExcludedModels)
+		e.Headers = normalizeHeaders(e.Headers)
+		e.ExcludedModels = normalizeExcludedModels(e.ExcludedModels)
 		if e.BaseURL == "" {
 			continue
 		}
@@ -178,21 +178,21 @@ func (cfg *Config) SanitizeCodexKeys() {
 	cfg.CodexKey = out
 }
 
-// SanitizeClaudeKeys normalizes headers for Claude credentials.
-func (cfg *Config) SanitizeClaudeKeys() {
+// sanitizeClaudeKeys normalizes headers for Claude credentials.
+func (cfg *Config) sanitizeClaudeKeys() {
 	if cfg == nil || len(cfg.ClaudeKey) == 0 {
 		return
 	}
 	for i := range cfg.ClaudeKey {
 		entry := &cfg.ClaudeKey[i]
 		entry.Prefix = normalizeModelPrefix(entry.Prefix)
-		entry.Headers = NormalizeHeaders(entry.Headers)
-		entry.ExcludedModels = NormalizeExcludedModels(entry.ExcludedModels)
+		entry.Headers = normalizeHeaders(entry.Headers)
+		entry.ExcludedModels = normalizeExcludedModels(entry.ExcludedModels)
 	}
 }
 
-// SanitizeKiroKeys trims whitespace from Kiro credential fields.
-func (cfg *Config) SanitizeKiroKeys() {
+// sanitizeKiroKeys trims whitespace from Kiro credential fields.
+func (cfg *Config) sanitizeKiroKeys() {
 	if cfg == nil || len(cfg.KiroKey) == 0 {
 		return
 	}
@@ -208,8 +208,8 @@ func (cfg *Config) SanitizeKiroKeys() {
 	}
 }
 
-// SanitizeGeminiKeys deduplicates and normalizes Gemini credentials.
-func (cfg *Config) SanitizeGeminiKeys() {
+// sanitizeGeminiKeys deduplicates and normalizes Gemini credentials.
+func (cfg *Config) sanitizeGeminiKeys() {
 	if cfg == nil {
 		return
 	}
@@ -225,8 +225,8 @@ func (cfg *Config) SanitizeGeminiKeys() {
 		entry.Prefix = normalizeModelPrefix(entry.Prefix)
 		entry.BaseURL = strings.TrimSpace(entry.BaseURL)
 		entry.ProxyURL = strings.TrimSpace(entry.ProxyURL)
-		entry.Headers = NormalizeHeaders(entry.Headers)
-		entry.ExcludedModels = NormalizeExcludedModels(entry.ExcludedModels)
+		entry.Headers = normalizeHeaders(entry.Headers)
+		entry.ExcludedModels = normalizeExcludedModels(entry.ExcludedModels)
 		if _, exists := seen[entry.APIKey]; exists {
 			continue
 		}
@@ -253,8 +253,8 @@ func looksLikeBcrypt(s string) bool {
 	return len(s) > 4 && (s[:4] == "$2a$" || s[:4] == "$2b$" || s[:4] == "$2y$")
 }
 
-// NormalizeHeaders trims header keys and values and removes empty pairs.
-func NormalizeHeaders(headers map[string]string) map[string]string {
+// normalizeHeaders trims header keys and values and removes empty pairs.
+func normalizeHeaders(headers map[string]string) map[string]string {
 	if len(headers) == 0 {
 		return nil
 	}
@@ -273,9 +273,9 @@ func NormalizeHeaders(headers map[string]string) map[string]string {
 	return clean
 }
 
-// NormalizeExcludedModels trims, lowercases, and deduplicates model exclusion patterns.
+// normalizeExcludedModels trims, lowercases, and deduplicates model exclusion patterns.
 // It preserves the order of first occurrences and drops empty entries.
-func NormalizeExcludedModels(models []string) []string {
+func normalizeExcludedModels(models []string) []string {
 	if len(models) == 0 {
 		return nil
 	}
@@ -298,9 +298,9 @@ func NormalizeExcludedModels(models []string) []string {
 	return out
 }
 
-// NormalizeOAuthExcludedModels cleans provider -> excluded models mappings by normalizing provider keys
+// normalizeOAuthExcludedModels cleans provider -> excluded models mappings by normalizing provider keys
 // and applying model exclusion normalization to each entry.
-func NormalizeOAuthExcludedModels(entries map[string][]string) map[string][]string {
+func normalizeOAuthExcludedModels(entries map[string][]string) map[string][]string {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -310,7 +310,7 @@ func NormalizeOAuthExcludedModels(entries map[string][]string) map[string][]stri
 		if key == "" {
 			continue
 		}
-		normalized := NormalizeExcludedModels(models)
+		normalized := normalizeExcludedModels(models)
 		if len(normalized) == 0 {
 			continue
 		}

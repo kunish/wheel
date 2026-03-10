@@ -19,12 +19,6 @@ export function getLog(id: number) {
   return apiFetch<{ success: boolean; data: unknown }>(`/api/v1/log/${id}`)
 }
 
-export function deleteLog(id: number) {
-  return apiFetch<{ success: boolean }>(`/api/v1/log/delete/${id}`, {
-    method: "DELETE",
-  })
-}
-
 export function replayLog(id: number): Promise<Response> {
   return apiRawFetch(`/api/v1/log/replay/${id}`, { method: "POST" })
 }

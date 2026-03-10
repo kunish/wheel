@@ -22,7 +22,3 @@ export function changeUsername(username: string) {
     body: { username },
   })
 }
-
-export function getAuthStatus() {
-  return apiFetch<{ success: boolean; data: { authenticated: boolean } }>("/api/v1/user/status")
-}

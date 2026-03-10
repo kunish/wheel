@@ -19,10 +19,10 @@ import (
 // SyncResult tracks the outcome of a model sync operation.
 type SyncResult = types.SyncResult
 
-// FetchModelsFromChannel fetches model names from an upstream channel provider.
+// fetchModelsFromChannel fetches model names from an upstream channel provider.
 // Returns (models, isFallback, error). isFallback is true when the result came
 // from models.dev metadata instead of the real upstream API.
-func FetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string, bool, error) {
+func fetchModelsFromChannel(channel types.Channel, kv *cache.MemoryKV) ([]string, bool, error) {
 	// Find first enabled key
 	var apiKey string
 	for _, k := range channel.Keys {
@@ -286,7 +286,7 @@ func SyncAllModels(ctx context.Context, db *bun.DB, kv *cache.MemoryKV) (*SyncRe
 			continue
 		}
 
-		upstreamModels, isFallback, err := FetchModelsFromChannel(channel, kv)
+		upstreamModels, isFallback, err := fetchModelsFromChannel(channel, kv)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Channel %s: %v", channel.Name, err))
 			continue

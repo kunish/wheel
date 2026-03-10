@@ -25,15 +25,15 @@ type SDKConfig struct {
 	PassthroughHeaders bool `yaml:"passthrough-headers" json:"passthrough-headers"`
 
 	// Streaming configures server-side streaming behavior (keep-alives and safe bootstrap retries).
-	Streaming StreamingConfig `yaml:"streaming" json:"streaming"`
+	Streaming streamingConfig `yaml:"streaming" json:"streaming"`
 
 	// NonStreamKeepAliveInterval controls how often blank lines are emitted for non-streaming responses.
 	// <= 0 disables keep-alives. Value is in seconds.
 	NonStreamKeepAliveInterval int `yaml:"nonstream-keepalive-interval,omitempty" json:"nonstream-keepalive-interval,omitempty"`
 }
 
-// StreamingConfig holds server streaming behavior configuration.
-type StreamingConfig struct {
+// streamingConfig holds server streaming behavior configuration.
+type streamingConfig struct {
 	// KeepAliveSeconds controls how often the server emits SSE heartbeats (": keep-alive\n\n").
 	// <= 0 disables keep-alives. Default is 0.
 	KeepAliveSeconds int `yaml:"keepalive-seconds,omitempty" json:"keepalive-seconds,omitempty"`

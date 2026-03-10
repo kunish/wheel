@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import type { ModelMeta } from "@/lib/api-client"
+import type { ModelMeta } from "@/lib/api"
 import { useMemo, useState } from "react"
 import { fuzzyLookup, useModelMetadataQuery } from "@/hooks/use-model-meta"
 import { groupModelsByProvider } from "@/lib/group-models"

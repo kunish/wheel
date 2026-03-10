@@ -1,4 +1,4 @@
-import type { ImportDataResult } from "@/lib/api-client"
+import type { ImportDataResult } from "@/lib/api"
 import { Download, FileUp, Upload } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { exportData, importData } from "@/lib/api-client"
+import { exportData, importData } from "@/lib/api"
 
 type ImportResult = NonNullable<ImportDataResult["data"]>
 

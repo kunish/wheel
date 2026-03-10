@@ -27,7 +27,7 @@ func (h *ResponsesHandler) Responses(c *gin.Context) {
 		return
 	}
 	stream := gjson.GetBytes(rawJSON, "stream").Type == gjson.True
-	modelName, ok := RequireOpenAIModel(c, rawJSON)
+	modelName, ok := requireOpenAIModel(c, rawJSON)
 	if !ok {
 		return
 	}
@@ -57,7 +57,7 @@ func (h *ResponsesHandler) Compact(c *gin.Context) {
 		})
 		return
 	}
-	rawJSON, status, err := NormalizeResponsesCompactRequest(rawJSON)
+	rawJSON, status, err := normalizeResponsesCompactRequest(rawJSON)
 	if err != nil {
 		c.JSON(status, handlers.ErrorResponse{
 			Error: handlers.ErrorDetail{
@@ -452,7 +452,7 @@ func (h *ResponsesHandler) handleResponsesStreamingResponse(c *gin.Context, rawJ
 	}
 }
 
-func NormalizeResponsesCompactRequest(rawJSON []byte) ([]byte, int, error) {
+func normalizeResponsesCompactRequest(rawJSON []byte) ([]byte, int, error) {
 	streamResult := gjson.GetBytes(rawJSON, "stream")
 	if streamResult.Type == gjson.True {
 		return nil, http.StatusBadRequest, fmt.Errorf("Streaming not supported for compact responses")

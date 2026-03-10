@@ -8,15 +8,15 @@ import (
 	"github.com/google/cel-go/cel"
 )
 
-// CELEngine compiles and evaluates CEL expressions for routing rules.
-type CELEngine struct {
+// celEngine compiles and evaluates CEL expressions for routing rules.
+type celEngine struct {
 	mu       sync.RWMutex
 	env      *cel.Env
 	programs map[string]cel.Program // expression string -> compiled program
 }
 
-// NewCELEngine creates a CEL engine with the standard variables available in routing.
-func NewCELEngine() (*CELEngine, error) {
+// newCELEngine creates a CEL engine with the standard variables available in routing.
+func newCELEngine() (*celEngine, error) {
 	env, err := cel.NewEnv(
 		cel.Variable("model", cel.StringType),
 		cel.Variable("request_type", cel.StringType),
@@ -29,14 +29,14 @@ func NewCELEngine() (*CELEngine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL env: %w", err)
 	}
-	return &CELEngine{
+	return &celEngine{
 		env:      env,
 		programs: make(map[string]cel.Program),
 	}, nil
 }
 
 // Compile pre-compiles a CEL expression and caches the program.
-func (e *CELEngine) Compile(expression string) error {
+func (e *celEngine) Compile(expression string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -60,7 +60,7 @@ func (e *CELEngine) Compile(expression string) error {
 
 // Evaluate runs a compiled CEL expression against the routing context.
 // Returns true if the expression evaluates to true, false otherwise.
-func (e *CELEngine) Evaluate(expression string, ctx *RuleEvalContext) bool {
+func (e *celEngine) Evaluate(expression string, ctx *RuleEvalContext) bool {
 	e.mu.RLock()
 	prg, ok := e.programs[expression]
 	e.mu.RUnlock()
@@ -98,7 +98,7 @@ func (e *CELEngine) Evaluate(expression string, ctx *RuleEvalContext) bool {
 }
 
 // ClearCache clears the compiled program cache.
-func (e *CELEngine) ClearCache() {
+func (e *celEngine) ClearCache() {
 	e.mu.Lock()
 	e.programs = make(map[string]cel.Program)
 	e.mu.Unlock()

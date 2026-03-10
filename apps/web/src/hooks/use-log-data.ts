@@ -2,7 +2,7 @@ import type { LogEntry } from "@/pages/logs/columns"
 import type { LogStats } from "@/pages/logs/types"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
-import { listChannels as apiListChannels, getModelList, listLogs } from "@/lib/api-client"
+import { listChannels as apiListChannels, getModelList, listLogs } from "@/lib/api"
 
 interface LogDataParams {
   page: number

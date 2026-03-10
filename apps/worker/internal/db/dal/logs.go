@@ -12,14 +12,6 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
-func CreateLog(ctx context.Context, db *bun.DB, log types.RelayLog) (*types.RelayLog, error) {
-	_, err := db.NewInsert().Model(&log).Exec(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &log, nil
-}
-
 // CreateLogsBatch inserts multiple logs in a single statement within the given transaction.
 func CreateLogsBatch(ctx context.Context, tx bun.Tx, logs []types.RelayLog) error {
 	if len(logs) == 0 {

@@ -387,8 +387,8 @@ func convertOpenAITools(tools []any) []any {
 	return result
 }
 
-// ConvertAnthropicResponse converts an Anthropic response to OpenAI format.
-func ConvertAnthropicResponse(anthropicResp map[string]any) map[string]any {
+// convertAnthropicResponse converts an Anthropic response to OpenAI format.
+func convertAnthropicResponse(anthropicResp map[string]any) map[string]any {
 	content, _ := anthropicResp["content"].([]any)
 
 	var textParts []string

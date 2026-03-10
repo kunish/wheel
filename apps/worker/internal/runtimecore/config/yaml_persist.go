@@ -9,11 +9,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SaveConfigPreserveComments marshals cfg into the YAML file at configFile while
+// saveConfigPreserveComments marshals cfg into the YAML file at configFile while
 // preserving the original file's comments, key ordering and formatting. It merges
 // the new values into the existing YAML node tree so that hand-written annotations
 // survive round-trips.
-func SaveConfigPreserveComments(configFile string, cfg *Config) error {
+func saveConfigPreserveComments(configFile string, cfg *Config) error {
 	persistCfg := cfg
 	// Load original YAML as a node tree to preserve comments and ordering.
 	data, err := os.ReadFile(configFile)
@@ -77,14 +77,14 @@ func SaveConfigPreserveComments(configFile string, cfg *Config) error {
 	if err = enc.Close(); err != nil {
 		return err
 	}
-	data = NormalizeCommentIndentation(buf.Bytes())
+	data = normalizeCommentIndentation(buf.Bytes())
 	_, err = f.Write(data)
 	return err
 }
 
-// SaveConfigPreserveCommentsUpdateNestedScalar updates a nested scalar key path like ["a","b"]
+// saveConfigPreserveCommentsUpdateNestedScalar updates a nested scalar key path like ["a","b"]
 // while preserving comments and positions.
-func SaveConfigPreserveCommentsUpdateNestedScalar(configFile string, path []string, value string) error {
+func saveConfigPreserveCommentsUpdateNestedScalar(configFile string, path []string, value string) error {
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return err
@@ -129,13 +129,13 @@ func SaveConfigPreserveCommentsUpdateNestedScalar(configFile string, path []stri
 	if err = enc.Close(); err != nil {
 		return err
 	}
-	data = NormalizeCommentIndentation(buf.Bytes())
+	data = normalizeCommentIndentation(buf.Bytes())
 	_, err = f.Write(data)
 	return err
 }
 
-// NormalizeCommentIndentation removes indentation from standalone YAML comment lines to keep them left aligned.
-func NormalizeCommentIndentation(data []byte) []byte {
+// normalizeCommentIndentation removes indentation from standalone YAML comment lines to keep them left aligned.
+func normalizeCommentIndentation(data []byte) []byte {
 	lines := bytes.Split(data, []byte("\n"))
 	changed := false
 	for i, line := range lines {

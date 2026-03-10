@@ -11,20 +11,20 @@ import (
 	"time"
 )
 
-// EmbeddingProvider generates embeddings for text.
-type EmbeddingProvider interface {
+// embeddingProvider generates embeddings for text.
+type embeddingProvider interface {
 	Embed(ctx context.Context, text string) ([]float64, error)
 }
 
-// NoopEmbeddingProvider always returns nil (used when similarity mode is disabled).
-type NoopEmbeddingProvider struct{}
+// noopEmbeddingProvider always returns nil (used when similarity mode is disabled).
+type noopEmbeddingProvider struct{}
 
-func (n *NoopEmbeddingProvider) Embed(ctx context.Context, text string) ([]float64, error) {
+func (n *noopEmbeddingProvider) Embed(ctx context.Context, text string) ([]float64, error) {
 	return nil, nil
 }
 
-// SemanticCacheConfig defines the configuration for the semantic cache plugin.
-type SemanticCacheConfig struct {
+// semanticCacheConfig defines the configuration for the semantic cache plugin.
+type semanticCacheConfig struct {
 	TTL           time.Duration // cache entry TTL
 	MaxEntries    int           // max number of cached entries
 	Enabled       bool
@@ -45,21 +45,21 @@ type cacheEntry struct {
 	QueryHash    string    // exact SHA-256 hash for fast lookup
 }
 
-// SemanticCachePlugin caches non-streaming responses keyed by
+// semanticCachePlugin caches non-streaming responses keyed by
 // a SHA-256 hash of model + messages (exact match), with optional
 // vector similarity matching via an embedding provider.
-type SemanticCachePlugin struct {
-	config   SemanticCacheConfig
+type semanticCachePlugin struct {
+	config   semanticCacheConfig
 	mu       sync.RWMutex
 	entries  map[string]*cacheEntry
 	exclude  map[string]bool
-	embedder EmbeddingProvider
+	embedder embeddingProvider
 }
 
-// NewSemanticCachePlugin creates a new semantic cache plugin.
-// An optional EmbeddingProvider can be passed for similarity mode;
-// when omitted a NoopEmbeddingProvider is used.
-func NewSemanticCachePlugin(config SemanticCacheConfig, embedder ...EmbeddingProvider) *SemanticCachePlugin {
+// newsemanticCachePlugin creates a new semantic cache plugin.
+// An optional embeddingProvider can be passed for similarity mode;
+// when omitted a noopEmbeddingProvider is used.
+func newsemanticCachePlugin(config semanticCacheConfig, embedder ...embeddingProvider) *semanticCachePlugin {
 	exclude := make(map[string]bool, len(config.ExcludeModels))
 	for _, m := range config.ExcludeModels {
 		exclude[m] = true
@@ -74,14 +74,14 @@ func NewSemanticCachePlugin(config SemanticCacheConfig, embedder ...EmbeddingPro
 		config.SimilarityThreshold = 0.95
 	}
 
-	var ep EmbeddingProvider
+	var ep embeddingProvider
 	if len(embedder) > 0 && embedder[0] != nil {
 		ep = embedder[0]
 	} else {
-		ep = &NoopEmbeddingProvider{}
+		ep = &noopEmbeddingProvider{}
 	}
 
-	return &SemanticCachePlugin{
+	return &semanticCachePlugin{
 		config:   config,
 		entries:  make(map[string]*cacheEntry),
 		exclude:  exclude,
@@ -89,9 +89,9 @@ func NewSemanticCachePlugin(config SemanticCacheConfig, embedder ...EmbeddingPro
 	}
 }
 
-func (p *SemanticCachePlugin) Name() string { return "semantic_cache" }
+func (p *semanticCachePlugin) Name() string { return "semantic_cache" }
 
-func (p *SemanticCachePlugin) PreHook(ctx *RelayContext) *ShortCircuit {
+func (p *semanticCachePlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 	if !p.config.Enabled {
 		return nil
 	}
@@ -147,7 +147,7 @@ func (p *SemanticCachePlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 	return nil
 }
 
-func (p *SemanticCachePlugin) PostHook(ctx *RelayContext, resp *RelayPluginResponse) {
+func (p *semanticCachePlugin) PostHook(ctx *RelayContext, resp *RelayPluginResponse) {
 	if !p.config.Enabled || !resp.Success {
 		return
 	}
@@ -207,7 +207,7 @@ func (p *SemanticCachePlugin) PostHook(ctx *RelayContext, resp *RelayPluginRespo
 // findSimilarEntry searches the cache for an entry whose embedding is similar
 // enough to the given embedding (above the threshold). Must be called without
 // the write lock held; acquires a read lock internally.
-func (p *SemanticCachePlugin) findSimilarEntry(embedding []float64, threshold float64) *cacheEntry {
+func (p *semanticCachePlugin) findSimilarEntry(embedding []float64, threshold float64) *cacheEntry {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -254,7 +254,7 @@ func cosineSimilarity(a, b []float64) float64 {
 }
 
 // evictOldest removes the entry with the earliest expiration. Must be called with mu held.
-func (p *SemanticCachePlugin) evictOldest() {
+func (p *semanticCachePlugin) evictOldest() {
 	var oldestKey string
 	var oldestTime time.Time
 	first := true
@@ -271,7 +271,7 @@ func (p *SemanticCachePlugin) evictOldest() {
 }
 
 // StartCleanup runs periodic cleanup of expired cache entries.
-func (p *SemanticCachePlugin) StartCleanup(stop <-chan struct{}) {
+func (p *semanticCachePlugin) StartCleanup(stop <-chan struct{}) {
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
@@ -286,7 +286,7 @@ func (p *SemanticCachePlugin) StartCleanup(stop <-chan struct{}) {
 	}()
 }
 
-func (p *SemanticCachePlugin) cleanup() {
+func (p *semanticCachePlugin) cleanup() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { GearOutline, GearSpinner } from "@/components/ui/gear-spinner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { login } from "@/lib/api-client"
+import { login } from "@/lib/api"
 import { useAuthStore } from "@/lib/store/auth"
 
 export default function LoginPage() {

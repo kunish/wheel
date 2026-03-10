@@ -43,8 +43,8 @@ var MeaningfulErrorHeaders = []string{
 	"Anthropic-Ratelimit-Tokens-Reset",
 }
 
-// ForwardResponseHeaders copies forwardable headers from upstream response to client response writer.
-func ForwardResponseHeaders(w http.ResponseWriter, upstreamResp *http.Response) {
+// forwardResponseHeaders copies forwardable headers from upstream response to client response writer.
+func forwardResponseHeaders(w http.ResponseWriter, upstreamResp *http.Response) {
 	CopyForwardableHeaders(w.Header(), upstreamResp.Header)
 	// Also add a header indicating the response came through Wheel
 	w.Header().Set("X-Wheel-Proxy", "true")

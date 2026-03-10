@@ -8,7 +8,7 @@ import {
   getHourlyStats,
   getModelStats,
   getTotalStats,
-} from "./lib/api-client"
+} from "./lib/api"
 
 const LoginPage = lazy(() => import("./pages/login"))
 const KeysPage = lazy(() => import("./pages/keys"))
@@ -53,7 +53,6 @@ export function AppRouter() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/model" element={<ModelPage />} />
           <Route path="/playground" element={<PlaygroundPage />} />
-          <Route path="/channels" element={<Navigate to="/model" replace />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/keys" element={<KeysPage />} />
           <Route path="/logs" element={<LogsPage />} />
@@ -65,10 +64,8 @@ export function AppRouter() {
           <Route path="/adaptive-routing" element={<AdaptiveRoutingPage />} />
           <Route path="/observability" element={<ObservabilityPage />} />
           <Route path="/api-reference" element={<ApiReferencePage />} />
-          <Route path="/prices" element={<Navigate to="/model" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/mcp" element={<MCPPage />} />
-          <Route path="/apikeys" element={<Navigate to="/keys" replace />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

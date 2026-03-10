@@ -3,7 +3,7 @@ import { Activity, AlertTriangle, Shield, Zap } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Card, CardContent } from "@/components/ui/card"
-import { getChannelStats, getTotalStats } from "@/lib/api-client"
+import { getChannelStats, getTotalStats } from "@/lib/api"
 
 function formatNumber(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`

@@ -15,7 +15,7 @@ export interface ApiKeyRecord {
   tpmLimit: number
 }
 
-export interface ApiKeyInput {
+interface ApiKeyInput {
   id?: number
   name: string
   expireAt: number

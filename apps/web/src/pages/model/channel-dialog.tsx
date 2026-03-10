@@ -35,6 +35,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import {
   createChannel,
+  fetchChannelModelsPreview,
   getCodexAuthUploadToastState,
   getCodexOAuthStatus,
   listChannels,
@@ -43,7 +44,6 @@ import {
   startCodexOAuth,
   uploadCodexAuthFile,
 } from "@/lib/api"
-import { fetchChannelModelsPreview } from "@/lib/api-client"
 import {
   adaptChannelDraftForType,
   ensureCodexChannelId,

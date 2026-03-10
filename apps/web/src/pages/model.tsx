@@ -2,7 +2,7 @@ import type { DragEndEvent, DragOverEvent, DragStartEvent } from "@dnd-kit/core"
 import type { GroupItemForm } from "./model/group-dialog"
 import type { PriceFormData } from "./model/price-dialog"
 import type { ChannelRecord, DragData, GroupRecord, ModelPrice } from "./model/types"
-import type { ModelProfile } from "@/lib/api-client"
+import type { ModelProfile } from "@/lib/api"
 import {
   DndContext,
   DragOverlay,
@@ -47,7 +47,7 @@ import {
   listChannels,
   listGroups,
   listModelPrices,
-} from "@/lib/api-client"
+} from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { ChannelPanel } from "./model/channel-panel"
 import { GroupPanel } from "./model/group-panel"

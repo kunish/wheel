@@ -1,6 +1,6 @@
 import { normalizeToolPayloadForModel } from "./tool-payload"
 
-export interface ToolCall {
+interface ToolCall {
   id: string
   name: string
   argumentsText: string

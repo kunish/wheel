@@ -2,7 +2,7 @@ import type { GroupFormData, GroupItemForm } from "@/pages/model/group-dialog"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { createGroup, deleteGroup, reorderGroups, updateGroup } from "@/lib/api-client"
+import { createGroup, deleteGroup, reorderGroups, updateGroup } from "@/lib/api"
 import { defaultMutationCallbacks } from "@/lib/mutation-utils"
 
 interface GroupRecord {

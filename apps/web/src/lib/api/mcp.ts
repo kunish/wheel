@@ -2,7 +2,7 @@ import { apiFetch } from "./client"
 
 // ── MCP Clients ──
 
-export interface MCPStdioConfig {
+interface MCPStdioConfig {
   command: string
   args: string[]
   envs: string[]
@@ -13,7 +13,7 @@ export interface MCPHeaderEntry {
   value: string
 }
 
-export interface MCPToolInfo {
+interface MCPToolInfo {
   name: string
   description?: string
 }
@@ -27,7 +27,7 @@ export interface MCPOAuthConfig {
   accessToken?: string
 }
 
-export interface OAuthDiscoveryResult {
+interface OAuthDiscoveryResult {
   tokenUrl: string
   authorizationUrl: string
   scopes: string[]

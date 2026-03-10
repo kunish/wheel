@@ -3,7 +3,7 @@ export * from "./audit-logs"
 export * from "./auth"
 export * from "./channels"
 // Barrel re-export — every domain module
-export { ApiError, createApiClient, getApiBaseUrl } from "./client"
+export { ApiError, getApiBaseUrl } from "./client"
 export * from "./codex"
 export * from "./groups"
 export * from "./guardrails"

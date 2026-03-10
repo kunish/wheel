@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
 import { toast } from "sonner"
-import { activateProfile } from "@/lib/api-client"
+import { activateProfile } from "@/lib/api"
 
 export function useProfileMutations(callbacks?: { onActivateSuccess?: () => void }) {
   const queryClient = useQueryClient()

@@ -130,8 +130,6 @@ type Config struct {
 	// This is useful when you want to login with a different account without logging out
 	// from your current session. Default: false.
 	IncognitoBrowser bool `yaml:"incognito-browser" json:"incognito-browser"`
-
-	legacyMigrationPending bool `yaml:"-" json:"-"`
 }
 
 func (cfg *Config) ToSDKConfig() (*sdkconfig.Config, error) {

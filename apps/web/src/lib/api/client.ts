@@ -1,19 +1,4 @@
-import type { paths } from "../api.gen"
-import createClient from "openapi-fetch"
 import { useAuthStore } from "../store/auth"
-
-// ── OpenAPI client ──
-
-export function createApiClient() {
-  const { apiBaseUrl, token } = useAuthStore.getState()
-
-  return createClient<paths>({
-    baseUrl: apiBaseUrl || undefined,
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  })
-}
 
 // ── Legacy fetch wrapper ──
 

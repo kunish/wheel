@@ -71,8 +71,8 @@ func TestIsMultimodalRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsMultimodalRequest(tt.requestType); got != tt.want {
-				t.Fatalf("IsMultimodalRequest(%q) = %v, want %v", tt.requestType, got, tt.want)
+			if got := isMultimodalRequest(tt.requestType); got != tt.want {
+				t.Fatalf("isMultimodalRequest(%q) = %v, want %v", tt.requestType, got, tt.want)
 			}
 		})
 	}

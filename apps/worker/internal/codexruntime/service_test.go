@@ -35,7 +35,7 @@ func TestServiceStartPropagatesRunError(t *testing.T) {
 }
 
 func TestManagedAuthFilePathFlattensChannelName(t *testing.T) {
-	path := ManagedAuthFilePath(&types.CodexAuthFile{
+	path := managedAuthFilePath(&types.CodexAuthFile{
 		ChannelID: 7,
 		Name:      "first.json",
 	})
@@ -49,17 +49,17 @@ func TestManagedAuthFilePathFlattensChannelName(t *testing.T) {
 }
 
 func TestNewFromConfigUsesOwnedRuntimeConfigLoader(t *testing.T) {
-	originalEnsure := ensureManagedConfig
+	originalEnsure := ensureManagedConfigFn
 	originalLoad := loadRuntimeConfig
 	originalBuild := buildRuntimeService
 	t.Cleanup(func() {
-		ensureManagedConfig = originalEnsure
+		ensureManagedConfigFn = originalEnsure
 		loadRuntimeConfig = originalLoad
 		buildRuntimeService = originalBuild
 	})
 
 	var gotManagementKey string
-	ensureManagedConfig = func(managementKey string) error {
+	ensureManagedConfigFn = func(managementKey string) error {
 		gotManagementKey = managementKey
 		return nil
 	}
@@ -105,17 +105,17 @@ func TestNewFromConfigUsesOwnedRuntimeConfigLoader(t *testing.T) {
 }
 
 func TestNewFromConfigBuildsThroughOwnedRuntimeAPI(t *testing.T) {
-	originalEnsure := ensureManagedConfig
+	originalEnsure := ensureManagedConfigFn
 	originalLoad := loadRuntimeConfig
 	originalBuilder := newRuntimeBuilder
 	t.Cleanup(func() {
-		ensureManagedConfig = originalEnsure
+		ensureManagedConfigFn = originalEnsure
 		loadRuntimeConfig = originalLoad
 		newRuntimeBuilder = originalBuilder
 	})
 
 	var gotManagementKey string
-	ensureManagedConfig = func(managementKey string) error {
+	ensureManagedConfigFn = func(managementKey string) error {
 		gotManagementKey = managementKey
 		return nil
 	}

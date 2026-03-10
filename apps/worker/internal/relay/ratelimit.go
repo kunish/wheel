@@ -20,15 +20,15 @@ type windowEntry struct {
 	tokens    int
 }
 
-// RateLimiter implements a sliding-window rate limiter for RPM and TPM.
-type RateLimiter struct {
+// rateLimiter implements a sliding-window rate limiter for RPM and TPM.
+type rateLimiter struct {
 	mu      sync.Mutex
 	windows map[string][]windowEntry // key -> sorted entries
 }
 
-// NewRateLimiter creates a new RateLimiter.
-func NewRateLimiter() *RateLimiter {
-	return &RateLimiter{
+// newRateLimiter creates a new rateLimiter.
+func newRateLimiter() *rateLimiter {
+	return &rateLimiter{
 		windows: make(map[string][]windowEntry),
 	}
 }
@@ -37,7 +37,7 @@ const rateLimitWindow = 60 * 1000 // 60 seconds in ms
 
 // Check tests whether a request is allowed under the given limits.
 // Returns (allowed, retryAfterMs). Does NOT record the request.
-func (r *RateLimiter) Check(key string, config RateLimitConfig) (bool, int64) {
+func (r *rateLimiter) Check(key string, config RateLimitConfig) (bool, int64) {
 	if config.RPM == 0 && config.TPM == 0 {
 		return true, 0
 	}
@@ -78,7 +78,7 @@ func (r *RateLimiter) Check(key string, config RateLimitConfig) (bool, int64) {
 }
 
 // Record records a completed request with its token count.
-func (r *RateLimiter) Record(key string, tokens int) {
+func (r *rateLimiter) Record(key string, tokens int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -91,7 +91,7 @@ func (r *RateLimiter) Record(key string, tokens int) {
 
 // UpdateLastTokens updates the token count of the most recent entry for a key.
 // Used by PostHook to fill in token counts recorded as 0 in PreHook.
-func (r *RateLimiter) UpdateLastTokens(key string, tokens int) {
+func (r *rateLimiter) UpdateLastTokens(key string, tokens int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -103,7 +103,7 @@ func (r *RateLimiter) UpdateLastTokens(key string, tokens int) {
 
 // prune removes expired entries and returns the remaining ones.
 // Must be called with r.mu held.
-func (r *RateLimiter) prune(key string, cutoff int64) []windowEntry {
+func (r *rateLimiter) prune(key string, cutoff int64) []windowEntry {
 	entries := r.windows[key]
 	start := 0
 	for start < len(entries) && entries[start].timestamp < cutoff {
@@ -120,7 +120,7 @@ func (r *RateLimiter) prune(key string, cutoff int64) []windowEntry {
 }
 
 // StartCleanup runs periodic cleanup of stale keys.
-func (r *RateLimiter) StartCleanup(stop <-chan struct{}) {
+func (r *rateLimiter) StartCleanup(stop <-chan struct{}) {
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
@@ -135,7 +135,7 @@ func (r *RateLimiter) StartCleanup(stop <-chan struct{}) {
 	}()
 }
 
-func (r *RateLimiter) cleanup() {
+func (r *rateLimiter) cleanup() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -163,7 +163,7 @@ func (r *RateLimiter) cleanup() {
 // RateLimitPlugin is a relay plugin that enforces RPM/TPM limits
 // per API key before the request reaches the provider.
 type RateLimitPlugin struct {
-	limiter    *RateLimiter
+	limiter    *rateLimiter
 	configFunc func(ctx *RelayContext) RateLimitConfig
 }
 
@@ -171,7 +171,7 @@ type RateLimitPlugin struct {
 // configFunc returns the RateLimitConfig for a given request context.
 func NewRateLimitPlugin(configFunc func(ctx *RelayContext) RateLimitConfig) *RateLimitPlugin {
 	return &RateLimitPlugin{
-		limiter:    NewRateLimiter(),
+		limiter:    newRateLimiter(),
 		configFunc: configFunc,
 	}
 }
@@ -210,7 +210,7 @@ func (p *RateLimitPlugin) PostHook(ctx *RelayContext, resp *RelayPluginResponse)
 	}
 }
 
-// Limiter returns the underlying RateLimiter for cleanup registration.
-func (p *RateLimitPlugin) Limiter() *RateLimiter {
+// Limiter returns the underlying rateLimiter for cleanup registration.
+func (p *RateLimitPlugin) Limiter() *rateLimiter {
 	return p.limiter
 }

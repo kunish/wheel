@@ -115,8 +115,8 @@ func convertOpenAIToolsToCohere(tools []any) []any {
 	return result
 }
 
-// ConvertCohereResponse converts a Cohere v2 Chat response to OpenAI format.
-func ConvertCohereResponse(cohereResp map[string]any) map[string]any {
+// convertCohereResponse converts a Cohere v2 Chat response to OpenAI format.
+func convertCohereResponse(cohereResp map[string]any) map[string]any {
 	text, _ := cohereResp["text"].(string)
 	if text == "" {
 		if msg, ok := cohereResp["message"].(map[string]any); ok {

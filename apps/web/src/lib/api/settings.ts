@@ -15,10 +15,6 @@ export function updateSettings(settings: Record<string, string>) {
   })
 }
 
-export function getVersion() {
-  return apiFetch<{ success: boolean; data: { version: string } }>("/api/v1/setting/version")
-}
-
 export function checkUpdate() {
   return apiFetch<{
     success: boolean

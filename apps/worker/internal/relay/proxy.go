@@ -42,8 +42,8 @@ func IsRetryableStatusCode(statusCode int) bool {
 	return false
 }
 
-// IsRetryableProxyError reports whether a proxy error should be retried.
-func IsRetryableProxyError(err error) bool {
+// isRetryableProxyError reports whether a proxy error should be retried.
+func isRetryableProxyError(err error) bool {
 	pe, ok := err.(*ProxyError)
 	if !ok {
 		return false
@@ -228,11 +228,11 @@ func ProxyNonStreaming(
 	finalResponse := data
 	switch channelType {
 	case types.OutboundAnthropic, types.OutboundBedrock:
-		finalResponse = ConvertAnthropicResponse(data)
+		finalResponse = convertAnthropicResponse(data)
 	case types.OutboundGemini, types.OutboundVertex:
-		finalResponse = ConvertGeminiResponse(data)
+		finalResponse = convertGeminiResponse(data)
 	case types.OutboundCohere:
-		finalResponse = ConvertCohereResponse(data)
+		finalResponse = convertCohereResponse(data)
 	}
 
 	usage, _ := finalResponse["usage"].(map[string]any)
@@ -357,7 +357,7 @@ func ProxyStreaming(
 	}
 
 	// Forward upstream response headers before setting SSE headers
-	ForwardResponseHeaders(w, resp)
+	forwardResponseHeaders(w, resp)
 
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")

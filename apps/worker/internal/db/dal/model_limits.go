@@ -21,32 +21,6 @@ func ListModelLimits(ctx context.Context, db *bun.DB) ([]types.ModelLimit, error
 	return limits, nil
 }
 
-// GetModelLimit returns a single model limit by ID.
-func GetModelLimit(ctx context.Context, db *bun.DB, id int) (*types.ModelLimit, error) {
-	limit := new(types.ModelLimit)
-	err := db.NewSelect().Model(limit).Where("id = ?", id).Scan(ctx)
-	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return limit, nil
-}
-
-// GetModelLimitByModel returns the limit config for a specific model name.
-func GetModelLimitByModel(ctx context.Context, db *bun.DB, model string) (*types.ModelLimit, error) {
-	limit := new(types.ModelLimit)
-	err := db.NewSelect().Model(limit).Where("model = ? AND enabled = true", model).Scan(ctx)
-	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return limit, nil
-}
-
 // CreateModelLimit inserts a new model limit.
 func CreateModelLimit(ctx context.Context, db *bun.DB, limit *types.ModelLimit) error {
 	_, err := db.NewInsert().Model(limit).Exec(ctx)

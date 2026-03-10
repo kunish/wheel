@@ -5,7 +5,7 @@ type StorageLike = Pick<Storage, "getItem" | "setItem">
 const PLAYGROUND_SETTINGS_KEY = "wheel.playground.settings.v1"
 const PLAYGROUND_MCP_KEY = "wheel.playground.mcp.v1"
 
-export interface PlaygroundSettingsSnapshot {
+interface PlaygroundSettingsSnapshot {
   model: string
   systemPrompt: string
   stream: boolean
@@ -14,7 +14,7 @@ export interface PlaygroundSettingsSnapshot {
   topP: number
 }
 
-export interface PlaygroundMcpSnapshot {
+interface PlaygroundMcpSnapshot {
   enabled: boolean
   mode: PlaygroundMcpMode
   selectedKeys: string[]

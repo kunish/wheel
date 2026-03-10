@@ -6,7 +6,7 @@ import type {
   StatsDaily,
   StatsHourly,
   StatsMetrics,
-} from "@/lib/api-client"
+} from "@/lib/api"
 import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from "@floating-ui/react"
 import { ArrowDownToLine, ArrowUpFromLine, DollarSign, MessageSquare } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"

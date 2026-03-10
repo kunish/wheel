@@ -1,5 +1,5 @@
 import type { HubListItem, HubListSortOption } from "./hub-list"
-import type { ModelStatsItem } from "@/lib/api-client"
+import type { ModelStatsItem } from "@/lib/api"
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { formatCount, formatMoney, formatTime } from "@/lib/format"

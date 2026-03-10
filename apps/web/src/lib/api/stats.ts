@@ -19,10 +19,6 @@ export type {
 
 // ── Stats ──
 
-export function getGlobalStats() {
-  return apiFetch<{ success: boolean; data: Record<string, unknown> }>("/api/v1/stats/global")
-}
-
 export function getChannelStats() {
   return apiFetch<{ success: boolean; data: ChannelStatsRow[] }>("/api/v1/stats/channel")
 }
@@ -38,12 +34,6 @@ function getBrowserTz(): string {
   const h = String(Math.floor(abs / 60)).padStart(2, "0")
   const m = String(abs % 60).padStart(2, "0")
   return `${sign}${h}:${m}`
-}
-
-export function getTodayStats() {
-  return apiFetch<{ success: boolean; data: StatsDaily }>(
-    `/api/v1/stats/today?tz=${encodeURIComponent(getBrowserTz())}`,
-  )
 }
 
 export function getDailyStats() {

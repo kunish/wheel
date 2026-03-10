@@ -4,20 +4,20 @@ import (
 	"context"
 	"fmt"
 
-	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	coreauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
+	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 )
 
-// Manager aggregates authenticators and coordinates persistence via a token store.
-type Manager struct {
-	authenticators map[string]Authenticator
+// manager aggregates authenticators and coordinates persistence via a token store.
+type manager struct {
+	authenticators map[string]authenticator
 	store          coreauth.Store
 }
 
-// NewManager constructs a manager with the provided token store and authenticators.
-func NewManager(store coreauth.Store, authenticators ...Authenticator) *Manager {
-	mgr := &Manager{
-		authenticators: make(map[string]Authenticator),
+// newManager constructs a manager with the provided token store and authenticators.
+func newManager(store coreauth.Store, authenticators ...authenticator) *manager {
+	mgr := &manager{
+		authenticators: make(map[string]authenticator),
 		store:          store,
 	}
 	for i := range authenticators {
@@ -27,23 +27,23 @@ func NewManager(store coreauth.Store, authenticators ...Authenticator) *Manager 
 }
 
 // Register adds or replaces an authenticator keyed by its provider identifier.
-func (m *Manager) Register(a Authenticator) {
+func (m *manager) Register(a authenticator) {
 	if a == nil {
 		return
 	}
 	if m.authenticators == nil {
-		m.authenticators = make(map[string]Authenticator)
+		m.authenticators = make(map[string]authenticator)
 	}
 	m.authenticators[a.Provider()] = a
 }
 
 // SetStore updates the token store used for persistence.
-func (m *Manager) SetStore(store coreauth.Store) {
+func (m *manager) SetStore(store coreauth.Store) {
 	m.store = store
 }
 
 // Login executes the provider login flow and persists the resulting auth record.
-func (m *Manager) Login(ctx context.Context, provider string, cfg *runtimeconfig.Config, opts *LoginOptions) (*coreauth.Auth, string, error) {
+func (m *manager) Login(ctx context.Context, provider string, cfg *runtimeconfig.Config, opts *loginOptions) (*coreauth.Auth, string, error) {
 	auth, ok := m.authenticators[provider]
 	if !ok {
 		return nil, "", fmt.Errorf("cliproxy auth: authenticator %s not registered", provider)
@@ -75,7 +75,7 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *runtimeconfig
 }
 
 // SaveAuth persists an auth record directly without going through the login flow.
-func (m *Manager) SaveAuth(record *coreauth.Auth, cfg *runtimeconfig.Config) (string, error) {
+func (m *manager) SaveAuth(record *coreauth.Auth, cfg *runtimeconfig.Config) (string, error) {
 	if m.store == nil {
 		return "", fmt.Errorf("no store configured")
 	}

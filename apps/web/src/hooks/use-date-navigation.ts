@@ -1,10 +1,10 @@
-import type { StatsDaily, StatsHourly } from "@/lib/api-client"
+import type { StatsDaily, StatsHourly } from "@/lib/api"
 import type { DayData, HeatmapView } from "@/pages/dashboard/types"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router"
-import { getHourlyStats } from "@/lib/api-client"
+import { getHourlyStats } from "@/lib/api"
 import {
   buildDayData,
   getFirstDayOfWeek,
@@ -286,5 +286,3 @@ export function useDateNavigation(dataMap: Map<string, StatsDaily>) {
     today,
   }
 }
-
-export type DateNavigation = ReturnType<typeof useDateNavigation>

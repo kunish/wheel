@@ -68,7 +68,7 @@ func TestNewAPIHandlerReturnsOwnedType(t *testing.T) {
 }
 
 func TestFilterOpenAIModels(t *testing.T) {
-	filtered := FilterOpenAIModels([]map[string]any{{
+	filtered := filterOpenAIModels([]map[string]any{{
 		"id":          "gpt-4o",
 		"object":      "model",
 		"created":     123,
@@ -850,7 +850,7 @@ func TestResponsesWebsocketPrewarmHandledLocally(t *testing.T) {
 }
 
 func TestFormatStreamChunkWrapsRawJSONOnce(t *testing.T) {
-	got := FormatStreamChunk([]byte(`{"id":"chatcmpl-1"}`))
+	got := formatStreamChunk([]byte(`{"id":"chatcmpl-1"}`))
 	want := "data: {\"id\":\"chatcmpl-1\"}\n\n"
 	if got != want {
 		t.Fatalf("FormatStreamChunk() = %q, want %q", got, want)
@@ -858,7 +858,7 @@ func TestFormatStreamChunkWrapsRawJSONOnce(t *testing.T) {
 }
 
 func TestFormatStreamChunkPreservesExistingSSEPayload(t *testing.T) {
-	got := FormatStreamChunk([]byte("data: {\"id\":\"chatcmpl-1\"}"))
+	got := formatStreamChunk([]byte("data: {\"id\":\"chatcmpl-1\"}"))
 	want := "data: {\"id\":\"chatcmpl-1\"}\n\n"
 	if got != want {
 		t.Fatalf("FormatStreamChunk() = %q, want %q", got, want)
@@ -1090,7 +1090,7 @@ func TestBuildResponsesWebsocketErrorPayload(t *testing.T) {
 }
 
 func TestNormalizeResponsesCompactRequestRejectsStream(t *testing.T) {
-	_, status, err := NormalizeResponsesCompactRequest([]byte(`{"model":"gpt-4o","stream":true}`))
+	_, status, err := normalizeResponsesCompactRequest([]byte(`{"model":"gpt-4o","stream":true}`))
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1103,7 +1103,7 @@ func TestNormalizeResponsesCompactRequestRejectsStream(t *testing.T) {
 }
 
 func TestNormalizeResponsesCompactRequestDeletesStreamFlag(t *testing.T) {
-	normalized, status, err := NormalizeResponsesCompactRequest([]byte(`{"model":"gpt-4o","stream":false,"input":"hello"}`))
+	normalized, status, err := normalizeResponsesCompactRequest([]byte(`{"model":"gpt-4o","stream":false,"input":"hello"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: status=%d err=%v", status, err)
 	}
@@ -1123,13 +1123,13 @@ func TestRequireOpenAIModel(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 
-	if modelName, ok := RequireOpenAIModel(c, []byte(`{"model":"gpt-4o"}`)); !ok || modelName != "gpt-4o" {
+	if modelName, ok := requireOpenAIModel(c, []byte(`{"model":"gpt-4o"}`)); !ok || modelName != "gpt-4o" {
 		t.Fatalf("modelName=%q ok=%t", modelName, ok)
 	}
 
 	recorder = httptest.NewRecorder()
 	c, _ = gin.CreateTestContext(recorder)
-	if _, ok := RequireOpenAIModel(c, []byte(`{"prompt":"hello"}`)); ok {
+	if _, ok := requireOpenAIModel(c, []byte(`{"prompt":"hello"}`)); ok {
 		t.Fatal("expected missing model to fail")
 	}
 	if recorder.Code != http.StatusBadRequest {
@@ -1179,19 +1179,19 @@ func TestConvertChatCompletionsResponseToCompletions(t *testing.T) {
 }
 
 func TestShouldTreatAsResponsesFormat(t *testing.T) {
-	if ShouldTreatAsResponsesFormat([]byte(`{"messages":[{"role":"user","content":"hi"}]}`)) {
+	if shouldTreatAsResponsesFormat([]byte(`{"messages":[{"role":"user","content":"hi"}]}`)) {
 		t.Fatal("chat payload must not be treated as responses format")
 	}
-	if !ShouldTreatAsResponsesFormat([]byte(`{"input":"hi"}`)) {
+	if !shouldTreatAsResponsesFormat([]byte(`{"input":"hi"}`)) {
 		t.Fatal("responses input payload must be treated as responses format")
 	}
-	if !ShouldTreatAsResponsesFormat([]byte(`{"instructions":"be helpful"}`)) {
+	if !shouldTreatAsResponsesFormat([]byte(`{"instructions":"be helpful"}`)) {
 		t.Fatal("responses instructions payload must be treated as responses format")
 	}
 }
 
 func TestWrapResponsesPayloadAsCompleted(t *testing.T) {
-	wrapped := WrapResponsesPayloadAsCompleted([]byte(`{"object":"response","id":"resp-1"}`))
+	wrapped := wrapResponsesPayloadAsCompleted([]byte(`{"object":"response","id":"resp-1"}`))
 	if gjson.GetBytes(wrapped, "type").String() != "response.completed" {
 		t.Fatalf("type = %q", gjson.GetBytes(wrapped, "type").String())
 	}
@@ -1200,7 +1200,7 @@ func TestWrapResponsesPayloadAsCompleted(t *testing.T) {
 	}
 
 	alreadyWrapped := []byte(`{"type":"response.completed","response":{"id":"resp-2"}}`)
-	if string(WrapResponsesPayloadAsCompleted(alreadyWrapped)) != string(alreadyWrapped) {
+	if string(wrapResponsesPayloadAsCompleted(alreadyWrapped)) != string(alreadyWrapped) {
 		t.Fatalf("already wrapped payload should be preserved")
 	}
 }

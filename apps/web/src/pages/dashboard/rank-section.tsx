@@ -1,5 +1,5 @@
 import type { ChannelSortKey, RankSortKey } from "./types"
-import type { ChannelStatsRow, ModelStatsItem } from "@/lib/api-client"
+import type { ChannelStatsRow, ModelStatsItem } from "@/lib/api"
 import { Bot } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"

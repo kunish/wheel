@@ -2,27 +2,27 @@ package translator
 
 import "context"
 
-// TranslateRequestByFormatName converts a request payload between schemas by their string identifiers.
-func TranslateRequestByFormatName(from, to Format, model string, rawJSON []byte, stream bool) []byte {
-	return TranslateRequest(from, to, model, rawJSON, stream)
+// translateRequestByFormatName converts a request payload between schemas by their string identifiers.
+func translateRequestByFormatName(from, to Format, model string, rawJSON []byte, stream bool) []byte {
+	return translateRequestDefault(from, to, model, rawJSON, stream)
 }
 
-// HasResponseTransformerByFormatName reports whether a response translator exists between two schemas.
-func HasResponseTransformerByFormatName(from, to Format) bool {
-	return HasResponseTransformer(from, to)
+// hasResponseTransformerByFormatName reports whether a response translator exists between two schemas.
+func hasResponseTransformerByFormatName(from, to Format) bool {
+	return hasResponseTransformerDefault(from, to)
 }
 
-// TranslateStreamByFormatName converts streaming responses between schemas by their string identifiers.
-func TranslateStreamByFormatName(ctx context.Context, from, to Format, model string, originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any) []string {
-	return TranslateStream(ctx, from, to, model, originalRequestRawJSON, requestRawJSON, rawJSON, param)
+// translateStreamByFormatName converts streaming responses between schemas by their string identifiers.
+func translateStreamByFormatName(ctx context.Context, from, to Format, model string, originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any) []string {
+	return translateStreamDefault(ctx, from, to, model, originalRequestRawJSON, requestRawJSON, rawJSON, param)
 }
 
-// TranslateNonStreamByFormatName converts non-streaming responses between schemas by their string identifiers.
-func TranslateNonStreamByFormatName(ctx context.Context, from, to Format, model string, originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any) string {
-	return TranslateNonStream(ctx, from, to, model, originalRequestRawJSON, requestRawJSON, rawJSON, param)
+// translateNonStreamByFormatName converts non-streaming responses between schemas by their string identifiers.
+func translateNonStreamByFormatName(ctx context.Context, from, to Format, model string, originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any) string {
+	return translateNonStreamDefault(ctx, from, to, model, originalRequestRawJSON, requestRawJSON, rawJSON, param)
 }
 
-// TranslateTokenCountByFormatName converts token counts between schemas by their string identifiers.
-func TranslateTokenCountByFormatName(ctx context.Context, from, to Format, count int64, rawJSON []byte) string {
-	return TranslateTokenCount(ctx, from, to, count, rawJSON)
+// translateTokenCountByFormatName converts token counts between schemas by their string identifiers.
+func translateTokenCountByFormatName(ctx context.Context, from, to Format, count int64, rawJSON []byte) string {
+	return translateTokenCountDefault(ctx, from, to, count, rawJSON)
 }

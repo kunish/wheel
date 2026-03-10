@@ -15,7 +15,7 @@ export interface ChannelInput {
   paramOverride: string
 }
 
-export interface SavedChannel {
+interface SavedChannel {
   id: number
 }
 

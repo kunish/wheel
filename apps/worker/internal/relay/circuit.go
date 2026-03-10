@@ -13,24 +13,24 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// CircuitState represents the state of a circuit breaker.
-type CircuitState string
+// circuitState represents the state of a circuit breaker.
+type circuitState string
 
 const (
-	CircuitClosed   CircuitState = "closed"
-	CircuitOpen     CircuitState = "open"
-	CircuitHalfOpen CircuitState = "half_open"
+	circuitClosed   circuitState = "closed"
+	circuitOpen     circuitState = "open"
+	circuitHalfOpen circuitState = "half_open"
 )
 
 type circuitEntry struct {
-	state               CircuitState
+	state               circuitState
 	consecutiveFailures int
 	lastFailureTime     int64 // unix ms
 	tripCount           int
 }
 
-// CircuitObserver is called when circuit breaker state changes.
-type CircuitObserver interface {
+// circuitObserver is called when circuit breaker state changes.
+type circuitObserver interface {
 	SetCircuitBreakerState(ctx context.Context, channel string, delta int64)
 }
 
@@ -38,12 +38,12 @@ type CircuitObserver interface {
 type CircuitBreakerManager struct {
 	breakers map[string]*circuitEntry
 	mu       sync.RWMutex
-	observer CircuitObserver
+	observer circuitObserver
 	cache    *cache.MemoryKV
 }
 
 // NewCircuitBreakerManager creates a new CircuitBreakerManager with the given observer.
-func NewCircuitBreakerManager(obs CircuitObserver, kv *cache.MemoryKV) *CircuitBreakerManager {
+func NewCircuitBreakerManager(obs circuitObserver, kv *cache.MemoryKV) *CircuitBreakerManager {
 	return &CircuitBreakerManager{
 		breakers: make(map[string]*circuitEntry),
 		observer: obs,
@@ -60,7 +60,7 @@ func (m *CircuitBreakerManager) getOrCreate(key string) *circuitEntry {
 	defer m.mu.Unlock()
 	e, ok := m.breakers[key]
 	if !ok {
-		e = &circuitEntry{state: CircuitClosed}
+		e = &circuitEntry{state: circuitClosed}
 		m.breakers[key] = e
 	}
 	return e
@@ -143,19 +143,19 @@ func (m *CircuitBreakerManager) IsTripped(channelID, keyID int, modelName string
 	defer m.mu.Unlock()
 
 	switch entry.state {
-	case CircuitClosed:
+	case circuitClosed:
 		return false, 0
 
-	case CircuitOpen:
+	case circuitOpen:
 		cooldown := getCooldownMs(entry.tripCount, baseSec, maxSec)
 		elapsed := time.Now().UnixMilli() - entry.lastFailureTime
 		if elapsed >= cooldown {
-			entry.state = CircuitHalfOpen
+			entry.state = circuitHalfOpen
 			return false, 0
 		}
 		return true, cooldown - elapsed
 
-	case CircuitHalfOpen:
+	case circuitHalfOpen:
 		// Already probing — block other requests
 		return true, 0
 
@@ -175,8 +175,8 @@ func (m *CircuitBreakerManager) RecordSuccess(channelID, keyID int, modelName st
 	if !ok {
 		return
 	}
-	wasOpen := entry.state == CircuitOpen || entry.state == CircuitHalfOpen
-	entry.state = CircuitClosed
+	wasOpen := entry.state == circuitOpen || entry.state == circuitHalfOpen
+	entry.state = circuitClosed
 	entry.consecutiveFailures = 0
 	entry.tripCount = 0
 	if wasOpen && m.observer != nil {
@@ -195,24 +195,24 @@ func (m *CircuitBreakerManager) RecordFailure(channelID, keyID int, modelName st
 	entry.lastFailureTime = time.Now().UnixMilli()
 
 	switch entry.state {
-	case CircuitClosed:
+	case circuitClosed:
 		entry.consecutiveFailures++
 		threshold := m.loadConfig(ctx, db).Threshold
 		if entry.consecutiveFailures >= threshold {
-			entry.state = CircuitOpen
+			entry.state = circuitOpen
 			entry.tripCount++
 			if m.observer != nil {
 				go m.observer.SetCircuitBreakerState(context.Background(), key, 1)
 			}
 		}
 
-	case CircuitHalfOpen:
+	case circuitHalfOpen:
 		// Probe failed — back to open with increased backoff
-		entry.state = CircuitOpen
+		entry.state = circuitOpen
 		entry.tripCount++
 		entry.consecutiveFailures = 0
 
-	case CircuitOpen:
+	case circuitOpen:
 		// Should not receive failures while open, but update time for safety
 	}
 }
@@ -224,7 +224,7 @@ func (m *CircuitBreakerManager) ResetAll() int {
 
 	openCount := 0
 	for _, entry := range m.breakers {
-		if entry.state == CircuitOpen || entry.state == CircuitHalfOpen {
+		if entry.state == circuitOpen || entry.state == circuitHalfOpen {
 			openCount++
 		}
 	}
@@ -254,7 +254,7 @@ func (m *CircuitBreakerManager) StartCleanup(ctx context.Context) {
 				now := time.Now().UnixMilli()
 				removed := 0
 				for key, entry := range m.breakers {
-					if entry.state == CircuitClosed && (now-entry.lastFailureTime) > staleThreshold.Milliseconds() {
+					if entry.state == circuitClosed && (now-entry.lastFailureTime) > staleThreshold.Milliseconds() {
 						delete(m.breakers, key)
 						removed++
 					}

@@ -10,7 +10,7 @@ export interface GroupItemInput {
   enabled: boolean
 }
 
-export interface GroupInput {
+interface GroupInput {
   id?: number
   name: string
   mode: number

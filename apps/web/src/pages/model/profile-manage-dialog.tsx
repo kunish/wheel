@@ -1,4 +1,4 @@
-import type { ModelProfile, ProfilePreviewGroup } from "@/lib/api-client"
+import type { ModelProfile, ProfilePreviewGroup } from "@/lib/api"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Loader2, Pencil, Plus, Shield, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
@@ -17,7 +17,7 @@ import {
   useProfilesQuery,
   useUpdateProfile,
 } from "@/hooks/use-profiles"
-import { deleteGroup, listProfileGroupsPreview, materializeProfileGroups } from "@/lib/api-client"
+import { deleteGroup, listProfileGroupsPreview, materializeProfileGroups } from "@/lib/api"
 import { defaultMutationCallbacks } from "@/lib/mutation-utils"
 
 // ─── Profile Form ────────────────────────────

@@ -90,24 +90,3 @@ func DeleteVirtualKey(ctx context.Context, db *bun.DB, id int) error {
 	_, err := db.NewDelete().Model((*types.VirtualKey)(nil)).Where("id = ?", id).Exec(ctx)
 	return err
 }
-
-func GetVirtualKeyByKey(ctx context.Context, db *bun.DB, key string) (*types.VirtualKey, error) {
-	vk := new(types.VirtualKey)
-	err := db.NewSelect().Model(vk).Where("key = ?", key).Scan(ctx)
-	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return vk, nil
-}
-
-func IncrementVirtualKeySpend(ctx context.Context, db *bun.DB, id int, cost float64) error {
-	_, err := db.NewUpdate().Table("virtual_keys").
-		Set("current_spend = current_spend + ?", cost).
-		Set("updated_at = ?", time.Now()).
-		Where("id = ?", id).
-		Exec(ctx)
-	return err
-}

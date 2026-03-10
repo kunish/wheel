@@ -35,8 +35,8 @@ const (
 	OutboundCopilot     OutboundType = 34 // GitHub Copilot via embedded runtime
 )
 
-// OutboundTypeName returns a human-readable name for the provider type.
-func OutboundTypeName(t OutboundType) string {
+// outboundTypeName returns a human-readable name for the provider type.
+func outboundTypeName(t OutboundType) string {
 	switch t {
 	case OutboundOpenAIChat, OutboundOpenAI:
 		return "openai"
@@ -88,20 +88,6 @@ func OutboundTypeName(t OutboundType) string {
 		return "copilot"
 	default:
 		return "unknown"
-	}
-}
-
-// IsOpenAICompatible returns true if the provider uses the OpenAI-compatible protocol.
-func IsOpenAICompatible(t OutboundType) bool {
-	switch t {
-	case OutboundOpenAIChat, OutboundOpenAI, OutboundOpenAIResponses, OutboundOpenAIEmbedding,
-		OutboundGroq, OutboundMistral, OutboundDeepSeek, OutboundXAI,
-		OutboundCerebras, OutboundOpenRouter, OutboundPerplexity, OutboundTogether,
-		OutboundOllama, OutboundVLLM, OutboundHuggingFace, OutboundNovita, OutboundSiliconFlow,
-		OutboundCodex, OutboundCopilot:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -176,6 +162,6 @@ type AttemptStatus string
 const (
 	AttemptStatusSuccess      AttemptStatus = "success"
 	AttemptStatusFailed       AttemptStatus = "failed"
-	AttemptStatusCircuitBreak AttemptStatus = "circuit_break"
-	AttemptStatusSkipped      AttemptStatus = "skipped"
+	attemptStatusCircuitBreak AttemptStatus = "circuit_break"
+	attemptStatusSkipped      AttemptStatus = "skipped"
 )

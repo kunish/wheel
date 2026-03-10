@@ -21,13 +21,13 @@ import (
 //   - *Config: The loaded configuration
 //   - error: An error if the configuration could not be loaded
 func LoadConfig(configFile string) (*Config, error) {
-	return LoadConfigOptional(configFile, false)
+	return loadConfigOptional(configFile, false)
 }
 
-// LoadConfigOptional reads YAML from configFile.
+// loadConfigOptional reads YAML from configFile.
 // If optional is true and the file is missing, it returns an empty Config.
 // If optional is true and the file is empty or invalid, it returns an empty Config.
-func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
+func loadConfigOptional(configFile string, optional bool) (*Config, error) {
 	// Read the entire configuration file into memory.
 	data, err := os.ReadFile(configFile)
 	if err != nil {
@@ -67,22 +67,6 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// NOTE: Startup legacy key migration is intentionally disabled.
-	// Reason: avoid mutating config.yaml during server startup.
-	// Re-enable the block below if automatic startup migration is needed again.
-	// var legacy legacyConfigData
-	// if errLegacy := yaml.Unmarshal(data, &legacy); errLegacy == nil {
-	// 	if cfg.migrateLegacyGeminiKeys(legacy.LegacyGeminiKeys) {
-	// 		cfg.legacyMigrationPending = true
-	// 	}
-	// 	if cfg.migrateLegacyOpenAICompatibilityKeys(legacy.OpenAICompat) {
-	// 		cfg.legacyMigrationPending = true
-	// 	}
-	// 	if cfg.migrateLegacyAmpConfig(&legacy) {
-	// 		cfg.legacyMigrationPending = true
-	// 	}
-	// }
-
 	// Hash remote management key if plaintext is detected (nested)
 	// We consider a value to be already hashed if it looks like a bcrypt hash ($2a$, $2b$, or $2y$ prefix).
 	if cfg.RemoteManagement.SecretKey != "" && !looksLikeBcrypt(cfg.RemoteManagement.SecretKey) {
@@ -94,7 +78,7 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 
 		// Persist the hashed value back to the config file to avoid re-hashing on next startup.
 		// Preserve YAML comments and ordering; update only the nested key.
-		_ = SaveConfigPreserveCommentsUpdateNestedScalar(configFile, []string{"remote-management", "secret-key"}, hashed)
+		_ = saveConfigPreserveCommentsUpdateNestedScalar(configFile, []string{"remote-management", "secret-key"}, hashed)
 	}
 
 	cfg.RemoteManagement.PanelGitHubRepository = strings.TrimSpace(cfg.RemoteManagement.PanelGitHubRepository)
@@ -120,46 +104,31 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	}
 
 	// Sanitize Gemini API key configuration and migrate legacy entries.
-	cfg.SanitizeGeminiKeys()
+	cfg.sanitizeGeminiKeys()
 
 	// Sanitize Vertex-compatible API keys: drop entries without base-url
-	cfg.SanitizeVertexCompatKeys()
+	cfg.sanitizeVertexCompatKeys()
 
 	// Sanitize Codex keys: drop entries without base-url
-	cfg.SanitizeCodexKeys()
+	cfg.sanitizeCodexKeys()
 
 	// Sanitize Claude key headers
-	cfg.SanitizeClaudeKeys()
+	cfg.sanitizeClaudeKeys()
 
 	// Sanitize Kiro keys: trim whitespace from credential fields
-	cfg.SanitizeKiroKeys()
+	cfg.sanitizeKiroKeys()
 
 	// Sanitize OpenAI compatibility providers: drop entries without base-url
-	cfg.SanitizeOpenAICompatibility()
+	cfg.sanitizeOpenAICompatibility()
 
 	// Normalize OAuth provider model exclusion map.
-	cfg.OAuthExcludedModels = NormalizeOAuthExcludedModels(cfg.OAuthExcludedModels)
+	cfg.OAuthExcludedModels = normalizeOAuthExcludedModels(cfg.OAuthExcludedModels)
 
 	// Normalize global OAuth model name aliases.
-	cfg.SanitizeOAuthModelAlias()
+	cfg.sanitizeOAuthModelAlias()
 
 	// Validate raw payload rules and drop invalid entries.
-	cfg.SanitizePayloadRules()
-
-	// NOTE: Legacy migration persistence is intentionally disabled together with
-	// startup legacy migration to keep startup read-only for config.yaml.
-	// Re-enable the block below if automatic startup migration is needed again.
-	// if cfg.legacyMigrationPending {
-	// 	fmt.Println("Detected legacy configuration keys, attempting to persist the normalized config...")
-	// 	if !optional && configFile != "" {
-	// 		if err := SaveConfigPreserveComments(configFile, &cfg); err != nil {
-	// 			return nil, fmt.Errorf("failed to persist migrated legacy config: %w", err)
-	// 		}
-	// 		fmt.Println("Legacy configuration normalized and persisted.")
-	// 	} else {
-	// 		fmt.Println("Legacy configuration normalized in memory; persistence skipped.")
-	// 	}
-	// }
+	cfg.sanitizePayloadRules()
 
 	// Return the populated configuration struct.
 	return &cfg, nil

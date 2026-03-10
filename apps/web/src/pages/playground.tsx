@@ -48,7 +48,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { usePlaygroundChat } from "@/hooks/use-playground-chat"
-import { getApiBaseUrl } from "@/lib/api-client"
+import { getApiBaseUrl } from "@/lib/api"
 import { LazyMarkdown } from "@/pages/logs/detail/code-block"
 
 export default function PlaygroundPage() {

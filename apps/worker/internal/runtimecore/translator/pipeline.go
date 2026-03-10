@@ -2,16 +2,16 @@ package translator
 
 import "context"
 
-// RequestEnvelope represents a request in the translation pipeline.
-type RequestEnvelope struct {
+// requestEnvelope represents a request in the translation pipeline.
+type requestEnvelope struct {
 	Format Format
 	Model  string
 	Stream bool
 	Body   []byte
 }
 
-// ResponseEnvelope represents a response in the translation pipeline.
-type ResponseEnvelope struct {
+// responseEnvelope represents a response in the translation pipeline.
+type responseEnvelope struct {
 	Format Format
 	Model  string
 	Stream bool
@@ -19,51 +19,51 @@ type ResponseEnvelope struct {
 	Chunks []string
 }
 
-// RequestMiddleware decorates request translation.
-type RequestMiddleware func(ctx context.Context, req RequestEnvelope, next RequestHandler) (RequestEnvelope, error)
+// requestMiddleware decorates request translation.
+type requestMiddleware func(ctx context.Context, req requestEnvelope, next requestHandler) (requestEnvelope, error)
 
-// ResponseMiddleware decorates response translation.
-type ResponseMiddleware func(ctx context.Context, resp ResponseEnvelope, next ResponseHandler) (ResponseEnvelope, error)
+// responseMiddleware decorates response translation.
+type responseMiddleware func(ctx context.Context, resp responseEnvelope, next responseHandler) (responseEnvelope, error)
 
-// RequestHandler performs request translation between formats.
-type RequestHandler func(ctx context.Context, req RequestEnvelope) (RequestEnvelope, error)
+// requestHandler performs request translation between formats.
+type requestHandler func(ctx context.Context, req requestEnvelope) (requestEnvelope, error)
 
-// ResponseHandler performs response translation between formats.
-type ResponseHandler func(ctx context.Context, resp ResponseEnvelope) (ResponseEnvelope, error)
+// responseHandler performs response translation between formats.
+type responseHandler func(ctx context.Context, resp responseEnvelope) (responseEnvelope, error)
 
-// Pipeline orchestrates request/response transformation with middleware support.
-type Pipeline struct {
-	registry           *Registry
-	requestMiddleware  []RequestMiddleware
-	responseMiddleware []ResponseMiddleware
+// pipeline orchestrates request/response transformation with middleware support.
+type pipeline struct {
+	registry           *registry
+	requestMiddleware  []requestMiddleware
+	responseMiddleware []responseMiddleware
 }
 
-// NewPipeline constructs a pipeline bound to the provided registry.
-func NewPipeline(registry *Registry) *Pipeline {
-	if registry == nil {
-		registry = Default()
+// newPipeline constructs a pipeline bound to the provided registry.
+func newPipeline(reg *registry) *pipeline {
+	if reg == nil {
+		reg = defaultReg()
 	}
-	return &Pipeline{registry: registry}
+	return &pipeline{registry: reg}
 }
 
-// UseRequest adds request middleware executed in registration order.
-func (p *Pipeline) UseRequest(mw RequestMiddleware) {
+// useRequest adds request middleware executed in registration order.
+func (p *pipeline) useRequest(mw requestMiddleware) {
 	if mw != nil {
 		p.requestMiddleware = append(p.requestMiddleware, mw)
 	}
 }
 
-// UseResponse adds response middleware executed in registration order.
-func (p *Pipeline) UseResponse(mw ResponseMiddleware) {
+// useResponse adds response middleware executed in registration order.
+func (p *pipeline) useResponse(mw responseMiddleware) {
 	if mw != nil {
 		p.responseMiddleware = append(p.responseMiddleware, mw)
 	}
 }
 
-// TranslateRequest applies middleware and registry transformations.
-func (p *Pipeline) TranslateRequest(ctx context.Context, from, to Format, req RequestEnvelope) (RequestEnvelope, error) {
-	terminal := func(ctx context.Context, input RequestEnvelope) (RequestEnvelope, error) {
-		translated := p.registry.TranslateRequest(from, to, input.Model, input.Body, input.Stream)
+// translateRequest applies middleware and registry transformations.
+func (p *pipeline) translateRequest(ctx context.Context, from, to Format, req requestEnvelope) (requestEnvelope, error) {
+	terminal := func(ctx context.Context, input requestEnvelope) (requestEnvelope, error) {
+		translated := p.registry.translateRequest(from, to, input.Model, input.Body, input.Stream)
 		input.Body = translated
 		input.Format = to
 		return input, nil
@@ -73,7 +73,7 @@ func (p *Pipeline) TranslateRequest(ctx context.Context, from, to Format, req Re
 	for i := len(p.requestMiddleware) - 1; i >= 0; i-- {
 		mw := p.requestMiddleware[i]
 		next := handler
-		handler = func(ctx context.Context, r RequestEnvelope) (RequestEnvelope, error) {
+		handler = func(ctx context.Context, r requestEnvelope) (requestEnvelope, error) {
 			return mw(ctx, r, next)
 		}
 	}
@@ -81,13 +81,13 @@ func (p *Pipeline) TranslateRequest(ctx context.Context, from, to Format, req Re
 	return handler(ctx, req)
 }
 
-// TranslateResponse applies middleware and registry transformations.
-func (p *Pipeline) TranslateResponse(ctx context.Context, from, to Format, resp ResponseEnvelope, originalReq, translatedReq []byte, param *any) (ResponseEnvelope, error) {
-	terminal := func(ctx context.Context, input ResponseEnvelope) (ResponseEnvelope, error) {
+// translateResponse applies middleware and registry transformations.
+func (p *pipeline) translateResponse(ctx context.Context, from, to Format, resp responseEnvelope, originalReq, translatedReq []byte, param *any) (responseEnvelope, error) {
+	terminal := func(ctx context.Context, input responseEnvelope) (responseEnvelope, error) {
 		if input.Stream {
-			input.Chunks = p.registry.TranslateStream(ctx, from, to, input.Model, originalReq, translatedReq, input.Body, param)
+			input.Chunks = p.registry.translateStream(ctx, from, to, input.Model, originalReq, translatedReq, input.Body, param)
 		} else {
-			input.Body = []byte(p.registry.TranslateNonStream(ctx, from, to, input.Model, originalReq, translatedReq, input.Body, param))
+			input.Body = []byte(p.registry.translateNonStream(ctx, from, to, input.Model, originalReq, translatedReq, input.Body, param))
 		}
 		input.Format = to
 		return input, nil
@@ -97,7 +97,7 @@ func (p *Pipeline) TranslateResponse(ctx context.Context, from, to Format, resp 
 	for i := len(p.responseMiddleware) - 1; i >= 0; i-- {
 		mw := p.responseMiddleware[i]
 		next := handler
-		handler = func(ctx context.Context, r ResponseEnvelope) (ResponseEnvelope, error) {
+		handler = func(ctx context.Context, r responseEnvelope) (responseEnvelope, error) {
 			return mw(ctx, r, next)
 		}
 	}

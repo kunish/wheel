@@ -276,16 +276,16 @@ func IsAudioBinaryResponse(requestType string) bool {
 	return requestType == RequestTypeAudioSpeech
 }
 
-// RequiresEndpointAwareExecution returns true for request types that need
+// requiresEndpointAwareExecution returns true for request types that need
 // dedicated multimodal execution instead of the generic JSON proxy flow.
-func RequiresEndpointAwareExecution(requestType string) bool {
-	return IsMultimodalRequest(requestType) || requestType == RequestTypeModerations
+func requiresEndpointAwareExecution(requestType string) bool {
+	return isMultimodalRequest(requestType) || requestType == RequestTypeModerations
 }
 
 // ShouldUseMultimodalExecution returns true when the request should use the
 // OpenAI-compatible multimodal execution path for the selected channel.
 func ShouldUseMultimodalExecution(requestType string, channelType types.OutboundType) bool {
-	if !RequiresEndpointAwareExecution(requestType) {
+	if !requiresEndpointAwareExecution(requestType) {
 		return false
 	}
 	for _, supportedType := range multimodalChannelTypes() {

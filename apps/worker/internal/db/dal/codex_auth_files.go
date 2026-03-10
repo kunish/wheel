@@ -95,8 +95,3 @@ func DeleteCodexAuthFile(ctx context.Context, db *bun.DB, id int) error {
 	_, err := db.NewDelete().Model((*types.CodexAuthFile)(nil)).Where("id = ?", id).Exec(ctx)
 	return err
 }
-
-func DeleteAllCodexAuthFilesByChannel(ctx context.Context, db *bun.DB, channelID int) error {
-	_, err := db.NewDelete().Model((*types.CodexAuthFile)(nil)).Where("channel_id = ?", channelID).Exec(ctx)
-	return err
-}

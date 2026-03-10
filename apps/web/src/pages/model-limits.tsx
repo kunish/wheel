@@ -1,4 +1,4 @@
-import type { ModelLimitRecord } from "@/lib/api-client"
+import type { ModelLimitRecord } from "@/lib/api"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Gauge, Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
@@ -26,12 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  createModelLimit,
-  deleteModelLimit,
-  listModelLimits,
-  updateModelLimit,
-} from "@/lib/api-client"
+import { createModelLimit, deleteModelLimit, listModelLimits, updateModelLimit } from "@/lib/api"
 
 interface LimitFormData {
   model: string

@@ -7,15 +7,6 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type ChangePasswordRequest struct {
-	OldPassword string `json:"oldPassword"`
-	NewPassword string `json:"newPassword"`
-}
-
-type ChangeUsernameRequest struct {
-	Username string `json:"username"`
-}
-
 // ──── Channel ────
 
 type ChannelCreateRequest struct {

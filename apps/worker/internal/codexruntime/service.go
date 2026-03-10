@@ -16,7 +16,7 @@ type Service struct {
 	handler func() http.Handler
 }
 
-var ensureManagedConfig = EnsureManagedConfig
+var ensureManagedConfigFn = ensureManagedConfig
 
 var loadRuntimeConfig = runtimeconfig.LoadConfig
 
@@ -95,7 +95,7 @@ func NewFromConfig(cfg *config.Config) (*Service, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("nil config")
 	}
-	if err := ensureManagedConfig(cfg.CodexRuntimeManagementKey); err != nil {
+	if err := ensureManagedConfigFn(cfg.CodexRuntimeManagementKey); err != nil {
 		return nil, err
 	}
 

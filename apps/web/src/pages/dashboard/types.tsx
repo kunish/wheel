@@ -1,4 +1,4 @@
-import type { StatsDaily, StatsHourly, StatsMetrics } from "@/lib/api-client"
+import type { StatsDaily, StatsHourly, StatsMetrics } from "@/lib/api"
 import { useEffect, useState } from "react"
 import { subscribe } from "@/hooks/use-stats-ws"
 

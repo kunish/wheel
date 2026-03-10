@@ -3,7 +3,7 @@ import type {
   RoutingConditionItem,
   RoutingRule,
   RoutingRuleInput,
-} from "@/lib/api-client"
+} from "@/lib/api"
 import { useQuery } from "@tanstack/react-query"
 import { Pencil, Plus, Trash2, X } from "lucide-react"
 import { useState } from "react"
@@ -46,7 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { listRoutingRules } from "@/lib/api-client"
+import { listRoutingRules } from "@/lib/api"
 import { useRoutingRuleMutations } from "./use-routing-rule-mutations"
 
 const EMPTY_CONDITION: RoutingConditionItem = { field: "model", operator: "eq", value: "" }

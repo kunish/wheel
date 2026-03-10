@@ -42,10 +42,7 @@ export function detectPreset(
 }
 
 /** Detect if the current range matches "today" or "yesterday" */
-export function detectDayPreset(
-  from: number | undefined,
-  to: number | undefined,
-): PresetType | null {
+function detectDayPreset(from: number | undefined, to: number | undefined): PresetType | null {
   if (from === undefined || to === undefined) return null
 
   const now = new Date()

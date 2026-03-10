@@ -634,7 +634,7 @@ func TestConvertOpenAITools_DefaultParams(t *testing.T) {
 	}
 }
 
-// ── ConvertAnthropicResponse → OpenAI ──────────────────────────
+// ── convertAnthropicResponse → OpenAI ──────────────────────────
 
 func TestConvertAnthropicResponse_TextOnly(t *testing.T) {
 	resp := parseBody(t, `{
@@ -645,7 +645,7 @@ func TestConvertAnthropicResponse_TextOnly(t *testing.T) {
 		"usage": {"input_tokens": 10, "output_tokens": 5}
 	}`)
 
-	result := ConvertAnthropicResponse(resp)
+	result := convertAnthropicResponse(resp)
 
 	if result["id"] != "msg_123" {
 		t.Errorf("id = %v", result["id"])
@@ -694,7 +694,7 @@ func TestConvertAnthropicResponse_ToolUse(t *testing.T) {
 		"usage": {"input_tokens": 20, "output_tokens": 15}
 	}`)
 
-	result := ConvertAnthropicResponse(resp)
+	result := convertAnthropicResponse(resp)
 
 	choices := result["choices"].([]any)
 	choice := choices[0].(map[string]any)
@@ -746,7 +746,7 @@ func TestConvertAnthropicResponse_ToolUseOnlyNoText(t *testing.T) {
 		"usage": {"input_tokens": 5, "output_tokens": 3}
 	}`)
 
-	result := ConvertAnthropicResponse(resp)
+	result := convertAnthropicResponse(resp)
 	choices := result["choices"].([]any)
 	msg := choices[0].(map[string]any)["message"].(map[string]any)
 
@@ -768,7 +768,7 @@ func TestConvertAnthropicResponse_EmptyContent(t *testing.T) {
 		"usage": {"input_tokens": 5, "output_tokens": 0}
 	}`)
 
-	result := ConvertAnthropicResponse(resp)
+	result := convertAnthropicResponse(resp)
 	choices := result["choices"].([]any)
 	msg := choices[0].(map[string]any)["message"].(map[string]any)
 
@@ -785,7 +785,7 @@ func TestConvertAnthropicResponse_MissingID(t *testing.T) {
 		"usage": {"input_tokens": 1, "output_tokens": 1}
 	}`)
 
-	result := ConvertAnthropicResponse(resp)
+	result := convertAnthropicResponse(resp)
 	if result["id"] != "chatcmpl-unknown" {
 		t.Errorf("id = %q, want chatcmpl-unknown", result["id"])
 	}
@@ -803,7 +803,7 @@ func TestConvertAnthropicResponse_MultipleToolUses(t *testing.T) {
 		"usage": {"input_tokens": 10, "output_tokens": 10}
 	}`)
 
-	result := ConvertAnthropicResponse(resp)
+	result := convertAnthropicResponse(resp)
 	choices := result["choices"].([]any)
 	msg := choices[0].(map[string]any)["message"].(map[string]any)
 	toolCalls := msg["tool_calls"].([]any)

@@ -92,8 +92,8 @@ func (hc *HealthChecker) recordSuccess(channelID int, latency time.Duration) {
 	defer hc.mu.Unlock()
 
 	h := hc.getOrCreate(channelID)
-	wasDown := h.Status == HealthDown
-	h.Status = HealthHealthy
+	wasDown := h.Status == healthDown
+	h.Status = healthHealthy
 	h.LastCheck = time.Now()
 	h.LastSuccess = time.Now()
 	h.ConsecutiveFail = 0
@@ -114,20 +114,20 @@ func (hc *HealthChecker) recordFailure(channelID int) {
 
 	switch {
 	case h.ConsecutiveFail >= 3:
-		if h.Status != HealthDown {
+		if h.Status != healthDown {
 			log.Printf("[healthcheck] channel %d marked DOWN (%d consecutive failures)",
 				channelID, h.ConsecutiveFail)
 		}
-		h.Status = HealthDown
+		h.Status = healthDown
 	case h.ConsecutiveFail >= 1:
-		h.Status = HealthDegraded
+		h.Status = healthDegraded
 	}
 }
 
 func (hc *HealthChecker) getOrCreate(channelID int) *channelHealth {
 	h, ok := hc.health[channelID]
 	if !ok {
-		h = &channelHealth{Status: HealthUnknown}
+		h = &channelHealth{Status: healthUnknown}
 		hc.health[channelID] = h
 	}
 	return h

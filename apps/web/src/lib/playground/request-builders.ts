@@ -14,7 +14,7 @@ export interface McpToolDef {
   }
 }
 
-export interface BuildChatPayloadInput {
+interface BuildChatPayloadInput {
   model: string
   messages: ChatMessage[]
   mcpTools?: McpToolDef[]
@@ -47,7 +47,7 @@ export function buildChatPayload(input: BuildChatPayloadInput) {
   return body
 }
 
-export interface McpToolExecutePayload {
+interface McpToolExecutePayload {
   clientId: number
   toolName: string
   arguments: Record<string, unknown>
@@ -59,13 +59,4 @@ export function buildMcpToolExecutePayload(
   args: Record<string, unknown>,
 ): McpToolExecutePayload {
   return { clientId, toolName, arguments: args }
-}
-
-export function canSendPlaygroundRequest(state: {
-  isLoading: boolean
-  isPaused?: boolean
-}): boolean {
-  if (state.isLoading) return false
-  if (state.isPaused) return false
-  return true
 }

@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// SessionEntry holds the sticky channel assignment for an API key + model.
-type SessionEntry struct {
+// sessionEntry holds the sticky channel assignment for an API key + model.
+type sessionEntry struct {
 	ChannelID    int
 	ChannelKeyID int
 	Timestamp    int64 // unix ms
@@ -17,14 +17,14 @@ type SessionEntry struct {
 
 // SessionManager manages session sticky state for API key + model combos.
 type SessionManager struct {
-	sessions map[string]*SessionEntry
+	sessions map[string]*sessionEntry
 	mu       sync.RWMutex
 }
 
 // NewSessionManager creates a new SessionManager.
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
-		sessions: make(map[string]*SessionEntry),
+		sessions: make(map[string]*sessionEntry),
 	}
 }
 
@@ -33,7 +33,7 @@ func sessionKey(apiKeyID int, requestModel string) string {
 }
 
 // GetSticky returns the sticky channel for an API key + model, or nil if expired/absent.
-func (m *SessionManager) GetSticky(apiKeyID int, model string, ttlSec int) *SessionEntry {
+func (m *SessionManager) GetSticky(apiKeyID int, model string, ttlSec int) *sessionEntry {
 	if ttlSec <= 0 {
 		return nil
 	}
@@ -64,7 +64,7 @@ func (m *SessionManager) SetSticky(apiKeyID int, model string, channelID, channe
 	key := sessionKey(apiKeyID, model)
 
 	m.mu.Lock()
-	m.sessions[key] = &SessionEntry{
+	m.sessions[key] = &sessionEntry{
 		ChannelID:    channelID,
 		ChannelKeyID: channelKeyID,
 		Timestamp:    time.Now().UnixMilli(),

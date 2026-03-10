@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { createProfile, deleteProfile, listProfiles, updateProfile } from "@/lib/api-client"
+import { createProfile, deleteProfile, listProfiles, updateProfile } from "@/lib/api"
 
 export function useProfilesQuery() {
   return useQuery({

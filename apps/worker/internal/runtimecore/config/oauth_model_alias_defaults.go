@@ -38,11 +38,11 @@ func defaultGitHubCopilotAliases() []OAuthModelAlias {
 	}
 }
 
-// GitHubCopilotAliasesFromModels generates oauth-model-alias entries from a dynamic
+// gitHubCopilotAliasesFromModels generates oauth-model-alias entries from a dynamic
 // list of model IDs fetched from the Copilot API. It auto-creates aliases for
 // models whose ID contains a dot (e.g. "claude-opus-4.6" → "claude-opus-4-6"),
 // which is the pattern used by Claude models on Copilot.
-func GitHubCopilotAliasesFromModels(modelIDs []string) []OAuthModelAlias {
+func gitHubCopilotAliasesFromModels(modelIDs []string) []OAuthModelAlias {
 	var aliases []OAuthModelAlias
 	seen := make(map[string]struct{})
 	for _, id := range modelIDs {

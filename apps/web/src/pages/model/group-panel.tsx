@@ -1,6 +1,6 @@
 import type { GroupFormData, GroupItemForm } from "./group-dialog"
 import type { ChannelRecord, DragDataGroup, GroupRecord, ModelPrice } from "./types"
-import type { ModelMeta, ModelProfile } from "@/lib/api-client"
+import type { ModelMeta, ModelProfile } from "@/lib/api"
 import { useDroppable } from "@dnd-kit/core"
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"

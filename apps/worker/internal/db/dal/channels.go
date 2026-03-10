@@ -158,14 +158,6 @@ func UpdateChannelKeyStatus(ctx context.Context, db *bun.DB, keyID int, statusCo
 	return err
 }
 
-func IncrementChannelKeyCost(ctx context.Context, db *bun.DB, keyID int, cost float64) error {
-	_, err := db.NewUpdate().Table("channel_keys").
-		Set("total_cost = total_cost + ?", cost).
-		Where("id = ?", keyID).
-		Exec(ctx)
-	return err
-}
-
 // IncrementChannelKeyCostTx is the transaction-compatible variant of IncrementChannelKeyCost.
 func IncrementChannelKeyCostTx(ctx context.Context, tx bun.Tx, keyID int, cost float64) error {
 	_, err := tx.NewUpdate().Table("channel_keys").

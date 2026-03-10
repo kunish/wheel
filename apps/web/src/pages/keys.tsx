@@ -1,4 +1,4 @@
-import type { ApiKeyRecord } from "@/lib/api-client"
+import type { ApiKeyRecord } from "@/lib/api"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Key, Pencil, Plus, Trash2 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { createApiKey, deleteApiKey, listApiKeys, updateApiKey } from "@/lib/api-client"
+import { createApiKey, deleteApiKey, listApiKeys, updateApiKey } from "@/lib/api"
 
 interface ApiKeyFormData {
   name: string

@@ -25,7 +25,7 @@ func (h *APIHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 	stream := gjson.GetBytes(rawJSON, "stream").Type == gjson.True
-	modelName, ok := RequireOpenAIModel(c, rawJSON)
+	modelName, ok := requireOpenAIModel(c, rawJSON)
 	if !ok {
 		return
 	}
@@ -37,7 +37,7 @@ func (h *APIHandler) ChatCompletions(c *gin.Context) {
 		h.handleChatNonStreamingResponseViaResponses(c, rawJSON)
 		return
 	}
-	if ShouldTreatAsResponsesFormat(rawJSON) {
+	if shouldTreatAsResponsesFormat(rawJSON) {
 		rawJSON = sdkopenai.ConvertResponsesRequestToChatCompletions(modelName, rawJSON, stream)
 		stream = gjson.GetBytes(rawJSON, "stream").Bool()
 	}
@@ -110,7 +110,7 @@ func (h *APIHandler) handleChatStreamingResponse(c *gin.Context, rawJSON []byte)
 
 			setSSEHeaders()
 			handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
-			_, _ = c.Writer.Write([]byte(FormatStreamChunk(chunk)))
+			_, _ = c.Writer.Write([]byte(formatStreamChunk(chunk)))
 			flusher.Flush()
 
 			keepAliveInterval := time.Duration(0)
@@ -137,7 +137,7 @@ func (h *APIHandler) handleChatStreamingResponse(c *gin.Context, rawJSON []byte)
 						cliCancel(nil)
 						return
 					}
-					_, _ = c.Writer.Write([]byte(FormatStreamChunk(chunk)))
+					_, _ = c.Writer.Write([]byte(formatStreamChunk(chunk)))
 					flusher.Flush()
 				case errMsg, ok := <-errChan:
 					if !ok {
@@ -145,7 +145,7 @@ func (h *APIHandler) handleChatStreamingResponse(c *gin.Context, rawJSON []byte)
 					}
 					if errMsg != nil {
 						body := handlers.BuildErrorResponseBody(defaultStatus(errMsg.StatusCode), runtimeErrorText(errMsg))
-						_, _ = c.Writer.Write([]byte(FormatStreamChunk(body)))
+						_, _ = c.Writer.Write([]byte(formatStreamChunk(body)))
 						flusher.Flush()
 						cliCancel(errMsg.Error)
 						return
@@ -189,7 +189,7 @@ func writeResponsesAsChatChunk(w io.Writer, ctx context.Context, modelName strin
 		if out == "" {
 			continue
 		}
-		_, _ = w.Write([]byte(FormatStreamChunk([]byte(out))))
+		_, _ = w.Write([]byte(formatStreamChunk([]byte(out))))
 	}
 }
 
@@ -282,7 +282,7 @@ func (h *APIHandler) handleChatStreamingResponseViaResponses(c *gin.Context, ori
 					}
 					if errMsg != nil {
 						body := handlers.BuildErrorResponseBody(defaultStatus(errMsg.StatusCode), runtimeErrorText(errMsg))
-						_, _ = c.Writer.Write([]byte(FormatStreamChunk(body)))
+						_, _ = c.Writer.Write([]byte(formatStreamChunk(body)))
 						flusher.Flush()
 						cliCancel(errMsg.Error)
 						return

@@ -11,7 +11,7 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-func RequireOpenAIModel(c *gin.Context, rawJSON []byte) (string, bool) {
+func requireOpenAIModel(c *gin.Context, rawJSON []byte) (string, bool) {
 	modelName := gjson.GetBytes(rawJSON, "model").String()
 	if modelName == "" {
 		c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
@@ -25,7 +25,7 @@ func RequireOpenAIModel(c *gin.Context, rawJSON []byte) (string, bool) {
 	return modelName, true
 }
 
-func ShouldTreatAsResponsesFormat(rawJSON []byte) bool {
+func shouldTreatAsResponsesFormat(rawJSON []byte) bool {
 	if gjson.GetBytes(rawJSON, "messages").Exists() {
 		return false
 	}
@@ -38,7 +38,7 @@ func ShouldTreatAsResponsesFormat(rawJSON []byte) bool {
 	return false
 }
 
-func WrapResponsesPayloadAsCompleted(payload []byte) []byte {
+func wrapResponsesPayloadAsCompleted(payload []byte) []byte {
 	if gjson.GetBytes(payload, "type").Exists() {
 		return payload
 	}
@@ -50,7 +50,7 @@ func WrapResponsesPayloadAsCompleted(payload []byte) []byte {
 	return []byte(wrapped)
 }
 
-func FormatStreamChunk(chunk []byte) string {
+func formatStreamChunk(chunk []byte) string {
 	trimmed := bytes.TrimSpace(chunk)
 	if len(trimmed) == 0 {
 		return "\n\n"

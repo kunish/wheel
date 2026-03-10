@@ -2,7 +2,7 @@ import { BookOpen, ExternalLink, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
-import { getApiBaseUrl } from "@/lib/api-client"
+import { getApiBaseUrl } from "@/lib/api"
 
 type DocsStatus = "loading" | "available" | "unavailable"
 

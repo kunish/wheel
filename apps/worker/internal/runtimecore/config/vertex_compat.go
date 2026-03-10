@@ -55,8 +55,8 @@ type VertexCompatModel struct {
 func (m VertexCompatModel) GetName() string  { return m.Name }
 func (m VertexCompatModel) GetAlias() string { return m.Alias }
 
-// SanitizeVertexCompatKeys deduplicates and normalizes Vertex-compatible API key credentials.
-func (cfg *Config) SanitizeVertexCompatKeys() {
+// sanitizeVertexCompatKeys deduplicates and normalizes Vertex-compatible API key credentials.
+func (cfg *Config) sanitizeVertexCompatKeys() {
 	if cfg == nil {
 		return
 	}
@@ -76,8 +76,8 @@ func (cfg *Config) SanitizeVertexCompatKeys() {
 			continue
 		}
 		entry.ProxyURL = strings.TrimSpace(entry.ProxyURL)
-		entry.Headers = NormalizeHeaders(entry.Headers)
-		entry.ExcludedModels = NormalizeExcludedModels(entry.ExcludedModels)
+		entry.Headers = normalizeHeaders(entry.Headers)
+		entry.ExcludedModels = normalizeExcludedModels(entry.ExcludedModels)
 
 		// Sanitize models: remove entries without valid alias
 		sanitizedModels := make([]VertexCompatModel, 0, len(entry.Models))

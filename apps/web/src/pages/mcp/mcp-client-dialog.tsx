@@ -1,4 +1,4 @@
-import type { MCPClientInput, MCPHeaderEntry, MCPOAuthConfig } from "@/lib/api-client"
+import type { MCPClientInput, MCPHeaderEntry, MCPOAuthConfig } from "@/lib/api"
 import { Loader2, Plus, Search, X } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { discoverOAuthMetadata } from "@/lib/api-client"
+import { discoverOAuthMetadata } from "@/lib/api"
 
 const CONNECTION_TYPES = ["http", "sse", "stdio"] as const
 const AUTH_TYPES = ["none", "headers", "oauth"] as const

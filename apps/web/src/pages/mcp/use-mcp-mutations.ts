@@ -1,13 +1,8 @@
-import type { MCPClientInput } from "@/lib/api-client"
+import type { MCPClientInput } from "@/lib/api"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import {
-  createMCPClient,
-  deleteMCPClient,
-  reconnectMCPClient,
-  updateMCPClient,
-} from "@/lib/api-client"
+import { createMCPClient, deleteMCPClient, reconnectMCPClient, updateMCPClient } from "@/lib/api"
 import { defaultMutationCallbacks } from "@/lib/mutation-utils"
 
 export function useMCPMutations(callbacks?: { onSaveSuccess?: () => void }) {

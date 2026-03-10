@@ -2,7 +2,7 @@ import { apiFetch } from "./client"
 
 // ── Audit Logs ──
 
-export interface AuditLogRecord {
+interface AuditLogRecord {
   id: number
   time: number
   user: string
@@ -30,8 +30,4 @@ export function listAuditLogs(params: {
     success: boolean
     data: { logs: AuditLogRecord[]; total: number; page: number; pageSize: number }
   }>(`/api/v1/audit-log/list?${q.toString()}`)
-}
-
-export function clearAuditLogs() {
-  return apiFetch<{ success: boolean }>("/api/v1/audit-log/clear", { method: "DELETE" })
 }

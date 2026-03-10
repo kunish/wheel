@@ -46,8 +46,8 @@ type Observer struct {
 	pluginDuration     otelmetric.Float64Histogram
 }
 
-// OtelConfig holds all observability configuration.
-type OtelConfig struct {
+// otelConfig holds all observability configuration.
+type otelConfig struct {
 	MetricsEnabled      bool
 	OtelEnabled         bool
 	OtelEndpoint        string
@@ -59,7 +59,7 @@ type OtelConfig struct {
 // New creates an Observer based on config flags.
 // Returns (nil, nil) when both metrics and tracing are disabled.
 func New(metricsEnabled, otelEnabled bool, otelEndpoint, serviceName string) (*Observer, error) {
-	return NewWithConfig(OtelConfig{
+	return newWithConfig(otelConfig{
 		MetricsEnabled: metricsEnabled,
 		OtelEnabled:    otelEnabled,
 		OtelEndpoint:   otelEndpoint,
@@ -67,8 +67,8 @@ func New(metricsEnabled, otelEnabled bool, otelEndpoint, serviceName string) (*O
 	})
 }
 
-// NewWithConfig creates an Observer with full configuration including OTLP metrics push.
-func NewWithConfig(cfg OtelConfig) (*Observer, error) {
+// newWithConfig creates an Observer with full configuration including OTLP metrics push.
+func newWithConfig(cfg otelConfig) (*Observer, error) {
 	if !cfg.MetricsEnabled && !cfg.OtelEnabled {
 		return nil, nil
 	}

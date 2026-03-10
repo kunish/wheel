@@ -6,38 +6,38 @@ import (
 	"strings"
 )
 
-// ContentFilterConfig defines the configuration for content filtering.
-type ContentFilterConfig struct {
+// contentFilterConfig defines the configuration for content filtering.
+type contentFilterConfig struct {
 	BlockedKeywords []string // case-insensitive keyword blocklist
 	BlockedPatterns []string // regex patterns to block
 	MaxInputLength  int      // max total input length in characters, 0 = unlimited
 	Enabled         bool
 }
 
-// ContentFilterPlugin is a relay plugin that filters request content
+// contentFilterPlugin is a relay plugin that filters request content
 // before it reaches the upstream provider.
-type ContentFilterPlugin struct {
-	config   ContentFilterConfig
+type contentFilterPlugin struct {
+	config   contentFilterConfig
 	patterns []*regexp.Regexp
 }
 
-// NewContentFilterPlugin creates a content filter plugin with pre-compiled patterns.
-func NewContentFilterPlugin(config ContentFilterConfig) *ContentFilterPlugin {
+// newContentFilterPlugin creates a content filter plugin with pre-compiled patterns.
+func newContentFilterPlugin(config contentFilterConfig) *contentFilterPlugin {
 	var patterns []*regexp.Regexp
 	for _, p := range config.BlockedPatterns {
 		if re, err := regexp.Compile(p); err == nil {
 			patterns = append(patterns, re)
 		}
 	}
-	return &ContentFilterPlugin{
+	return &contentFilterPlugin{
 		config:   config,
 		patterns: patterns,
 	}
 }
 
-func (p *ContentFilterPlugin) Name() string { return "content_filter" }
+func (p *contentFilterPlugin) Name() string { return "content_filter" }
 
-func (p *ContentFilterPlugin) PreHook(ctx *RelayContext) *ShortCircuit {
+func (p *contentFilterPlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 	if !p.config.Enabled {
 		return nil
 	}
@@ -82,7 +82,7 @@ func (p *ContentFilterPlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 	return nil
 }
 
-func (p *ContentFilterPlugin) PostHook(ctx *RelayContext, resp *RelayPluginResponse) {
+func (p *contentFilterPlugin) PostHook(ctx *RelayContext, resp *RelayPluginResponse) {
 	// Content filtering is pre-request only
 }
 

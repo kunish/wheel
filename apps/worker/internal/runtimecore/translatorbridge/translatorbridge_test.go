@@ -16,23 +16,23 @@ func TestDefaultAdapterTranslatesRequest(t *testing.T) {
 }
 
 func TestTranslateRequestDelegatesToUnderlyingTranslator(t *testing.T) {
-	got := TranslateRequest("openai", "openai", "model", []byte(`{"x":1}`), false)
+	got := translateRequest("openai", "openai", "model", []byte(`{"x":1}`), false)
 	if v := gjson.GetBytes(got, "model").String(); v != "model" {
-		t.Fatalf("TranslateRequest() model = %q", v)
+		t.Fatalf("translateRequest() model = %q", v)
 	}
 }
 
 func TestTranslateNonStreamDelegatesToUnderlyingTranslator(t *testing.T) {
-	got := TranslateNonStream(context.Background(), "openai", "openai", "model", nil, nil, []byte(`{"y":2}`), nil)
+	got := translateNonStream(context.Background(), "openai", "openai", "model", nil, nil, []byte(`{"y":2}`), nil)
 	if got != `{"y":2}` {
-		t.Fatalf("TranslateNonStream() = %q", got)
+		t.Fatalf("translateNonStream() = %q", got)
 	}
 }
 
 func TestTranslateStreamDelegatesToUnderlyingTranslator(t *testing.T) {
-	got := TranslateStream(context.Background(), "openai", "openai", "model", nil, nil, []byte("data: hi"), nil)
+	got := translateStream(context.Background(), "openai", "openai", "model", nil, nil, []byte("data: hi"), nil)
 	if len(got) != 1 || got[0] != "hi" {
-		t.Fatalf("TranslateStream() = %#v", got)
+		t.Fatalf("translateStream() = %#v", got)
 	}
 }
 

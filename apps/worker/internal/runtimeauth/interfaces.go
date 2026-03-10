@@ -5,14 +5,14 @@ import (
 	"errors"
 	"time"
 
-	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 	coreauth "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy/auth"
+	runtimeconfig "github.com/kunish/wheel/apps/worker/internal/runtimecore/config"
 )
 
-var ErrRefreshNotSupported = errors.New("cliproxy auth: refresh not supported")
+var errRefreshNotSupported = errors.New("cliproxy auth: refresh not supported")
 
-// LoginOptions captures generic knobs shared across authenticators.
-type LoginOptions struct {
+// loginOptions captures generic knobs shared across authenticators.
+type loginOptions struct {
 	NoBrowser    bool
 	ProjectID    string
 	CallbackPort int
@@ -20,9 +20,9 @@ type LoginOptions struct {
 	Prompt       func(prompt string) (string, error)
 }
 
-// Authenticator manages login and optional refresh flows for a provider.
-type Authenticator interface {
+// authenticator manages login and optional refresh flows for a provider.
+type authenticator interface {
 	Provider() string
-	Login(ctx context.Context, cfg *runtimeconfig.Config, opts *LoginOptions) (*coreauth.Auth, error)
+	Login(ctx context.Context, cfg *runtimeconfig.Config, opts *loginOptions) (*coreauth.Auth, error)
 	RefreshLead() *time.Duration
 }

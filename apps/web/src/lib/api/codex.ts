@@ -26,14 +26,14 @@ export interface CodexAuthFile {
   auth_index?: string
 }
 
-export interface CodexCapabilities {
+interface CodexCapabilities {
   localEnabled: boolean
   managementEnabled: boolean
   oauthEnabled: boolean
   modelsEnabled: boolean
 }
 
-export interface CodexQuotaWindow {
+interface CodexQuotaWindow {
   usedPercent: number
   limitWindowSeconds: number
   resetAfterSeconds: number
@@ -61,7 +61,7 @@ export interface CodexQuotaItem {
   error?: string
 }
 
-export interface CodexAuthUploadResult {
+interface CodexAuthUploadResult {
   name: string
   status: string
   error?: string
@@ -84,7 +84,7 @@ export interface CodexAuthUploadToastState {
   }
 }
 
-export interface CodexAuthBatchScope {
+interface CodexAuthBatchScope {
   names?: string[]
   allMatching?: boolean
   search?: string

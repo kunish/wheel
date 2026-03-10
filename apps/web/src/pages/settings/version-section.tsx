@@ -18,7 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { applyUpdate, checkUpdate } from "@/lib/api-client"
+import { applyUpdate, checkUpdate } from "@/lib/api"
 
 interface UpdateInfo {
   current: string

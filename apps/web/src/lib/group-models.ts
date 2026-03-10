@@ -1,6 +1,6 @@
-import type { ModelMeta } from "@/lib/api-client"
+import type { ModelMeta } from "@/lib/api"
 
-export interface ProviderGroup {
+interface ProviderGroup {
   provider: string
   providerName: string
   logoUrl: string | null

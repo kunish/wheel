@@ -2,7 +2,7 @@ import { getApiBaseUrl } from "./client"
 
 // ── Playground-specific API helpers ──
 
-export interface PlaygroundChatCompletionInit {
+interface PlaygroundChatCompletionInit {
   apiKey: string
   body: Record<string, unknown>
   signal?: AbortSignal
@@ -14,7 +14,7 @@ interface ApiEnvelope<T> {
   error?: unknown
 }
 
-export interface PlaygroundMcpToolExecuteResult {
+interface PlaygroundMcpToolExecuteResult {
   content?: Array<{ type: string; text?: string }>
   isError?: boolean
 }

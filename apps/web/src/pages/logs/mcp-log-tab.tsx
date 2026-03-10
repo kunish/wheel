@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { listMCPLogs } from "@/lib/api-client"
+import { listMCPLogs } from "@/lib/api"
 
 const PAGE_SIZE = 50
 

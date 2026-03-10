@@ -25,7 +25,7 @@ func (h *APIHandler) Completions(c *gin.Context) {
 		})
 		return
 	}
-	if _, ok := RequireOpenAIModel(c, rawJSON); !ok {
+	if _, ok := requireOpenAIModel(c, rawJSON); !ok {
 		return
 	}
 	if gjson.GetBytes(rawJSON, "stream").Type == gjson.True {
@@ -56,7 +56,7 @@ func FormatCompletionsStreamChunk(chunk []byte) []byte {
 	if converted == nil {
 		return nil
 	}
-	return []byte(FormatStreamChunk(converted))
+	return []byte(formatStreamChunk(converted))
 }
 
 func (h *APIHandler) handleCompletionsStreamingResponse(c *gin.Context, rawJSON []byte) {
@@ -165,7 +165,7 @@ func (h *APIHandler) handleCompletionsStreamingResponse(c *gin.Context, rawJSON 
 								errText = msg.GetError().Error()
 							}
 							body := handlers.BuildErrorResponseBody(status, errText)
-							_, _ = c.Writer.Write([]byte(FormatStreamChunk(body)))
+							_, _ = c.Writer.Write([]byte(formatStreamChunk(body)))
 							flusher.Flush()
 							if msg, ok := terminalErr.(interface{ GetError() error }); ok {
 								cliCancel(msg.GetError())
@@ -197,7 +197,7 @@ func (h *APIHandler) handleCompletionsStreamingResponse(c *gin.Context, rawJSON 
 							errText = errMsg.Error.Error()
 						}
 						body := handlers.BuildErrorResponseBody(status, errText)
-						_, _ = c.Writer.Write([]byte(FormatStreamChunk(body)))
+						_, _ = c.Writer.Write([]byte(formatStreamChunk(body)))
 						flusher.Flush()
 						cliCancel(errMsg.Error)
 						return

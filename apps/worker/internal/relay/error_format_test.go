@@ -51,7 +51,7 @@ func TestRateLimitPlugin_PreHookReturnsStableOpenAIErrorEnvelope(t *testing.T) {
 
 func TestContentFilterPlugin_PreHookReturnsStableOpenAIErrorEnvelope(t *testing.T) {
 	t.Run("keyword block", func(t *testing.T) {
-		plugin := NewContentFilterPlugin(ContentFilterConfig{Enabled: true, BlockedKeywords: []string{"forbidden"}})
+		plugin := newContentFilterPlugin(contentFilterConfig{Enabled: true, BlockedKeywords: []string{"forbidden"}})
 		sc := plugin.PreHook(&RelayContext{Body: map[string]any{
 			"messages": []any{map[string]any{"role": "user", "content": "forbidden text"}},
 		}})
@@ -59,7 +59,7 @@ func TestContentFilterPlugin_PreHookReturnsStableOpenAIErrorEnvelope(t *testing.
 	})
 
 	t.Run("input length block", func(t *testing.T) {
-		plugin := NewContentFilterPlugin(ContentFilterConfig{Enabled: true, MaxInputLength: 5})
+		plugin := newContentFilterPlugin(contentFilterConfig{Enabled: true, MaxInputLength: 5})
 		sc := plugin.PreHook(&RelayContext{Body: map[string]any{
 			"messages": []any{map[string]any{"role": "user", "content": "too long"}},
 		}})

@@ -13,13 +13,13 @@ import {
   getSettings,
   listApiKeys,
   listGroups,
-} from "@/lib/api-client"
+} from "@/lib/api"
 import { createChatRunner } from "@/lib/playground/chat-runner"
 import { readPlaygroundSettings, writePlaygroundSettings } from "@/lib/playground/persistence"
 import { formatToolPayloadForDisplay } from "@/lib/playground/tool-payload"
 import { usePlaygroundMcp } from "./use-playground-mcp"
 
-export interface MessageStats {
+interface MessageStats {
   latencyMs: number
   firstTokenMs?: number
   inputTokens?: number
@@ -39,7 +39,7 @@ export interface TimelineItem {
   error?: string
 }
 
-export interface ConversationTurn {
+interface ConversationTurn {
   id: string
   role: "user" | "assistant"
   content: string

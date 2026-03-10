@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { listApiKeys } from "@/lib/api-client"
+import { listApiKeys } from "@/lib/api"
 
 function formatCost(cost: number) {
   return `$${cost.toFixed(4)}`

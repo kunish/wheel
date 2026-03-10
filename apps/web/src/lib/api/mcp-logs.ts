@@ -2,7 +2,7 @@ import { apiFetch } from "./client"
 
 // ── MCP Logs ──
 
-export interface MCPLogRecord {
+interface MCPLogRecord {
   id: number
   time: number
   clientId: number
@@ -34,8 +34,4 @@ export function listMCPLogs(params: {
     success: boolean
     data: { logs: MCPLogRecord[]; total: number; page: number; pageSize: number }
   }>(`/api/v1/mcp-log/list?${q.toString()}`)
-}
-
-export function clearMCPLogs() {
-  return apiFetch<{ success: boolean }>("/api/v1/mcp-log/clear", { method: "DELETE" })
 }

@@ -8,7 +8,7 @@ import {
   enableChannel,
   reorderChannels,
   updateChannel,
-} from "@/lib/api-client"
+} from "@/lib/api"
 import { defaultMutationCallbacks } from "@/lib/mutation-utils"
 
 export function useChannelMutations(callbacks?: {

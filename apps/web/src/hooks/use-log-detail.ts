@@ -1,7 +1,7 @@
 import type { LogDetail } from "@/pages/logs/types"
 import { useQuery } from "@tanstack/react-query"
 import { useRef, useState } from "react"
-import { getLog } from "@/lib/api-client"
+import { getLog } from "@/lib/api"
 
 export function useLogDetail() {
   const [detailId, setDetailId] = useState<number | null>(null)

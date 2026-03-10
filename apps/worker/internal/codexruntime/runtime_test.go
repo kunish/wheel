@@ -15,8 +15,8 @@ import (
 func TestMaterializeChannelAuthFiles_PreservesExistingFilesOnWriteFailure(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := EnsureManagedConfig(""); err != nil {
-		t.Fatalf("EnsureManagedConfig() error = %v", err)
+	if err := ensureManagedConfig(""); err != nil {
+		t.Fatalf("ensureManagedConfig() error = %v", err)
 	}
 	authDir := ManagedAuthDir()
 	existingPath := filepath.Join(authDir, ManagedAuthFileName(7, "old.json"))
@@ -43,11 +43,11 @@ func TestMaterializeChannelAuthFiles_PreservesExistingFilesOnWriteFailure(t *tes
 func TestEnsureManagedConfig_PreservesExistingManagementKeyWhenEmptyKeyPassed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := EnsureManagedConfig("secret-key"); err != nil {
-		t.Fatalf("EnsureManagedConfig(secret-key) error = %v", err)
+	if err := ensureManagedConfig("secret-key"); err != nil {
+		t.Fatalf("ensureManagedConfig(secret-key) error = %v", err)
 	}
-	if err := EnsureManagedConfig(""); err != nil {
-		t.Fatalf("EnsureManagedConfig(empty) error = %v", err)
+	if err := ensureManagedConfig(""); err != nil {
+		t.Fatalf("ensureManagedConfig(empty) error = %v", err)
 	}
 
 	content, err := os.ReadFile(ManagedConfigPath())
@@ -62,8 +62,8 @@ func TestEnsureManagedConfig_PreservesExistingManagementKeyWhenEmptyKeyPassed(t 
 func TestMaterializeAuthFiles_PreservesExistingFilesOnWriteFailure(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := EnsureManagedConfig(""); err != nil {
-		t.Fatalf("EnsureManagedConfig() error = %v", err)
+	if err := ensureManagedConfig(""); err != nil {
+		t.Fatalf("ensureManagedConfig() error = %v", err)
 	}
 	authDir := ManagedAuthDir()
 	existingPath := filepath.Join(authDir, ManagedAuthFileName(7, "old.json"))

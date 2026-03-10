@@ -2,12 +2,7 @@ import type { PriceFormData } from "@/pages/model/price-dialog"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import {
-  createModelPrice,
-  deleteModelPrice,
-  syncModelPrices,
-  updateModelPrice,
-} from "@/lib/api-client"
+import { createModelPrice, deleteModelPrice, syncModelPrices, updateModelPrice } from "@/lib/api"
 
 export function usePriceMutations(callbacks?: {
   onCreateSuccess?: () => void

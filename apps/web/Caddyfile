@@ -19,15 +19,6 @@
 		reverse_proxy worker:8787
 	}
 
-	# Backward compatibility: legacy SSE endpoint /mcp or /mcp/
-	@legacy_mcp_sse {
-		path /mcp /mcp/
-		header Accept *text/event-stream*
-	}
-	handle @legacy_mcp_sse {
-		reverse_proxy worker:8787
-	}
-
 	handle /mcp/message* {
 		reverse_proxy worker:8787
 	}

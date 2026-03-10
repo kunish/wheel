@@ -12,7 +12,7 @@ export interface Tag {
   createdAt?: string
 }
 
-export interface TagInput {
+interface TagInput {
   id?: number
   name: string
   color: string

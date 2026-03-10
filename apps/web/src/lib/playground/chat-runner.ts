@@ -13,7 +13,7 @@ export interface ChatRunnerDeps {
   executeTool: (input: PlaygroundMcpToolExecuteInit) => Promise<any>
 }
 
-export type ChatRunnerMode = "auto" | "manual"
+type ChatRunnerMode = "auto" | "manual"
 
 export interface ChatRunnerRunInput {
   apiKey: string
@@ -48,7 +48,7 @@ export interface ManualToolOutput {
   payload: unknown
 }
 
-export type ChatRunnerRunResult =
+type ChatRunnerRunResult =
   | {
       status: "completed"
       messages: ChatMessage[]

@@ -14,7 +14,7 @@ import {
   YAxis,
 } from "recharts"
 import { Card, CardContent } from "@/components/ui/card"
-import { getChannelStats, getHourlyStats, getModelStats, getTotalStats } from "@/lib/api-client"
+import { getChannelStats, getHourlyStats, getModelStats, getTotalStats } from "@/lib/api"
 
 const COLORS = [
   "hsl(var(--chart-1))",

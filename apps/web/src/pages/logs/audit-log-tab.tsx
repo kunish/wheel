@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { listAuditLogs } from "@/lib/api-client"
+import { listAuditLogs } from "@/lib/api"
 
 const PAGE_SIZE = 50
 

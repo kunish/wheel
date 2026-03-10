@@ -1,5 +1,5 @@
 import type { ChartType } from "@/components/dashboard/chart-type-toggle"
-import type { ChannelStatsRow, ModelStatsItem, StatsDaily, StatsHourly } from "@/lib/api-client"
+import type { ChannelStatsRow, ModelStatsItem, StatsDaily, StatsHourly } from "@/lib/api"
 import { Bot, Radio, TrendingUp } from "lucide-react"
 import { useMemo, useRef, useState } from "react"
 import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer } from "recharts"

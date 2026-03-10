@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { getChannelStats, getModelStats, getTotalStats, listApiKeys } from "@/lib/api-client"
+import { getChannelStats, getModelStats, getTotalStats, listApiKeys } from "@/lib/api"
 
 function formatCost(cost: number) {
   return `$${cost.toFixed(4)}`

@@ -51,9 +51,9 @@ func DetectRequestType(path string) string {
 	return ""
 }
 
-// IsMultimodalRequest returns true if the request type is a multimodal endpoint
+// isMultimodalRequest returns true if the request type is a multimodal endpoint
 // (images, audio) that may need special handling (binary responses, multipart bodies).
-func IsMultimodalRequest(requestType string) bool {
+func isMultimodalRequest(requestType string) bool {
 	switch requestType {
 	case RequestTypeImageGeneration, RequestTypeAudioSpeech,
 		RequestTypeAudioTranscribe, RequestTypeAudioTranslate:

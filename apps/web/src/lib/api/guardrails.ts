@@ -13,7 +13,7 @@ export interface GuardrailRule {
   enabled: boolean
 }
 
-export interface GuardrailRuleInput {
+interface GuardrailRuleInput {
   id?: number
   name: string
   type: "keyword" | "regex" | "length" | "pii"

@@ -236,8 +236,8 @@ func convertOpenAIToolsToGemini(tools []any) []any {
 	return []any{map[string]any{"functionDeclarations": decls}}
 }
 
-// ConvertGeminiResponse converts a Gemini response to OpenAI format.
-func ConvertGeminiResponse(geminiResp map[string]any) map[string]any {
+// convertGeminiResponse converts a Gemini response to OpenAI format.
+func convertGeminiResponse(geminiResp map[string]any) map[string]any {
 	candidates, _ := geminiResp["candidates"].([]any)
 
 	var text string

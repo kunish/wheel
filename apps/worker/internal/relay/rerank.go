@@ -18,8 +18,8 @@ type RerankRequest struct {
 	TopN      int      `json:"top_n,omitempty"`
 }
 
-// RerankResult represents a single reranking result.
-type RerankResult struct {
+// rerankResult represents a single reranking result.
+type rerankResult struct {
 	Index          int     `json:"index"`
 	RelevanceScore float64 `json:"relevance_score"`
 	Document       string  `json:"document,omitempty"`
@@ -29,7 +29,7 @@ type RerankResult struct {
 type RerankResponse struct {
 	ID      string         `json:"id"`
 	Object  string         `json:"object"`
-	Results []RerankResult `json:"results"`
+	Results []rerankResult `json:"results"`
 	Model   string         `json:"model"`
 	Usage   map[string]any `json:"usage,omitempty"`
 }

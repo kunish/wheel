@@ -15,11 +15,11 @@ func (h *APIHandler) OpenAIModels(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   FilterOpenAIModels(models),
+		"data":   filterOpenAIModels(models),
 	})
 }
 
-func FilterOpenAIModels(allModels []map[string]any) []map[string]any {
+func filterOpenAIModels(allModels []map[string]any) []map[string]any {
 	filteredModels := make([]map[string]any, len(allModels))
 	for i, model := range allModels {
 		filteredModel := map[string]any{

@@ -8,17 +8,17 @@ import (
 	"sync"
 )
 
-// GzipResponseWriter wraps http.ResponseWriter with gzip compression.
-type GzipResponseWriter struct {
+// gzipResponseWriter wraps http.ResponseWriter with gzip compression.
+type gzipResponseWriter struct {
 	http.ResponseWriter
 	Writer io.Writer
 }
 
-func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
-func (w *GzipResponseWriter) Flush() {
+func (w *gzipResponseWriter) Flush() {
 	// Flush the gzip writer
 	if gw, ok := w.Writer.(*gzip.Writer); ok {
 		gw.Flush()
@@ -36,9 +36,9 @@ var gzipWriterPool = sync.Pool{
 	},
 }
 
-// NewGzipResponseWriter creates a gzip-compressed response writer if the client accepts gzip.
+// newGzipResponseWriter creates a gzip-compressed response writer if the client accepts gzip.
 // Returns the writer and a cleanup function. If gzip is not accepted, returns the original writer.
-func NewGzipResponseWriter(w http.ResponseWriter, r *http.Request) (http.ResponseWriter, func()) {
+func newGzipResponseWriter(w http.ResponseWriter, r *http.Request) (http.ResponseWriter, func()) {
 	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		return w, func() {}
 	}
@@ -49,7 +49,7 @@ func NewGzipResponseWriter(w http.ResponseWriter, r *http.Request) (http.Respons
 	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Del("Content-Length")
 
-	return &GzipResponseWriter{ResponseWriter: w, Writer: gz}, func() {
+	return &gzipResponseWriter{ResponseWriter: w, Writer: gz}, func() {
 		gz.Close()
 		gzipWriterPool.Put(gz)
 	}

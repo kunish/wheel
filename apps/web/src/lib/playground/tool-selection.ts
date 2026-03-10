@@ -8,7 +8,7 @@ export interface SelectableToolRef extends SelectedToolRef {
   description?: string
 }
 
-export function toToolKey(clientId: number, toolName: string): string {
+function toToolKey(clientId: number, toolName: string): string {
   return `${clientId}:${toolName}`
 }
 

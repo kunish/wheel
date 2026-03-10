@@ -1,8 +1,8 @@
-import type { RoutingRuleInput } from "@/lib/api-client"
+import type { RoutingRuleInput } from "@/lib/api"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { createRoutingRule, deleteRoutingRule, updateRoutingRule } from "@/lib/api-client"
+import { createRoutingRule, deleteRoutingRule, updateRoutingRule } from "@/lib/api"
 import { defaultMutationCallbacks } from "@/lib/mutation-utils"
 
 export function useRoutingRuleMutations(callbacks?: { onSaveSuccess?: () => void }) {

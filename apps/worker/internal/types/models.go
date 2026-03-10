@@ -197,17 +197,6 @@ type LLMPrice struct {
 	UpdatedAt       *string `bun:"updated_at"          json:"updatedAt,omitempty"`
 }
 
-// LLMInfo is the public-facing model pricing info.
-type LLMInfo struct {
-	ID          *int    `json:"id,omitempty"`
-	Name        string  `json:"name"`
-	InputPrice  float64 `json:"inputPrice"`
-	OutputPrice float64 `json:"outputPrice"`
-	Source      string  `json:"source"`
-	CreatedAt   *string `json:"createdAt,omitempty"`
-	UpdatedAt   *string `json:"updatedAt,omitempty"`
-}
-
 // ModelProfile represents a workspace for organizing groups.
 type ModelProfile struct {
 	bun.BaseModel `bun:"table:model_profiles"`

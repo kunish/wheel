@@ -46,24 +46,6 @@ func ListGroups(ctx context.Context, db *bun.DB, profileID int) ([]types.Group, 
 	return groups, nil
 }
 
-func GetGroup(ctx context.Context, db *bun.DB, id int) (*types.Group, error) {
-	g := new(types.Group)
-	err := db.NewSelect().Model(g).Where("id = ?", id).Scan(ctx)
-	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	items, err := listGroupItems(ctx, db, id)
-	if err != nil {
-		return nil, err
-	}
-	g.Items = items
-	return g, nil
-}
-
 func listGroupItems(ctx context.Context, db *bun.DB, groupID int) ([]types.GroupItem, error) {
 	var items []types.GroupItem
 	err := db.NewSelect().Model(&items).Where("group_id = ?", groupID).Scan(ctx)

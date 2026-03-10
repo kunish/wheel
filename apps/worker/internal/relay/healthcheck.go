@@ -6,18 +6,18 @@ import (
 	"time"
 )
 
-// HealthStatus represents the health state of a channel.
-type HealthStatus int
+// healthStatus represents the health state of a channel.
+type healthStatus int
 
 const (
-	HealthUnknown  HealthStatus = 0
-	HealthHealthy  HealthStatus = 1
-	HealthDegraded HealthStatus = 2
-	HealthDown     HealthStatus = 3
+	healthUnknown  healthStatus = 0
+	healthHealthy  healthStatus = 1
+	healthDegraded healthStatus = 2
+	healthDown     healthStatus = 3
 )
 
 type channelHealth struct {
-	Status          HealthStatus
+	Status          healthStatus
 	LastCheck       time.Time
 	LastSuccess     time.Time
 	ConsecutiveFail int
@@ -62,14 +62,14 @@ func (hc *HealthChecker) IsHealthy(channelID int) bool {
 	if !ok {
 		return true
 	}
-	return h.Status != HealthDown
+	return h.Status != healthDown
 }
 
 // GetAllHealth returns a snapshot of all channel health statuses.
-func (hc *HealthChecker) GetAllHealth() map[int]HealthStatus {
+func (hc *HealthChecker) GetAllHealth() map[int]healthStatus {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
-	result := make(map[int]HealthStatus, len(hc.health))
+	result := make(map[int]healthStatus, len(hc.health))
 	for id, h := range hc.health {
 		result[id] = h.Status
 	}
