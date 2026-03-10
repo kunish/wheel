@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.0](https://github.com/kunish/wheel/compare/v1.29.4...v1.30.0) (2026-03-10)
+
+
+### Features
+
+* eliminate port 8317 by embedding Codex runtime as in-process handler ([f3cc479](https://github.com/kunish/wheel/commit/f3cc479841ec1e456ccc1abf7035fd903859413e))
+
 ## [1.29.4](https://github.com/kunish/wheel/compare/v1.29.3...v1.29.4) (2026-03-10)
 
 
