@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
-import { ClipboardList } from "lucide-react"
+import { ChevronLeft, ChevronRight, ClipboardList } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -13,16 +14,20 @@ import {
 } from "@/components/ui/table"
 import { listAuditLogs } from "@/lib/api-client"
 
+const PAGE_SIZE = 50
+
 export function AuditLogTab() {
   const { t } = useTranslation("logs")
-  const [page] = useState(1)
+  const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
     queryKey: ["audit-logs", page],
-    queryFn: () => listAuditLogs({ page, pageSize: 50 }),
+    queryFn: () => listAuditLogs({ page, pageSize: PAGE_SIZE }),
   })
 
   const logs = data?.data?.logs ?? []
+  const total = data?.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   function formatTime(timestamp: number) {
     return new Date(timestamp * 1000).toLocaleString()
@@ -82,6 +87,30 @@ export function AuditLogTab() {
           </TableBody>
         </Table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-end gap-2 pt-3">
+          <span className="text-muted-foreground text-sm tabular-nums">
+            {page}/{totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="icon-xs"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-xs"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

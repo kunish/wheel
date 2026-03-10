@@ -1,8 +1,8 @@
 import type { ReactNode } from "react"
 import type { LogEntry } from "./columns"
 import type { LogDetail, StreamingOverlay } from "./types"
-import { ChevronDown, ChevronUp, Copy, Loader2, Play } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { ChevronDown, ChevronUp, Copy, Loader2, Play, TriangleAlert } from "lucide-react"
+import { Component, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router"
 import { toast } from "sonner"
@@ -21,6 +21,63 @@ import { useLogReplay } from "./log-replay"
 
 // Hoisted constant array to avoid re-creation on every render
 const DETAIL_SKELETON_ITEMS = Array.from({ length: 9 })
+
+// ── Error Boundary for Detail Panel ──
+
+interface DetailErrorBoundaryProps {
+  children: ReactNode
+  onReset?: () => void
+}
+
+interface DetailErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+}
+
+class DetailErrorBoundary extends Component<DetailErrorBoundaryProps, DetailErrorBoundaryState> {
+  constructor(props: DetailErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  override componentDidUpdate(prevProps: DetailErrorBoundaryProps) {
+    // Reset error state when children change (e.g. navigating to a different log)
+    if (this.state.hasError && prevProps.children !== this.props.children) {
+      this.setState({ hasError: false, error: null })
+    }
+  }
+
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 px-4 py-16">
+          <TriangleAlert className="text-destructive h-8 w-8" />
+          <p className="text-muted-foreground text-sm font-medium">Failed to render log detail</p>
+          {this.state.error?.message && (
+            <pre className="text-muted-foreground max-w-full overflow-auto text-xs">
+              {this.state.error.message}
+            </pre>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              this.setState({ hasError: false, error: null })
+              this.props.onReset?.()
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // ── Public component: LogDetailSheet ──
 
@@ -148,15 +205,19 @@ export function LogDetailSheet() {
               totalAttempts: entry.totalAttempts,
             }
             return (
-              <DetailPanel
-                detail={streamingDetail}
-                streamingOverlay={streamingOverlay}
-                isStreaming={true}
-              />
+              <DetailErrorBoundary>
+                <DetailPanel
+                  detail={streamingDetail}
+                  streamingOverlay={streamingOverlay}
+                  isStreaming={true}
+                />
+              </DetailErrorBoundary>
             )
           })()
         ) : detail ? (
-          <DetailPanel detail={detail} streamingOverlay={streamingOverlay} isStreaming={false} />
+          <DetailErrorBoundary key={detail.id}>
+            <DetailPanel detail={detail} streamingOverlay={streamingOverlay} isStreaming={false} />
+          </DetailErrorBoundary>
         ) : (
           <div className="flex flex-col gap-4 px-4 py-4">
             <div className="flex flex-col gap-2">

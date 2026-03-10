@@ -272,8 +272,9 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
   }
 
   // Real-time elapsed time update for pending streams
+  const hasActiveStreams = pendingStreams.size > 0
   useEffect(() => {
-    if (pendingStreams.size === 0) return
+    if (!hasActiveStreams) return
     const interval = setInterval(() => {
       setPendingStreams((prev) => {
         const next = new Map(prev)
@@ -287,7 +288,7 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
       })
     }, 1000)
     return () => clearInterval(interval)
-  }, [pendingStreams.size > 0]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasActiveStreams])
 
   const handleShowNew = useCallback(
     (pathname: string, navigate: (path: string, opts?: { replace?: boolean }) => void) => {

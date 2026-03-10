@@ -90,20 +90,33 @@ export interface ParsedResponse {
 export function repairTruncatedJson(text: string): { data: unknown; truncated: boolean } | null {
   if (!text.startsWith("{") && !text.startsWith("[")) return null
   try {
-    let repaired = text
-    const opens = (repaired.match(/[{[]/g) || []).length
-    const closes = (repaired.match(/[}\]]/g) || []).length
-    const lastComma = Math.max(
-      repaired.lastIndexOf(","),
-      repaired.lastIndexOf("}"),
-      repaired.lastIndexOf("]"),
+    // Strip any trailing incomplete value after the last structural character
+    const lastStructural = Math.max(
+      text.lastIndexOf(","),
+      text.lastIndexOf("}"),
+      text.lastIndexOf("]"),
     )
-    if (lastComma > 0) {
-      repaired = repaired.slice(0, lastComma + 1)
+    let repaired = lastStructural > 0 ? text.slice(0, lastStructural + 1) : text
+
+    // Strip trailing comma that would make JSON invalid
+    repaired = repaired.replace(/,\s*$/, "")
+
+    // Track open brackets in order so we close them with the correct counterpart
+    const openStack: string[] = []
+    for (const ch of repaired) {
+      if (ch === "{" || ch === "[") {
+        openStack.push(ch)
+      } else if (ch === "}" || ch === "]") {
+        openStack.pop()
+      }
     }
-    for (let i = 0; i < opens - closes; i++) {
-      repaired += text.startsWith("{") ? "}" : "]"
+
+    // Append matching closing brackets in reverse order
+    while (openStack.length > 0) {
+      const open = openStack.pop()!
+      repaired += open === "{" ? "}" : "]"
     }
+
     return { data: JSON.parse(repaired), truncated: true }
   } catch {
     return null

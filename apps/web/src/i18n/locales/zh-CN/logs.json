@@ -46,9 +46,10 @@
     "totalRequests": "总请求数",
     "successRate": "成功率",
     "avgLatency": "平均延迟",
-    "totalTokens": "总 Token",
-    "totalCost": "总费用",
-    "tokenSpeed": "Token 速度"
+    "pageTokens": "Token 数",
+    "pageCost": "费用",
+    "tokenSpeed": "Token 速度",
+    "pageScopedHint": "仅基于当前页数据计算"
   },
   "searchPlaceholder": "搜索日志...",
   "filter": {

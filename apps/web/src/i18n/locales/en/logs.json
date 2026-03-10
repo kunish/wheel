@@ -46,9 +46,10 @@
     "totalRequests": "Total Requests",
     "successRate": "Success Rate",
     "avgLatency": "Avg Latency",
-    "totalTokens": "Total Tokens",
-    "totalCost": "Total Cost",
-    "tokenSpeed": "Token Speed"
+    "pageTokens": "Tokens",
+    "pageCost": "Cost",
+    "tokenSpeed": "Token Speed",
+    "pageScopedHint": "Calculated from current page only"
   },
   "searchPlaceholder": "Search logs...",
   "filter": {
