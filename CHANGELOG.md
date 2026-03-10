@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.4](https://github.com/kunish/wheel/compare/v1.29.3...v1.29.4) (2026-03-10)
+
+
+### Bug Fixes
+
+* resolve multiple issues in log detail views ([ca4ea89](https://github.com/kunish/wheel/commit/ca4ea89c43bd2533efbf2d3634c305947a2db35f))
+
 ## [1.29.3](https://github.com/kunish/wheel/compare/v1.29.2...v1.29.3) (2026-03-09)
 
 
