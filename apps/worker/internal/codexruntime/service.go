@@ -3,6 +3,7 @@ package codexruntime
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/kunish/wheel/apps/worker/internal/config"
 	runtimecliproxy "github.com/kunish/wheel/apps/worker/internal/runtimeapi/cliproxy"
@@ -11,7 +12,8 @@ import (
 
 // Service wraps the embedded Codex runtime.
 type Service struct {
-	run func(ctx context.Context) error
+	run     func(ctx context.Context) error
+	handler func() http.Handler
 }
 
 var ensureManagedConfig = EnsureManagedConfig
@@ -22,10 +24,16 @@ type runtimeService interface {
 	Run(context.Context) error
 }
 
+type handlerProviderService interface {
+	runtimeService
+	Handler() http.Handler
+}
+
 type runtimeBuilder interface {
 	WithConfig(*runtimeconfig.Config) runtimeBuilder
 	WithConfigPath(string) runtimeBuilder
 	WithLocalManagementPassword(string) runtimeBuilder
+	WithHandlerOnly() runtimeBuilder
 	Build() (runtimeService, error)
 }
 
@@ -48,6 +56,11 @@ func (a *runtimeBuilderAdapter) WithLocalManagementPassword(password string) run
 	return a
 }
 
+func (a *runtimeBuilderAdapter) WithHandlerOnly() runtimeBuilder {
+	a.inner = a.inner.WithHandlerOnly()
+	return a
+}
+
 func (a *runtimeBuilderAdapter) Build() (runtimeService, error) {
 	return a.inner.Build()
 }
@@ -56,21 +69,28 @@ var newRuntimeBuilder = func() runtimeBuilder {
 	return &runtimeBuilderAdapter{inner: runtimecliproxy.NewBuilder()}
 }
 
-var buildRuntimeService = func(cfg *runtimeconfig.Config, configPath string, managementKey string) (func(context.Context) error, error) {
+var buildRuntimeService = func(cfg *runtimeconfig.Config, configPath string, managementKey string) (*Service, error) {
 	inner, err := newRuntimeBuilder().
 		WithConfig(cfg).
 		WithConfigPath(configPath).
 		WithLocalManagementPassword(managementKey).
+		WithHandlerOnly().
 		Build()
 	if err != nil {
 		return nil, err
 	}
 
-	return inner.Run, nil
+	svc := &Service{run: inner.Run}
+	if hp, ok := inner.(handlerProviderService); ok {
+		svc.handler = hp.Handler
+	}
+	return svc, nil
 }
 
 // NewFromConfig creates an embedded Codex runtime service from worker config.
 // It uses Wheel-managed runtime files and config by default.
+// The service runs in handler-only mode: no TCP port is bound. Use Handler()
+// to obtain the http.Handler for in-process routing.
 func NewFromConfig(cfg *config.Config) (*Service, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("nil config")
@@ -85,12 +105,12 @@ func NewFromConfig(cfg *config.Config) (*Service, error) {
 		return nil, fmt.Errorf("load codex runtime config: %w", err)
 	}
 
-	run, err := buildRuntimeService(ownedCfg, configPath, cfg.CodexRuntimeManagementKey)
+	svc, err := buildRuntimeService(ownedCfg, configPath, cfg.CodexRuntimeManagementKey)
 	if err != nil {
 		return nil, fmt.Errorf("build codex runtime service: %w", err)
 	}
 
-	return &Service{run: run}, nil
+	return svc, nil
 }
 
 // Start runs the embedded service in a goroutine and returns a channel
@@ -109,4 +129,14 @@ func (s *Service) Start(ctx context.Context) <-chan error {
 	}()
 
 	return errCh
+}
+
+// Handler returns the underlying http.Handler from the embedded runtime.
+// It blocks until the handler is fully initialised. Only useful after Start()
+// has been called (the handler is initialised during Run).
+func (s *Service) Handler() http.Handler {
+	if s == nil || s.handler == nil {
+		return nil
+	}
+	return s.handler()
 }

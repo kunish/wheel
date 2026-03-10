@@ -69,6 +69,9 @@ type Builder struct {
 
 	// serverOptions contains additional server configuration options.
 	serverOptions []api.ServerOption
+
+	// handlerOnly disables the HTTP listener so the handler can be used in-process.
+	handlerOnly bool
 }
 
 // Hooks allows callers to plug into service lifecycle stages.
@@ -226,6 +229,14 @@ func (b *Builder) WithPostAuthHook(hook coreauth.PostAuthHook) *Builder {
 	return b
 }
 
+// WithHandlerOnly enables handler-only mode: the runtime server is fully
+// initialised but does not bind a TCP port. Use Service.Handler() to
+// obtain the http.Handler for in-process routing.
+func (b *Builder) WithHandlerOnly() *Builder {
+	b.handlerOnly = true
+	return b
+}
+
 // Build validates inputs, applies defaults, and returns a ready-to-run service.
 func (b *Builder) Build() (*Service, error) {
 	if b.cfg == nil {
@@ -307,6 +318,10 @@ func (b *Builder) Build() (*Service, error) {
 		accessManager:            accessManager,
 		coreManager:              coreManager,
 		serverOptions:            append([]api.ServerOption(nil), b.serverOptions...),
+		handlerOnly:              b.handlerOnly,
+	}
+	if b.handlerOnly {
+		service.handlerReady = make(chan struct{})
 	}
 	return service, nil
 }

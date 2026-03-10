@@ -51,7 +51,7 @@ func TestSelectBaseUrl_TrimsTrailingSlash(t *testing.T) {
 func TestSelectBaseUrl_EmptyConfiguredRuntimeURLFallsBackToDefault(t *testing.T) {
 	urls := []types.BaseUrl{{URL: "", Delay: 0}}
 	got := SelectBaseUrl(urls, types.OutboundCopilot)
-	if got != "http://127.0.0.1:8317" {
+	if got != "http://codex-internal" {
 		t.Errorf("got %q, want runtime default", got)
 	}
 }

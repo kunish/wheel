@@ -35,7 +35,7 @@ func Load() *Config {
 		JWTSecret:                 getEnv("JWT_SECRET", "change-me-in-production"),
 		AdminUsername:             getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword:             getEnv("ADMIN_PASSWORD", "admin"),
-		CodexRuntimeManagementURL: "http://127.0.0.1:8317",
+		CodexRuntimeManagementURL: "http://codex-internal",
 		CodexRuntimeManagementKey: "",
 		MetricsEnabled:            getEnv("METRICS_ENABLED", "") == "true",
 		OtelEnabled:               getEnv("OTEL_ENABLED", "") == "true",

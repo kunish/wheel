@@ -482,6 +482,10 @@ func (b *fakeSDKBuilder) WithOAuthCallbackWriter(writer sdkcliproxy.OAuthCallbac
 	return b
 }
 
+func (b *fakeSDKBuilder) WithHandlerOnly() sdkBuilder {
+	return b
+}
+
 func (b *fakeSDKBuilder) Build() (sdkServiceRunner, error) {
 	return b.service, b.err
 }

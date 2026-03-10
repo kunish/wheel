@@ -119,6 +119,14 @@ type RelayHandler struct {
 
 	// ── Copilot ──
 	CopilotRelay *CopilotRelay
+
+	// ── Codex runtime (in-process) ──
+	// CodexStreamClient is used for streaming requests to the embedded Codex
+	// runtime via in-memory transport (no TCP). Nil falls back to StreamClient.
+	CodexStreamClient *http.Client
+	// CodexHTTPClient is used for non-streaming requests to the embedded Codex
+	// runtime via in-memory transport. Nil falls back to HTTPClient.
+	CodexHTTPClient *http.Client
 }
 
 // RegisterRelayRoutes registers relay and related /v1 routes on a Gin engine.

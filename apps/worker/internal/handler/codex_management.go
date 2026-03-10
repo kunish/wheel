@@ -20,6 +20,13 @@ func (h *Handler) codexManagementCall(c *gin.Context, method string, path string
 	return h.codexManagementCallContext(c.Request.Context(), method, path, query, reqBody, out)
 }
 
+func (h *Handler) codexManagementHTTPClient() *http.Client {
+	if h.CodexManagementClient != nil {
+		return h.CodexManagementClient
+	}
+	return &http.Client{Timeout: 60 * time.Second}
+}
+
 func (h *Handler) codexManagementCallContext(ctx context.Context, method string, path string, query url.Values, reqBody any, out any) error {
 	base := strings.TrimRight(strings.TrimSpace(h.Config.CodexRuntimeManagementURL), "/")
 	fullURL := base + "/v0/management" + path
@@ -43,8 +50,7 @@ func (h *Handler) codexManagementCallContext(ctx context.Context, method string,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Management-Key", strings.TrimSpace(h.Config.CodexRuntimeManagementKey))
 
-	httpClient := &http.Client{Timeout: 60 * time.Second}
-	resp, err := httpClient.Do(req)
+	resp, err := h.codexManagementHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("request codex management: %w", err)
 	}
@@ -96,8 +102,7 @@ func (h *Handler) codexManagementUploadFile(ctx context.Context, filename string
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("X-Management-Key", strings.TrimSpace(h.Config.CodexRuntimeManagementKey))
 
-	httpClient := &http.Client{Timeout: 60 * time.Second}
-	resp, err := httpClient.Do(req)
+	resp, err := h.codexManagementHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("request codex management upload: %w", err)
 	}

@@ -21,6 +21,12 @@ var (
 	httpClientCacheMutex sync.RWMutex
 )
 
+// defaultResponseHeaderTimeout is the maximum time to wait for upstream response
+// headers before treating the request as failed. This prevents indefinite hangs
+// when the upstream server accepts the connection but never sends headers (e.g.,
+// due to expired auth tokens). It does NOT affect streaming body reads.
+const defaultResponseHeaderTimeout = 60 * time.Second
+
 // newProxyAwareHTTPClient creates an HTTP client with proper proxy configuration priority:
 // 1. Use auth.ProxyURL if configured (highest priority)
 // 2. Use cfg.ProxyURL if auth proxy is not configured
@@ -89,7 +95,18 @@ func newProxyAwareHTTPClient(ctx context.Context, cfg *config.Config, auth *clip
 
 	// Priority 3: Use RoundTripper from context (typically from RoundTripperFor)
 	if rt, ok := ctx.Value("cliproxy.roundtripper").(http.RoundTripper); ok && rt != nil {
+		// If the context RoundTripper is an *http.Transport, ensure it has
+		// ResponseHeaderTimeout set to prevent indefinite hangs.
+		if t, isTransport := rt.(*http.Transport); isTransport && t.ResponseHeaderTimeout == 0 {
+			t.ResponseHeaderTimeout = defaultResponseHeaderTimeout
+		}
 		httpClient.Transport = rt
+	} else {
+		// No proxy and no context RoundTripper: create a default transport
+		// with ResponseHeaderTimeout to prevent indefinite hangs.
+		httpClient.Transport = &http.Transport{
+			ResponseHeaderTimeout: defaultResponseHeaderTimeout,
+		}
 	}
 
 	// Cache the client for no-proxy case
@@ -142,10 +159,14 @@ func buildProxyTransport(proxyURL string) *http.Transport {
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, addr)
 			},
+			ResponseHeaderTimeout: defaultResponseHeaderTimeout,
 		}
 	} else if parsedURL.Scheme == "http" || parsedURL.Scheme == "https" {
 		// Configure HTTP or HTTPS proxy
-		transport = &http.Transport{Proxy: http.ProxyURL(parsedURL)}
+		transport = &http.Transport{
+			Proxy:                 http.ProxyURL(parsedURL),
+			ResponseHeaderTimeout: defaultResponseHeaderTimeout,
+		}
 	} else {
 		log.Errorf("unsupported proxy scheme: %s", parsedURL.Scheme)
 		return nil

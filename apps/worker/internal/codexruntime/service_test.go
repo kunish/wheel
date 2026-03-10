@@ -73,11 +73,11 @@ func TestNewFromConfigUsesOwnedRuntimeConfigLoader(t *testing.T) {
 	var gotOwned *runtimeconfig.Config
 	var gotBuildConfigPath string
 	var gotBuildManagementKey string
-	buildRuntimeService = func(cfg *runtimeconfig.Config, configPath string, managementKey string) (func(context.Context) error, error) {
+	buildRuntimeService = func(cfg *runtimeconfig.Config, configPath string, managementKey string) (*Service, error) {
 		gotOwned = cfg
 		gotBuildConfigPath = configPath
 		gotBuildManagementKey = managementKey
-		return func(context.Context) error { return nil }, nil
+		return &Service{run: func(context.Context) error { return nil }}, nil
 	}
 
 	svc, err := NewFromConfig(&config.Config{CodexRuntimeManagementKey: "secret"})
@@ -178,6 +178,10 @@ func (b *fakeOwnedRuntimeBuilder) WithConfigPath(path string) runtimeBuilder {
 
 func (b *fakeOwnedRuntimeBuilder) WithLocalManagementPassword(password string) runtimeBuilder {
 	b.localManagementPassword = password
+	return b
+}
+
+func (b *fakeOwnedRuntimeBuilder) WithHandlerOnly() runtimeBuilder {
 	return b
 }
 

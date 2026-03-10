@@ -3,6 +3,7 @@ package cliproxy
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/kunish/wheel/apps/worker/internal/mgmthandler"
@@ -37,6 +38,7 @@ type sdkBuilder interface {
 	WithOpenAIResponsesHandlerFactory(sdkcliproxy.OpenAIResponsesHandlerFactory) sdkBuilder
 	WithManagementHandlerFactory(sdkcliproxy.ManagementHandlerFactory) sdkBuilder
 	WithOAuthCallbackWriter(sdkcliproxy.OAuthCallbackWriter) sdkBuilder
+	WithHandlerOnly() sdkBuilder
 	Build() (sdkServiceRunner, error)
 }
 
@@ -114,6 +116,11 @@ func (a *sdkBuilderAdapter) WithOAuthCallbackWriter(writer sdkcliproxy.OAuthCall
 	return a
 }
 
+func (a *sdkBuilderAdapter) WithHandlerOnly() sdkBuilder {
+	a.inner = a.inner.WithHandlerOnly()
+	return a
+}
+
 func (a *sdkBuilderAdapter) Build() (sdkServiceRunner, error) {
 	return a.inner.Build()
 }
@@ -128,6 +135,7 @@ type Builder struct {
 	configPath              string
 	localManagementPassword string
 	tokenStore              sdkcliproxyauth.Store
+	handlerOnly             bool
 }
 
 func NewBuilder() *Builder {
@@ -156,6 +164,13 @@ func (b *Builder) WithTokenStore(store sdkcliproxyauth.Store) *Builder {
 	return b
 }
 
+// WithHandlerOnly enables handler-only mode: the runtime server is fully
+// initialised but does not bind a TCP port.
+func (b *Builder) WithHandlerOnly() *Builder {
+	b.handlerOnly = true
+	return b
+}
+
 func (b *Builder) Build() (*Service, error) {
 	if b == nil {
 		return nil, fmt.Errorf("cliproxy runtime builder is nil")
@@ -180,7 +195,7 @@ func (b *Builder) Build() (*Service, error) {
 	accessManager := sdkaccess.NewManager()
 	coreManager := newDefaultCoreAuthManager(b.cfg, store)
 
-	runner, err := newSDKBuilder().
+	sdkBldr := newSDKBuilder().
 		WithConfig(sdkCfg).
 		WithConfigPath(b.configPath).
 		WithLocalManagementPassword(b.localManagementPassword).
@@ -200,8 +215,11 @@ func (b *Builder) Build() (*Service, error) {
 		WithManagementHandlerFactory(func(cfg *sdkconfig.Config, configFilePath string, authManager *sdkcliproxyauth.Manager) sdkcliproxy.ManagementHandlerRoutes {
 			return mgmthandler.NewManagementHandler(cfg, configFilePath, authManager)
 		}).
-		WithOAuthCallbackWriter(mgmthandler.WriteOAuthCallback).
-		Build()
+		WithOAuthCallbackWriter(mgmthandler.WriteOAuthCallback)
+	if b.handlerOnly {
+		sdkBldr = sdkBldr.WithHandlerOnly()
+	}
+	runner, err := sdkBldr.Build()
 	if err != nil {
 		return nil, err
 	}
@@ -219,6 +237,21 @@ func (s *Service) Run(ctx context.Context) error {
 		return fmt.Errorf("cliproxy runtime service is not initialized")
 	}
 	return s.runner.Run(ctx)
+}
+
+// Handler returns the underlying http.Handler from the embedded SDK service.
+// It blocks until the handler is ready. Only useful in handler-only mode.
+func (s *Service) Handler() http.Handler {
+	if s == nil || s.runner == nil {
+		return nil
+	}
+	type handlerProvider interface {
+		Handler() http.Handler
+	}
+	if hp, ok := s.runner.(handlerProvider); ok {
+		return hp.Handler()
+	}
+	return nil
 }
 
 func newDefaultCoreAuthManager(cfg *runtimeconfig.Config, store sdkcliproxyauth.Store) *sdkcliproxyauth.Manager {

@@ -159,6 +159,11 @@ type Manager struct {
 	// Auto refresh state
 	refreshCancel    context.CancelFunc
 	refreshSemaphore chan struct{}
+
+	// refreshLocks provides per-auth-ID mutual exclusion for token refresh
+	// to prevent concurrent refreshes from rotating the same refresh token twice.
+	refreshLocks   map[string]*sync.Mutex
+	refreshLocksMu sync.Mutex
 }
 
 // NewManager constructs a manager with optional custom selector and hook.
@@ -177,6 +182,7 @@ func NewManager(store Store, selector Selector, hook Hook) *Manager {
 		auths:            make(map[string]*Auth),
 		providerOffsets:  make(map[string]int),
 		refreshSemaphore: make(chan struct{}, refreshMaxConcurrency),
+		refreshLocks:     make(map[string]*sync.Mutex),
 	}
 	// atomic.Value requires non-nil initial value.
 	manager.runtimeConfig.Store(&internalconfig.Config{})
@@ -452,7 +458,9 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	m.auths[auth.ID] = auth.Clone()
 	m.mu.Unlock()
 	m.rebuildAPIKeyModelAliasFromRuntimeConfig()
-	_ = m.persist(ctx, auth)
+	if err := m.persist(ctx, auth); err != nil {
+		log.Errorf("auth persist failed during Register for %s: %v", auth.ID, err)
+	}
 	m.hook.OnAuthRegistered(ctx, auth.Clone())
 	return auth.Clone(), nil
 }
@@ -476,7 +484,9 @@ func (m *Manager) Update(ctx context.Context, auth *Auth) (*Auth, error) {
 	m.auths[auth.ID] = auth.Clone()
 	m.mu.Unlock()
 	m.rebuildAPIKeyModelAliasFromRuntimeConfig()
-	_ = m.persist(ctx, auth)
+	if err := m.persist(ctx, auth); err != nil {
+		log.Errorf("auth persist failed during Update for %s: %v", auth.ID, err)
+	}
 	m.hook.OnAuthUpdated(ctx, auth.Clone())
 	return auth.Clone(), nil
 }
@@ -1337,7 +1347,9 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 			}
 		}
 
-		_ = m.persist(ctx, auth)
+		if err := m.persist(ctx, auth); err != nil {
+			log.Errorf("auth persist failed during applyResult for %s: %v", auth.ID, err)
+		}
 	}
 	m.mu.Unlock()
 
@@ -1534,8 +1546,10 @@ func statusCodeFromResult(err *Error) int {
 
 // isRequestInvalidError returns true if the error represents a client request
 // error that should not be retried. Specifically, it checks for 400 Bad Request
-// with "invalid_request_error" in the message, indicating the request itself is
-// malformed and switching to a different auth will not help.
+// with known error patterns indicating the request itself is invalid and
+// switching to a different auth will not help. This includes:
+//   - OpenAI-style "invalid_request_error" messages
+//   - Codex-style "is not supported" messages (e.g., model not supported)
 func isRequestInvalidError(err error) bool {
 	if err == nil {
 		return false
@@ -1544,7 +1558,9 @@ func isRequestInvalidError(err error) bool {
 	if status != http.StatusBadRequest {
 		return false
 	}
-	return strings.Contains(err.Error(), "invalid_request_error")
+	msg := err.Error()
+	return strings.Contains(msg, "invalid_request_error") ||
+		strings.Contains(msg, "is not supported")
 }
 
 func applyAuthFailureState(auth *Auth, resultErr *Error, retryAfter *time.Duration, now time.Time) {
@@ -1928,6 +1944,21 @@ func (m *Manager) refreshAuthWithLimit(ctx context.Context, id string) {
 	m.refreshAuth(ctx, id)
 }
 
+// refreshLockFor returns a per-auth-ID mutex, creating one if it doesn't exist.
+// This ensures that concurrent refresh attempts for the same credential are
+// serialized, preventing the "refresh_token_reused" error caused by two
+// goroutines rotating the same refresh token simultaneously.
+func (m *Manager) refreshLockFor(id string) *sync.Mutex {
+	m.refreshLocksMu.Lock()
+	defer m.refreshLocksMu.Unlock()
+	mu, ok := m.refreshLocks[id]
+	if !ok {
+		mu = &sync.Mutex{}
+		m.refreshLocks[id] = mu
+	}
+	return mu
+}
+
 func (m *Manager) snapshotAuths() []*Auth {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -2162,6 +2193,12 @@ func (m *Manager) refreshAuth(ctx context.Context, id string) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// Acquire per-auth-ID lock to prevent concurrent refreshes from rotating
+	// the same refresh token twice, which would cause "refresh_token_reused".
+	authLock := m.refreshLockFor(id)
+	authLock.Lock()
+	defer authLock.Unlock()
+
 	m.mu.RLock()
 	auth := m.auths[id]
 	var exec ProviderExecutor
@@ -2204,7 +2241,9 @@ func (m *Manager) refreshAuth(ctx context.Context, id string) {
 	// If the Authenticator did not set it (zero value), shouldRefresh will use default logic
 	updated.LastError = nil
 	updated.UpdatedAt = now
-	_, _ = m.Update(ctx, updated)
+	if _, err := m.Update(ctx, updated); err != nil {
+		log.Errorf("auth update failed after refresh for %s/%s: %v", auth.Provider, auth.ID, err)
+	}
 }
 
 func (m *Manager) executorFor(provider string) ProviderExecutor {

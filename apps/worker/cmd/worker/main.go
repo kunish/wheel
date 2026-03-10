@@ -160,21 +160,33 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	codexRuntimeErrCh, err := initEmbeddedCodexRuntime(ctx, cfg, log.Default(), func(cfg *config.Config) (codexRuntimeService, error) {
+	codexResult, err := initEmbeddedCodexRuntime(ctx, cfg, log.Default(), func(cfg *config.Config) (codexRuntimeService, error) {
 		return codexruntime.NewFromConfig(cfg)
 	})
 	if err != nil {
 		log.Fatalf("[startup] embedded Codex runtime failed: %v", err)
 	}
-	if codexRuntimeErrCh != nil {
+	if codexResult != nil && codexResult.errCh != nil {
 		go func() {
-			err := <-codexRuntimeErrCh
+			err := <-codexResult.errCh
 			if err == nil || errors.Is(err, context.Canceled) {
 				return
 			}
 			log.Printf("[codex-runtime] embedded service exited with error, shutting down worker: %v", err)
 			stop()
 		}()
+	}
+
+	// Create in-process HTTP clients for Codex channels when handler is available.
+	var codexStreamClient, codexHTTPClient *http.Client
+	if codexResult != nil && codexResult.handler != nil {
+		codexTransport := handler.NewInMemoryTransport(codexResult.handler)
+		codexStreamClient = &http.Client{Transport: codexTransport}
+		codexHTTPClient = &http.Client{
+			Transport: codexTransport,
+			Timeout:   120 * time.Second,
+		}
+		log.Println("[startup] Codex runtime handler-only mode active — no port 8317")
 	}
 
 	logWriterDone := make(chan struct{})
@@ -271,38 +283,42 @@ func main() {
 	dlock := db.NewDistributedLock(database)
 
 	h := &handler.Handler{
-		DB:              database,
-		Cache:           kv,
-		Config:          cfg,
-		CircuitBreakers: cbm,
-		DLock:           dlock,
+		DB:                    database,
+		Cache:                 kv,
+		Config:                cfg,
+		CircuitBreakers:       cbm,
+		DLock:                 dlock,
+		CodexManagementClient: codexHTTPClient,
 	}
 
 	rh := &handler.RelayHandler{
 		Handler: handler.Handler{
-			DB:              database,
-			Cache:           kv,
-			Config:          cfg,
-			CircuitBreakers: cbm,
-			DLock:           dlock,
+			DB:                    database,
+			Cache:                 kv,
+			Config:                cfg,
+			CircuitBreakers:       cbm,
+			DLock:                 dlock,
+			CodexManagementClient: codexHTTPClient,
 		},
-		Broadcast:       hub.Broadcast,
-		StreamTracker:   hub,
-		LogWriter:       logWriter,
-		Observer:        obs,
-		CircuitBreakers: cbm,
-		Sessions:        sm,
-		Balancer:        bal,
-		HTTPClient:      nonStreamClient,
-		StreamClient:    streamClient,
-		Plugins:         plugins,
-		RoutingEngine:   routingEngine,
-		HealthChecker:   healthChecker,
-		MCPManager:      mcpManager,
-		MCPServer:       mcpSrv,
-		BatchStore:      batchStore,
-		AsyncStore:      asyncStore,
-		CopilotRelay:    handler.NewCopilotRelay(database),
+		Broadcast:         hub.Broadcast,
+		StreamTracker:     hub,
+		LogWriter:         logWriter,
+		Observer:          obs,
+		CircuitBreakers:   cbm,
+		Sessions:          sm,
+		Balancer:          bal,
+		HTTPClient:        nonStreamClient,
+		StreamClient:      streamClient,
+		Plugins:           plugins,
+		RoutingEngine:     routingEngine,
+		HealthChecker:     healthChecker,
+		MCPManager:        mcpManager,
+		MCPServer:         mcpSrv,
+		BatchStore:        batchStore,
+		AsyncStore:        asyncStore,
+		CopilotRelay:      handler.NewCopilotRelay(database),
+		CodexStreamClient: codexStreamClient,
+		CodexHTTPClient:   codexHTTPClient,
 	}
 
 	// ── Router ──

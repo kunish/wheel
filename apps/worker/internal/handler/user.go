@@ -26,6 +26,9 @@ type Handler struct {
 	CircuitBreakers *relay.CircuitBreakerManager
 	DLock           *db.DistributedLock
 	codexQuotaDo    func(*http.Request) (*http.Response, error)
+	// CodexManagementClient is used for in-process calls to the embedded
+	// Codex runtime management API. When nil, a default http.Client is used.
+	CodexManagementClient *http.Client
 	// quotaCache stores quota results keyed by "channelID:fileName".
 	// Values are quotaCacheEntry. Populated during normal browsing,
 	// used for instant status filtering.

@@ -698,6 +698,13 @@ func (s *Server) unifiedModelsHandler(openaiHandler OpenAIHandlerRoutes, claudeH
 	}
 }
 
+// Handler returns the underlying http.Handler (gin.Engine) for in-process use.
+// This enables embedding the Codex runtime server directly into the main
+// process without binding a separate port.
+func (s *Server) Handler() http.Handler {
+	return s.engine
+}
+
 // Start begins listening for and serving HTTP or HTTPS requests.
 // It's a blocking call and will only return on an unrecoverable error.
 //

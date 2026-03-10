@@ -28,6 +28,9 @@ type ServerRuntime interface {
 	UpdateClients(cfg *config.Config)
 	AttachWebsocketRoute(path string, handler http.Handler)
 	SetWebsocketAuthChangeHandler(func(oldEnabled, newEnabled bool))
+	// Handler returns the underlying http.Handler for in-process routing
+	// without binding a separate port.
+	Handler() http.Handler
 }
 
 // ServerFactory constructs the HTTP API server for the embedded runtime.

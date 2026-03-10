@@ -38,7 +38,7 @@ func ManagedAuthFilePath(item *types.CodexAuthFile) string {
 }
 
 func ManagementBaseURL() string {
-	return fmt.Sprintf("http://127.0.0.1:%d", managedPort)
+	return "http://codex-internal"
 }
 
 func EnsureManagedConfig(managementKey string) error {

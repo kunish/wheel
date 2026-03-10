@@ -113,10 +113,16 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 		}
 	}
 
+	// Use the in-process Codex client when available for Codex channels.
+	streamClient := h.StreamClient
+	if p.Channel.Type == types.OutboundCodex && h.CodexStreamClient != nil {
+		streamClient = h.CodexStreamClient
+	}
+
 	streamInfo, proxyErr := relay.ProxyStreaming(
 		p.C.Writer,
 		p.C.Request.Context(),
-		h.StreamClient,
+		streamClient,
 		p.Upstream.URL,
 		p.Upstream.Headers,
 		p.Upstream.Body,
@@ -173,10 +179,16 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 		return h.executeCopilotNonStreaming(p)
 	}
 
+	// Use the in-process Codex client when available for Codex channels.
+	httpClient := h.HTTPClient
+	if p.Channel.Type == types.OutboundCodex && h.CodexHTTPClient != nil {
+		httpClient = h.CodexHTTPClient
+	}
+
 	if relay.IsAudioBinaryResponse(p.RequestType) {
 		if proxyErr := relay.ProxyBinaryResponse(
 			p.C.Writer,
-			h.HTTPClient,
+			httpClient,
 			p.Upstream.URL,
 			p.Upstream.Headers,
 			p.Upstream.Body,
@@ -193,7 +205,7 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 
 	if relay.ShouldUseMultimodalExecution(p.RequestType, p.Channel.Type) {
 		result, proxyErr := relay.ProxyMultimodal(
-			h.HTTPClient,
+			httpClient,
 			p.Upstream.URL,
 			p.Upstream.Headers,
 			p.Upstream.Body,
@@ -216,7 +228,7 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 	}
 
 	result, proxyErr := relay.ProxyNonStreaming(
-		h.HTTPClient,
+		httpClient,
 		p.Upstream.URL,
 		p.Upstream.Headers,
 		p.Upstream.Body,

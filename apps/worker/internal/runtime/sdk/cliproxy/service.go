@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -78,6 +79,15 @@ type Service struct {
 
 	// server is the HTTP API server instance.
 	server ServerRuntime
+
+	// handlerOnly disables the HTTP listener so that the server's Handler()
+	// can be called in-process without binding a port.
+	handlerOnly bool
+
+	// handlerReady is closed once the server and all background workers
+	// have been initialised so that callers of Handler() know the handler
+	// is safe to use.
+	handlerReady chan struct{}
 
 	// pprofServer manages the optional pprof HTTP debug server.
 	pprofServer *pprofServer
@@ -612,16 +622,20 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 
 	s.serverErr = make(chan error, 1)
-	go func() {
-		if errStart := s.server.Start(); errStart != nil {
-			s.serverErr <- errStart
-		} else {
-			s.serverErr <- nil
-		}
-	}()
+	if !s.handlerOnly {
+		go func() {
+			if errStart := s.server.Start(); errStart != nil {
+				s.serverErr <- errStart
+			} else {
+				s.serverErr <- nil
+			}
+		}()
 
-	time.Sleep(100 * time.Millisecond)
-	fmt.Printf("API server started successfully on: %s:%d\n", s.cfg.Host, s.cfg.Port)
+		time.Sleep(100 * time.Millisecond)
+		fmt.Printf("API server started successfully on: %s:%d\n", s.cfg.Host, s.cfg.Port)
+	} else {
+		log.Info("codex runtime running in handler-only mode (no port binding)")
+	}
 
 	s.applyPprofConfig(s.cfg)
 
@@ -721,6 +735,19 @@ func (s *Service) Run(ctx context.Context) error {
 		log.Infof("core auth auto-refresh started (interval=%s)", interval)
 	}
 
+	// Signal that the server handler is ready for in-process use.
+	if s.handlerReady != nil {
+		close(s.handlerReady)
+	}
+
+	if s.handlerOnly {
+		// In handler-only mode there is no HTTP listener, so just wait
+		// for the context to be cancelled.
+		<-ctx.Done()
+		log.Debug("service context cancelled, shutting down...")
+		return ctx.Err()
+	}
+
 	select {
 	case <-ctx.Done():
 		log.Debug("service context cancelled, shutting down...")
@@ -728,6 +755,19 @@ func (s *Service) Run(ctx context.Context) error {
 	case err = <-s.serverErr:
 		return err
 	}
+}
+
+// Handler returns the underlying http.Handler from the embedded server.
+// It blocks until the server has been fully initialised (handlerReady is closed).
+// This is only useful in handler-only mode.
+func (s *Service) Handler() http.Handler {
+	if s == nil || s.server == nil {
+		return nil
+	}
+	if s.handlerReady != nil {
+		<-s.handlerReady
+	}
+	return s.server.Handler()
 }
 
 // Shutdown gracefully stops background workers and the HTTP server.
