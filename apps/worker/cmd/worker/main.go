@@ -199,7 +199,7 @@ func main() {
 	db.StartLogCleanup(ctx, database)
 	cbm.StartCleanup(ctx)
 	sm.StartCleanup(ctx)
-	rateLimitPlugin.Limiter().StartCleanup(ctx.Done())
+	rateLimitPlugin.StartCleanup(ctx.Done())
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
