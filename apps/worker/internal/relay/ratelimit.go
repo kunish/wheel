@@ -210,7 +210,7 @@ func (p *RateLimitPlugin) PostHook(ctx *RelayContext, resp *RelayPluginResponse)
 	}
 }
 
-// Limiter returns the underlying rateLimiter for cleanup registration.
-func (p *RateLimitPlugin) Limiter() *rateLimiter {
-	return p.limiter
+// StartCleanup starts periodic cleanup of stale rate-limit keys.
+func (p *RateLimitPlugin) StartCleanup(stop <-chan struct{}) {
+	p.limiter.StartCleanup(stop)
 }

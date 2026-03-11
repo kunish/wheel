@@ -56,10 +56,10 @@ type semanticCachePlugin struct {
 	embedder embeddingProvider
 }
 
-// newsemanticCachePlugin creates a new semantic cache plugin.
+// newSemanticCachePlugin creates a new semantic cache plugin.
 // An optional embeddingProvider can be passed for similarity mode;
 // when omitted a noopEmbeddingProvider is used.
-func newsemanticCachePlugin(config semanticCacheConfig, embedder ...embeddingProvider) *semanticCachePlugin {
+func newSemanticCachePlugin(config semanticCacheConfig, embedder ...embeddingProvider) *semanticCachePlugin {
 	exclude := make(map[string]bool, len(config.ExcludeModels))
 	for _, m := range config.ExcludeModels {
 		exclude[m] = true

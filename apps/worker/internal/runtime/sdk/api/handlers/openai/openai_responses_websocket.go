@@ -34,6 +34,8 @@ const (
 	wsTurnStateHeader    = "x-codex-turn-state"
 	wsRequestBodyKey     = "REQUEST_BODY_OVERRIDE"
 	wsPayloadLogMaxSize  = 2048
+	wsBodyLogMaxSize     = 64 * 1024 // cap cumulative websocket body log at 64 KB
+	wsBodyLogTruncated   = "\n[websocket log truncated]\n"
 )
 
 var responsesWebsocketUpgrader = websocket.Upgrader{
@@ -825,18 +827,49 @@ func appendWebsocketEvent(builder *strings.Builder, eventType string, payload []
 	if builder == nil {
 		return
 	}
+	if builder.Len() >= wsBodyLogMaxSize {
+		return
+	}
 	trimmedPayload := bytes.TrimSpace(payload)
 	if len(trimmedPayload) == 0 {
 		return
 	}
 	if builder.Len() > 0 {
-		builder.WriteString("\n")
+		appendWebsocketLogString(builder, "\n")
 	}
-	builder.WriteString("websocket.")
-	builder.WriteString(eventType)
-	builder.WriteString("\n")
-	builder.Write(trimmedPayload)
-	builder.WriteString("\n")
+	appendWebsocketLogString(builder, "websocket.")
+	appendWebsocketLogString(builder, eventType)
+	appendWebsocketLogString(builder, "\n")
+	appendWebsocketLogBytes(builder, trimmedPayload)
+	appendWebsocketLogString(builder, "\n")
+}
+
+// appendWebsocketLogString writes s to builder without exceeding wsBodyLogMaxSize.
+func appendWebsocketLogString(builder *strings.Builder, s string) {
+	remaining := wsBodyLogMaxSize - builder.Len()
+	if remaining <= 0 {
+		return
+	}
+	if len(s) <= remaining {
+		builder.WriteString(s)
+	} else {
+		builder.WriteString(s[:remaining])
+		builder.WriteString(wsBodyLogTruncated)
+	}
+}
+
+// appendWebsocketLogBytes writes b to builder without exceeding wsBodyLogMaxSize.
+func appendWebsocketLogBytes(builder *strings.Builder, b []byte) {
+	remaining := wsBodyLogMaxSize - builder.Len()
+	if remaining <= 0 {
+		return
+	}
+	if len(b) <= remaining {
+		builder.Write(b)
+	} else {
+		builder.Write(b[:remaining])
+		builder.WriteString(wsBodyLogTruncated)
+	}
 }
 
 func websocketPayloadEventType(payload []byte) string {
