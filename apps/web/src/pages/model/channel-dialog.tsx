@@ -644,6 +644,8 @@ export default function ChannelDialog({
       32: t("typeLabels.32"),
       33: t("typeLabels.33"),
       34: t("typeLabels.34"),
+      35: t("typeLabels.35"),
+      36: t("typeLabels.36"),
     }),
     [t],
   )

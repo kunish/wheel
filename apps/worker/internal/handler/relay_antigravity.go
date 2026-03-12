@@ -1,5 +1,13 @@
 package handler
 
+// relay_antigravity.go is the main entry point for the Antigravity relay proxy.
+// It handles auth resolution, HTTP proxying, and delegates conversion to the
+// transformer files:
+//   - antigravity_types.go: Strongly-typed structs and constants
+//   - relay_antigravity_request.go: Anthropic → Gemini request conversion
+//   - relay_antigravity_response.go: Gemini → Anthropic non-streaming response conversion
+//   - relay_antigravity_stream.go: Gemini → Anthropic streaming response conversion
+
 import (
 	"bufio"
 	"bytes"
@@ -92,11 +100,13 @@ func (r *AntigravityRelay) ProxyNonStreaming(
 	model string,
 	body map[string]any,
 ) (*relay.ProxyResult, error) {
-	geminiBody := convertAnthropicToGemini(body, model)
-	envelope := buildAntigravityEnvelope(geminiBody, model, projectID)
+	// Use the new typed request transformer.
+	envelope := transformClaudeToGemini(body, model, projectID)
+	// The model may have been changed by web_search detection.
+	effectiveModel := envelope.Model
 	bodyJSON, _ := json.Marshal(envelope)
 
-	baseURL := antigravityBaseURL(model)
+	baseURL := antigravityBaseURL(effectiveModel)
 	url := baseURL + "/v1internal:generateContent"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyJSON))
 	if err != nil {
@@ -122,12 +132,8 @@ func (r *AntigravityRelay) ProxyNonStreaming(
 		}
 	}
 
-	var geminiResp map[string]any
-	if err := json.Unmarshal(respBytes, &geminiResp); err != nil {
-		return nil, &relay.ProxyError{Message: fmt.Sprintf("parse response: %v", err), StatusCode: http.StatusBadGateway}
-	}
-
-	anthropicResp, inputTokens, outputTokens := convertGeminiToAnthropic(geminiResp, model)
+	// Use the new typed response transformer.
+	anthropicResp, inputTokens, outputTokens := transformGeminiToClaudeResponse(respBytes, effectiveModel)
 
 	return &relay.ProxyResult{
 		Response:        anthropicResp,
@@ -140,7 +146,7 @@ func (r *AntigravityRelay) ProxyNonStreaming(
 
 // ProxyStreaming executes a streaming Antigravity API request.
 // Converts Anthropic request to Gemini format, streams the response,
-// and converts each SSE event back to Anthropic format.
+// and converts each SSE event back to Anthropic format using StreamingProcessor.
 func (r *AntigravityRelay) ProxyStreaming(
 	w http.ResponseWriter,
 	ctx context.Context,
@@ -150,11 +156,12 @@ func (r *AntigravityRelay) ProxyStreaming(
 	body map[string]any,
 	onContent relay.StreamContentCallback,
 ) (*relay.StreamCompleteInfo, error) {
-	geminiBody := convertAnthropicToGemini(body, model)
-	envelope := buildAntigravityEnvelope(geminiBody, model, projectID)
+	// Use the new typed request transformer.
+	envelope := transformClaudeToGemini(body, model, projectID)
+	effectiveModel := envelope.Model
 	bodyJSON, _ := json.Marshal(envelope)
 
-	baseURL := antigravityBaseURL(model)
+	baseURL := antigravityBaseURL(effectiveModel)
 	url := baseURL + "/v1internal:streamGenerateContent?alt=sse"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyJSON))
 	if err != nil {
@@ -183,32 +190,15 @@ func (r *AntigravityRelay) ProxyStreaming(
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 
-	flusher, _ := w.(http.Flusher)
-
-	// Send initial message_start event.
-	msgStartEvent := map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id":      fmt.Sprintf("msg_%d", time.Now().UnixNano()),
-			"type":    "message",
-			"role":    "assistant",
-			"model":   model,
-			"content": []any{},
-			"usage":   map[string]any{"input_tokens": 0, "output_tokens": 0},
-		},
-	}
-	writeAnthropicSSE(w, flusher, "message_start", msgStartEvent)
+	// Use the new StreamingProcessor state machine.
+	sp := NewStreamingProcessor(w, effectiveModel)
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 256*1024), 1024*1024)
 
-	var inputTokens, outputTokens int
 	var firstTokenTime int
 	started := time.Now()
 	firstTokenSent := false
-	var accContent, accThinking string
-	contentBlockIdx := 0
-	contentBlockStarted := false
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -218,157 +208,30 @@ func (r *AntigravityRelay) ProxyStreaming(
 		}
 		chunk := line[6:]
 
-		var geminiChunk map[string]any
-		if json.Unmarshal(chunk, &geminiChunk) != nil {
-			continue
-		}
-
 		// Track first token time.
 		if !firstTokenSent {
 			firstTokenTime = int(time.Since(started).Milliseconds())
 			firstTokenSent = true
 		}
 
-		// Extract usage metadata.
-		if usage, ok := geminiChunk["usageMetadata"].(map[string]any); ok {
-			inputTokens = toIntVal(usage["promptTokenCount"])
-			outputTokens = toIntVal(usage["candidatesTokenCount"])
-		}
-
-		// Process candidates.
-		candidates, _ := geminiChunk["candidates"].([]any)
-		if len(candidates) == 0 {
-			continue
-		}
-		candidate, _ := candidates[0].(map[string]any)
-		content, _ := candidate["content"].(map[string]any)
-		parts, _ := content["parts"].([]any)
-
-		for _, p := range parts {
-			part, ok := p.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			// Handle thought (thinking) parts.
-			if thought, ok := part["thought"].(bool); ok && thought {
-				if text, ok := part["text"].(string); ok && text != "" {
-					if !contentBlockStarted {
-						writeAnthropicSSE(w, flusher, "content_block_start", map[string]any{
-							"type":          "content_block_start",
-							"index":         contentBlockIdx,
-							"content_block": map[string]any{"type": "thinking", "thinking": ""},
-						})
-						contentBlockStarted = true
-					}
-					writeAnthropicSSE(w, flusher, "content_block_delta", map[string]any{
-						"type":  "content_block_delta",
-						"index": contentBlockIdx,
-						"delta": map[string]any{"type": "thinking_delta", "thinking": text},
-					})
-					accThinking += text
-				}
-				continue
-			}
-
-			// Handle text parts.
-			if text, ok := part["text"].(string); ok && text != "" {
-				// Close thinking block if it was open.
-				if contentBlockStarted {
-					writeAnthropicSSE(w, flusher, "content_block_stop", map[string]any{
-						"type":  "content_block_stop",
-						"index": contentBlockIdx,
-					})
-					contentBlockIdx++
-					contentBlockStarted = false
-				}
-				// Start text block if needed.
-				if !contentBlockStarted {
-					writeAnthropicSSE(w, flusher, "content_block_start", map[string]any{
-						"type":          "content_block_start",
-						"index":         contentBlockIdx,
-						"content_block": map[string]any{"type": "text", "text": ""},
-					})
-					contentBlockStarted = true
-				}
-				writeAnthropicSSE(w, flusher, "content_block_delta", map[string]any{
-					"type":  "content_block_delta",
-					"index": contentBlockIdx,
-					"delta": map[string]any{"type": "text_delta", "text": text},
-				})
-				accContent += text
-			}
-
-			// Handle function calls.
-			if fc, ok := part["functionCall"].(map[string]any); ok {
-				if contentBlockStarted {
-					writeAnthropicSSE(w, flusher, "content_block_stop", map[string]any{
-						"type":  "content_block_stop",
-						"index": contentBlockIdx,
-					})
-					contentBlockIdx++
-					contentBlockStarted = false
-				}
-				fcName, _ := fc["name"].(string)
-				fcArgs, _ := fc["args"].(map[string]any)
-				fcID := fmt.Sprintf("toolu_%d", contentBlockIdx)
-				writeAnthropicSSE(w, flusher, "content_block_start", map[string]any{
-					"type":  "content_block_start",
-					"index": contentBlockIdx,
-					"content_block": map[string]any{
-						"type":  "tool_use",
-						"id":    fcID,
-						"name":  fcName,
-						"input": map[string]any{},
-					},
-				})
-				argsJSON, _ := json.Marshal(fcArgs)
-				writeAnthropicSSE(w, flusher, "content_block_delta", map[string]any{
-					"type":  "content_block_delta",
-					"index": contentBlockIdx,
-					"delta": map[string]any{
-						"type":         "input_json_delta",
-						"partial_json": string(argsJSON),
-					},
-				})
-				writeAnthropicSSE(w, flusher, "content_block_stop", map[string]any{
-					"type":  "content_block_stop",
-					"index": contentBlockIdx,
-				})
-				contentBlockIdx++
-			}
-		}
+		// Delegate to the StreamingProcessor.
+		sp.ProcessChunk(chunk)
 	}
 	_ = resp.Body.Close()
 
-	// Close any open content block.
-	if contentBlockStarted {
-		writeAnthropicSSE(w, flusher, "content_block_stop", map[string]any{
-			"type":  "content_block_stop",
-			"index": contentBlockIdx,
-		})
-	}
-
-	// Send message_delta and message_stop.
-	writeAnthropicSSE(w, flusher, "message_delta", map[string]any{
-		"type":  "message_delta",
-		"delta": map[string]any{"stop_reason": "end_turn"},
-		"usage": map[string]any{"output_tokens": outputTokens},
-	})
-	writeAnthropicSSE(w, flusher, "message_stop", map[string]any{
-		"type": "message_stop",
-	})
+	// Finalize the stream.
+	inputTokens, outputTokens := sp.Finish()
 
 	if onContent != nil {
-		onContent(accThinking, accContent)
+		onContent(sp.AccThinking(), sp.AccText())
 	}
 
 	return &relay.StreamCompleteInfo{
 		InputTokens:     inputTokens,
 		OutputTokens:    outputTokens,
 		FirstTokenTime:  firstTokenTime,
-		ResponseContent: accContent,
-		ThinkingContent: accThinking,
+		ResponseContent: sp.AccText(),
+		ThinkingContent: sp.AccThinking(),
 		UpstreamHeaders: resp.Header.Clone(),
 	}, nil
 }
@@ -395,186 +258,6 @@ func applyAntigravityHeaders(r *http.Request, accessToken, baseURL string) {
 	r.Header.Set("Host", host)
 }
 
-// buildAntigravityEnvelope wraps a Gemini request body in the Antigravity envelope format.
-func buildAntigravityEnvelope(geminiBody map[string]any, model, projectID string) map[string]any {
-	sessionID := fmt.Sprintf("sess-%d", time.Now().UnixNano())
-	requestID := fmt.Sprintf("req-%d", time.Now().UnixNano())
-
-	if projectID == "" {
-		projectID = "ag-default"
-	}
-
-	return map[string]any{
-		"project":   projectID,
-		"requestId": requestID,
-		"model":     model,
-		"userAgent": "antigravity",
-		"request":   geminiBody,
-		"sessionId": sessionID,
-	}
-}
-
-// ──────────────────────────────────────────────────────────────
-// Anthropic → Gemini request conversion
-// ──────────────────────────────────────────────────────────────
-
-// convertAnthropicToGemini converts an Anthropic Messages API request body
-// to the Gemini generateContent format used by Antigravity.
-func convertAnthropicToGemini(body map[string]any, model string) map[string]any {
-	result := map[string]any{}
-
-	// Convert messages to Gemini contents.
-	messages, _ := body["messages"].([]any)
-	var contents []any
-	for _, m := range messages {
-		msg, ok := m.(map[string]any)
-		if !ok {
-			continue
-		}
-		role, _ := msg["role"].(string)
-		geminiRole := "user"
-		if role == "assistant" {
-			geminiRole = "model"
-		}
-
-		parts := convertAnthropicContentToGeminiParts(msg["content"], role)
-		if len(parts) > 0 {
-			contents = append(contents, map[string]any{
-				"role":  geminiRole,
-				"parts": parts,
-			})
-		}
-	}
-	result["contents"] = contents
-
-	// System instruction.
-	if sys := body["system"]; sys != nil {
-		sysText := extractSystemText(sys)
-		if sysText != "" {
-			result["systemInstruction"] = map[string]any{
-				"parts": []any{map[string]any{"text": sysText}},
-			}
-		}
-	}
-
-	// Generation config.
-	genConfig := map[string]any{}
-	if t, ok := body["temperature"]; ok {
-		genConfig["temperature"] = t
-	}
-	if tp, ok := body["top_p"]; ok {
-		genConfig["topP"] = tp
-	}
-	if mt, ok := body["max_tokens"]; ok {
-		genConfig["maxOutputTokens"] = mt
-	}
-	if ss, ok := body["stop_sequences"]; ok {
-		genConfig["stopSequences"] = ss
-	}
-
-	// Thinking config from Anthropic thinking parameter.
-	if thinking, ok := body["thinking"].(map[string]any); ok {
-		if thinkType, _ := thinking["type"].(string); thinkType == "enabled" {
-			budget := toIntVal(thinking["budget_tokens"])
-			if budget > 0 {
-				genConfig["thinkingConfig"] = map[string]any{
-					"thinkingBudget":  budget,
-					"includeThoughts": true,
-				}
-			}
-		}
-	}
-
-	if len(genConfig) > 0 {
-		result["generationConfig"] = genConfig
-	}
-
-	// Convert tools.
-	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
-		result["tools"] = convertAnthropicToolsToGemini(tools)
-	}
-
-	// Tool choice / tool config.
-	if tc := body["tool_choice"]; tc != nil {
-		result["toolConfig"] = convertAnthropicToolChoiceToGemini(tc)
-	}
-
-	return result
-}
-
-// convertAnthropicContentToGeminiParts converts Anthropic message content to Gemini parts.
-func convertAnthropicContentToGeminiParts(content any, role string) []any {
-	// Simple string content.
-	if s, ok := content.(string); ok {
-		return []any{map[string]any{"text": s}}
-	}
-
-	blocks, ok := content.([]any)
-	if !ok {
-		return nil
-	}
-
-	var parts []any
-	for _, b := range blocks {
-		blk, ok := b.(map[string]any)
-		if !ok {
-			continue
-		}
-		bType, _ := blk["type"].(string)
-		switch bType {
-		case "text":
-			if t, ok := blk["text"].(string); ok {
-				parts = append(parts, map[string]any{"text": t})
-			}
-		case "thinking":
-			if t, ok := blk["thinking"].(string); ok {
-				part := map[string]any{"text": t, "thought": true}
-				if sig, ok := blk["signature"].(string); ok {
-					part["thoughtSignature"] = sig
-				}
-				parts = append(parts, part)
-			}
-		case "tool_use":
-			name, _ := blk["name"].(string)
-			input, _ := blk["input"].(map[string]any)
-			if input == nil {
-				input = map[string]any{}
-			}
-			part := map[string]any{
-				"functionCall": map[string]any{
-					"name": name,
-					"args": input,
-				},
-			}
-			parts = append(parts, part)
-		case "tool_result":
-			toolUseID, _ := blk["tool_use_id"].(string)
-			resultContent := extractToolResultContent(blk["content"])
-			parts = append(parts, map[string]any{
-				"functionResponse": map[string]any{
-					"id":   toolUseID,
-					"name": toolUseID, // Gemini expects name, use ID as fallback
-					"response": map[string]any{
-						"output": resultContent,
-					},
-				},
-			})
-		case "image":
-			if src, ok := blk["source"].(map[string]any); ok {
-				mediaType, _ := src["media_type"].(string)
-				data, _ := src["data"].(string)
-				parts = append(parts, map[string]any{
-					"inlineData": map[string]any{
-						"mimeType": mediaType,
-						"data":     data,
-					},
-				})
-			}
-		}
-	}
-	return parts
-}
-
 // extractSystemText extracts system text from various Anthropic system formats.
 func extractSystemText(sys any) string {
 	if s, ok := sys.(string); ok {
@@ -593,162 +276,6 @@ func extractSystemText(sys any) string {
 	}
 	b, _ := json.Marshal(sys)
 	return string(b)
-}
-
-// extractToolResultContent extracts text from tool_result content.
-func extractToolResultContent(content any) string {
-	if s, ok := content.(string); ok {
-		return s
-	}
-	if blocks, ok := content.([]any); ok {
-		var texts []string
-		for _, b := range blocks {
-			if m, ok := b.(map[string]any); ok {
-				if t, ok := m["text"].(string); ok {
-					texts = append(texts, t)
-				}
-			}
-		}
-		return strings.Join(texts, "")
-	}
-	if content != nil {
-		b, _ := json.Marshal(content)
-		return string(b)
-	}
-	return ""
-}
-
-// convertAnthropicToolsToGemini converts Anthropic tools to Gemini function declarations.
-func convertAnthropicToolsToGemini(tools []any) []any {
-	var declarations []any
-	for _, t := range tools {
-		tool, ok := t.(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := tool["name"].(string)
-		desc, _ := tool["description"].(string)
-		schema := tool["input_schema"]
-		if schema == nil {
-			schema = map[string]any{"type": "object", "properties": map[string]any{}}
-		}
-		declarations = append(declarations, map[string]any{
-			"name":                 name,
-			"description":          desc,
-			"parametersJsonSchema": schema,
-		})
-	}
-	return []any{map[string]any{"functionDeclarations": declarations}}
-}
-
-// convertAnthropicToolChoiceToGemini converts Anthropic tool_choice to Gemini toolConfig.
-func convertAnthropicToolChoiceToGemini(tc any) map[string]any {
-	if s, ok := tc.(string); ok {
-		switch s {
-		case "auto":
-			return map[string]any{"functionCallingConfig": map[string]any{"mode": "AUTO"}}
-		case "any":
-			return map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY"}}
-		case "none":
-			return map[string]any{"functionCallingConfig": map[string]any{"mode": "NONE"}}
-		}
-	}
-	if m, ok := tc.(map[string]any); ok {
-		tcType, _ := m["type"].(string)
-		switch tcType {
-		case "auto":
-			return map[string]any{"functionCallingConfig": map[string]any{"mode": "AUTO"}}
-		case "any":
-			return map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY"}}
-		case "none":
-			return map[string]any{"functionCallingConfig": map[string]any{"mode": "NONE"}}
-		case "tool":
-			name, _ := m["name"].(string)
-			return map[string]any{"functionCallingConfig": map[string]any{
-				"mode":                 "ANY",
-				"allowedFunctionNames": []string{name},
-			}}
-		}
-	}
-	return map[string]any{"functionCallingConfig": map[string]any{"mode": "AUTO"}}
-}
-
-// ──────────────────────────────────────────────────────────────
-// Gemini → Anthropic response conversion
-// ──────────────────────────────────────────────────────────────
-
-// convertGeminiToAnthropic converts a Gemini response to Anthropic Messages format.
-func convertGeminiToAnthropic(geminiResp map[string]any, model string) (map[string]any, int, int) {
-	var contentBlocks []any
-	var inputTokens, outputTokens int
-
-	// Extract usage.
-	if usage, ok := geminiResp["usageMetadata"].(map[string]any); ok {
-		inputTokens = toIntVal(usage["promptTokenCount"])
-		outputTokens = toIntVal(usage["candidatesTokenCount"])
-	}
-
-	// Extract content from candidates.
-	candidates, _ := geminiResp["candidates"].([]any)
-	if len(candidates) > 0 {
-		candidate, _ := candidates[0].(map[string]any)
-		content, _ := candidate["content"].(map[string]any)
-		parts, _ := content["parts"].([]any)
-
-		for _, p := range parts {
-			part, ok := p.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			if thought, ok := part["thought"].(bool); ok && thought {
-				if text, ok := part["text"].(string); ok {
-					block := map[string]any{"type": "thinking", "thinking": text}
-					if sig, ok := part["thoughtSignature"].(string); ok {
-						block["signature"] = sig
-					}
-					contentBlocks = append(contentBlocks, block)
-				}
-				continue
-			}
-
-			if text, ok := part["text"].(string); ok {
-				contentBlocks = append(contentBlocks, map[string]any{
-					"type": "text",
-					"text": text,
-				})
-			}
-
-			if fc, ok := part["functionCall"].(map[string]any); ok {
-				fcName, _ := fc["name"].(string)
-				fcArgs, _ := fc["args"].(map[string]any)
-				contentBlocks = append(contentBlocks, map[string]any{
-					"type":  "tool_use",
-					"id":    fmt.Sprintf("toolu_%d", len(contentBlocks)),
-					"name":  fcName,
-					"input": fcArgs,
-				})
-			}
-		}
-	}
-
-	if len(contentBlocks) == 0 {
-		contentBlocks = []any{map[string]any{"type": "text", "text": ""}}
-	}
-
-	return map[string]any{
-		"id":            fmt.Sprintf("msg_%d", time.Now().UnixNano()),
-		"type":          "message",
-		"role":          "assistant",
-		"model":         model,
-		"content":       contentBlocks,
-		"stop_reason":   "end_turn",
-		"stop_sequence": nil,
-		"usage": map[string]any{
-			"input_tokens":  inputTokens,
-			"output_tokens": outputTokens,
-		},
-	}, inputTokens, outputTokens
 }
 
 // ──────────────────────────────────────────────────────────────

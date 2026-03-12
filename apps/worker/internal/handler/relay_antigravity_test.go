@@ -73,43 +73,41 @@ func TestApplyAntigravityHeaders(t *testing.T) {
 	}
 }
 
-func TestBuildAntigravityEnvelope(t *testing.T) {
+func TestTransformClaudeToGemini_Envelope(t *testing.T) {
 	t.Parallel()
 
-	geminiBody := map[string]any{
-		"contents": []any{
-			map[string]any{"role": "user", "parts": []any{map[string]any{"text": "hello"}}},
-		},
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
 
-	envelope := buildAntigravityEnvelope(geminiBody, "gemini-2.5-flash", "project-123")
+	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "project-123")
 
-	if envelope["project"] != "project-123" {
-		t.Errorf("project = %v, want project-123", envelope["project"])
+	if envelope.Project != "project-123" {
+		t.Errorf("project = %v, want project-123", envelope.Project)
 	}
-	if envelope["model"] != "gemini-2.5-flash" {
-		t.Errorf("model = %v, want gemini-2.5-flash", envelope["model"])
+	if envelope.Model != "gemini-2.5-flash" {
+		t.Errorf("model = %v, want gemini-2.5-flash", envelope.Model)
 	}
-	if envelope["userAgent"] != "antigravity" {
-		t.Errorf("userAgent = %v, want antigravity", envelope["userAgent"])
+	if envelope.UserAgent != "antigravity" {
+		t.Errorf("userAgent = %v, want antigravity", envelope.UserAgent)
 	}
-	if envelope["request"] == nil {
-		t.Error("request should not be nil")
+	if envelope.RequestID == "" {
+		t.Error("requestId should not be empty")
 	}
-	if envelope["requestId"] == nil {
-		t.Error("requestId should not be nil")
-	}
-	if envelope["sessionId"] == nil {
-		t.Error("sessionId should not be nil")
+	if envelope.SessionID == "" {
+		t.Error("sessionId should not be empty")
 	}
 }
 
-func TestBuildAntigravityEnvelope_DefaultProjectID(t *testing.T) {
+func TestTransformClaudeToGemini_DefaultProjectID(t *testing.T) {
 	t.Parallel()
 
-	envelope := buildAntigravityEnvelope(map[string]any{}, "gemini-3-flash", "")
-	if envelope["project"] != "ag-default" {
-		t.Errorf("project = %v, want ag-default when projectID is empty", envelope["project"])
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	}
+	envelope := transformClaudeToGemini(body, "gemini-3-flash", "")
+	if envelope.Project != "ag-default" {
+		t.Errorf("project = %v, want ag-default when projectID is empty", envelope.Project)
 	}
 }
 
@@ -117,7 +115,7 @@ func TestBuildAntigravityEnvelope_DefaultProjectID(t *testing.T) {
 // Anthropic → Gemini conversion tests
 // ──────────────────────────────────────────────────────────────
 
-func TestConvertAnthropicToGemini_BasicMessages(t *testing.T) {
+func TestTransformClaudeToGemini_BasicMessages(t *testing.T) {
 	t.Parallel()
 
 	body := map[string]any{
@@ -130,54 +128,54 @@ func TestConvertAnthropicToGemini_BasicMessages(t *testing.T) {
 		},
 	}
 
-	result := convertAnthropicToGemini(body, "gemini-2.5-flash")
+	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
+	contents := envelope.Request.Contents
 
-	contents, ok := result["contents"].([]any)
-	if !ok {
-		t.Fatal("contents is not []any")
-	}
 	if len(contents) != 3 {
 		t.Fatalf("expected 3 contents, got %d", len(contents))
 	}
 
 	// Verify role mapping.
-	c0, _ := contents[0].(map[string]any)
-	if c0["role"] != "user" {
-		t.Errorf("contents[0].role = %v, want user", c0["role"])
+	if contents[0].Role != "user" {
+		t.Errorf("contents[0].role = %v, want user", contents[0].Role)
 	}
-	c1, _ := contents[1].(map[string]any)
-	if c1["role"] != "model" {
-		t.Errorf("contents[1].role = %v, want model (mapped from assistant)", c1["role"])
+	if contents[1].Role != "model" {
+		t.Errorf("contents[1].role = %v, want model (mapped from assistant)", contents[1].Role)
 	}
 
 	// Verify generation config.
-	genConfig, _ := result["generationConfig"].(map[string]any)
-	if genConfig["maxOutputTokens"] != float64(1024) {
-		t.Errorf("maxOutputTokens = %v, want 1024", genConfig["maxOutputTokens"])
+	if envelope.Request.GenerationConfig == nil {
+		t.Fatal("generationConfig should not be nil")
+	}
+	if envelope.Request.GenerationConfig.MaxOutputTokens != 1024 {
+		t.Errorf("maxOutputTokens = %v, want 1024", envelope.Request.GenerationConfig.MaxOutputTokens)
 	}
 }
 
-func TestConvertAnthropicToGemini_SystemInstruction(t *testing.T) {
+func TestTransformClaudeToGemini_SystemInstruction(t *testing.T) {
 	t.Parallel()
 
-	t.Run("string system", func(t *testing.T) {
+	t.Run("string system with identity patch", func(t *testing.T) {
 		t.Parallel()
 		body := map[string]any{
 			"system":   "You are a helpful assistant.",
 			"messages": []any{map[string]any{"role": "user", "content": "hi"}},
 		}
-		result := convertAnthropicToGemini(body, "gemini-2.5-flash")
-		sysInst, ok := result["systemInstruction"].(map[string]any)
-		if !ok {
+		envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
+		sysInst := envelope.Request.SystemInstruction
+		if sysInst == nil {
 			t.Fatal("systemInstruction missing")
 		}
-		parts, _ := sysInst["parts"].([]any)
-		if len(parts) != 1 {
-			t.Fatalf("expected 1 system part, got %d", len(parts))
+		if len(sysInst.Parts) != 1 {
+			t.Fatalf("expected 1 system part, got %d", len(sysInst.Parts))
 		}
-		part0, _ := parts[0].(map[string]any)
-		if part0["text"] != "You are a helpful assistant." {
-			t.Errorf("system text = %v, want 'You are a helpful assistant.'", part0["text"])
+		sysText := sysInst.Parts[0].Text
+		// Should contain the identity patch AND the original system text.
+		if !strings.Contains(sysText, identityPatchText) {
+			t.Error("system text should contain identity patch")
+		}
+		if !strings.Contains(sysText, "You are a helpful assistant.") {
+			t.Error("system text should contain original system instruction")
 		}
 	})
 
@@ -190,17 +188,16 @@ func TestConvertAnthropicToGemini_SystemInstruction(t *testing.T) {
 			},
 			"messages": []any{map[string]any{"role": "user", "content": "hi"}},
 		}
-		result := convertAnthropicToGemini(body, "gemini-2.5-flash")
-		sysInst, _ := result["systemInstruction"].(map[string]any)
-		parts, _ := sysInst["parts"].([]any)
-		part0, _ := parts[0].(map[string]any)
-		if part0["text"] != "First.\nSecond." {
-			t.Errorf("system text = %q, want 'First.\\nSecond.'", part0["text"])
+		envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
+		sysInst := envelope.Request.SystemInstruction
+		sysText := sysInst.Parts[0].Text
+		if !strings.Contains(sysText, "First.\nSecond.") {
+			t.Errorf("system text should contain 'First.\\nSecond.', got %q", sysText)
 		}
 	})
 }
 
-func TestConvertAnthropicToGemini_GenerationConfig(t *testing.T) {
+func TestTransformClaudeToGemini_GenerationConfig(t *testing.T) {
 	t.Parallel()
 
 	body := map[string]any{
@@ -211,21 +208,21 @@ func TestConvertAnthropicToGemini_GenerationConfig(t *testing.T) {
 		"messages":       []any{map[string]any{"role": "user", "content": "hi"}},
 	}
 
-	result := convertAnthropicToGemini(body, "gemini-2.5-flash")
-	genConfig, _ := result["generationConfig"].(map[string]any)
+	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
+	gc := envelope.Request.GenerationConfig
 
-	if genConfig["temperature"] != float64(0.7) {
-		t.Errorf("temperature = %v, want 0.7", genConfig["temperature"])
+	if gc.Temperature == nil || *gc.Temperature != 0.7 {
+		t.Errorf("temperature = %v, want 0.7", gc.Temperature)
 	}
-	if genConfig["topP"] != float64(0.95) {
-		t.Errorf("topP = %v, want 0.95", genConfig["topP"])
+	if gc.TopP == nil || *gc.TopP != 0.95 {
+		t.Errorf("topP = %v, want 0.95", gc.TopP)
 	}
-	if genConfig["maxOutputTokens"] != float64(2048) {
-		t.Errorf("maxOutputTokens = %v, want 2048", genConfig["maxOutputTokens"])
+	if gc.MaxOutputTokens != 2048 {
+		t.Errorf("maxOutputTokens = %v, want 2048", gc.MaxOutputTokens)
 	}
 }
 
-func TestConvertAnthropicToGemini_ThinkingConfig(t *testing.T) {
+func TestTransformClaudeToGemini_ThinkingConfig(t *testing.T) {
 	t.Parallel()
 
 	body := map[string]any{
@@ -236,33 +233,34 @@ func TestConvertAnthropicToGemini_ThinkingConfig(t *testing.T) {
 		"messages": []any{map[string]any{"role": "user", "content": "think about this"}},
 	}
 
-	result := convertAnthropicToGemini(body, "gemini-2.5-flash")
-	genConfig, _ := result["generationConfig"].(map[string]any)
-	thinkingConfig, _ := genConfig["thinkingConfig"].(map[string]any)
-
-	if thinkingConfig["thinkingBudget"] != 8192 {
-		t.Errorf("thinkingBudget = %v, want 8192", thinkingConfig["thinkingBudget"])
+	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
+	gc := envelope.Request.GenerationConfig
+	if gc.ThinkingConfig == nil {
+		t.Fatal("thinkingConfig should not be nil")
 	}
-	if thinkingConfig["includeThoughts"] != true {
-		t.Errorf("includeThoughts = %v, want true", thinkingConfig["includeThoughts"])
+
+	if gc.ThinkingConfig.ThinkingBudget != 8192 {
+		t.Errorf("thinkingBudget = %v, want 8192", gc.ThinkingConfig.ThinkingBudget)
+	}
+	if gc.ThinkingConfig.IncludeThoughts != true {
+		t.Errorf("includeThoughts = %v, want true", gc.ThinkingConfig.IncludeThoughts)
 	}
 }
 
-func TestConvertAnthropicContentToGeminiParts_TextContent(t *testing.T) {
+func TestConvertContentToParts_TextContent(t *testing.T) {
 	t.Parallel()
 
 	// String content.
-	parts := convertAnthropicContentToGeminiParts("hello world", "user")
+	parts := convertContentToParts("hello world", "user", true, nil)
 	if len(parts) != 1 {
 		t.Fatalf("expected 1 part, got %d", len(parts))
 	}
-	part0, _ := parts[0].(map[string]any)
-	if part0["text"] != "hello world" {
-		t.Errorf("text = %v, want 'hello world'", part0["text"])
+	if parts[0].Text != "hello world" {
+		t.Errorf("text = %v, want 'hello world'", parts[0].Text)
 	}
 }
 
-func TestConvertAnthropicContentToGeminiParts_ThinkingBlock(t *testing.T) {
+func TestConvertContentToParts_ThinkingBlock(t *testing.T) {
 	t.Parallel()
 
 	content := []any{
@@ -272,24 +270,30 @@ func TestConvertAnthropicContentToGeminiParts_ThinkingBlock(t *testing.T) {
 			"signature": "sig123",
 		},
 	}
-	parts := convertAnthropicContentToGeminiParts(content, "assistant")
+	// Gemini model: should use dummy signature.
+	parts := convertContentToParts(content, "assistant", true, nil)
 
 	if len(parts) != 1 {
 		t.Fatalf("expected 1 part, got %d", len(parts))
 	}
-	p, _ := parts[0].(map[string]any)
-	if p["thought"] != true {
-		t.Errorf("thought = %v, want true", p["thought"])
+	if parts[0].Thought == nil || !*parts[0].Thought {
+		t.Error("thought should be true")
 	}
-	if p["text"] != "Let me think..." {
-		t.Errorf("text = %v, want 'Let me think...'", p["text"])
+	if parts[0].Text != "Let me think..." {
+		t.Errorf("text = %v, want 'Let me think...'", parts[0].Text)
 	}
-	if p["thoughtSignature"] != "sig123" {
-		t.Errorf("thoughtSignature = %v, want sig123", p["thoughtSignature"])
+	if parts[0].ThoughtSignature != DummyThoughtSignature {
+		t.Errorf("thoughtSignature = %v, want dummy for Gemini model", parts[0].ThoughtSignature)
+	}
+
+	// Claude model: should pass through real signature.
+	partsClaude := convertContentToParts(content, "assistant", false, nil)
+	if partsClaude[0].ThoughtSignature != "sig123" {
+		t.Errorf("thoughtSignature = %v, want sig123 for Claude model", partsClaude[0].ThoughtSignature)
 	}
 }
 
-func TestConvertAnthropicContentToGeminiParts_ToolUse(t *testing.T) {
+func TestConvertContentToParts_ToolUse(t *testing.T) {
 	t.Parallel()
 
 	content := []any{
@@ -299,25 +303,26 @@ func TestConvertAnthropicContentToGeminiParts_ToolUse(t *testing.T) {
 			"input": map[string]any{"city": "Tokyo"},
 		},
 	}
-	parts := convertAnthropicContentToGeminiParts(content, "assistant")
+	parts := convertContentToParts(content, "assistant", true, nil)
 
 	if len(parts) != 1 {
 		t.Fatalf("expected 1 part, got %d", len(parts))
 	}
-	fc, _ := parts[0].(map[string]any)
-	funcCall, _ := fc["functionCall"].(map[string]any)
-	if funcCall["name"] != "get_weather" {
-		t.Errorf("functionCall.name = %v, want get_weather", funcCall["name"])
+	if parts[0].FunctionCall == nil {
+		t.Fatal("functionCall should not be nil")
 	}
-	args, _ := funcCall["args"].(map[string]any)
-	if args["city"] != "Tokyo" {
-		t.Errorf("functionCall.args.city = %v, want Tokyo", args["city"])
+	if parts[0].FunctionCall.Name != "get_weather" {
+		t.Errorf("functionCall.name = %v, want get_weather", parts[0].FunctionCall.Name)
+	}
+	if parts[0].FunctionCall.Args["city"] != "Tokyo" {
+		t.Errorf("functionCall.args.city = %v, want Tokyo", parts[0].FunctionCall.Args["city"])
 	}
 }
 
-func TestConvertAnthropicContentToGeminiParts_ToolResult(t *testing.T) {
+func TestConvertContentToParts_ToolResult(t *testing.T) {
 	t.Parallel()
 
+	toolIDToName := map[string]string{"toolu_123": "get_weather"}
 	content := []any{
 		map[string]any{
 			"type":        "tool_result",
@@ -325,23 +330,24 @@ func TestConvertAnthropicContentToGeminiParts_ToolResult(t *testing.T) {
 			"content":     "Sunny, 25°C",
 		},
 	}
-	parts := convertAnthropicContentToGeminiParts(content, "user")
+	parts := convertContentToParts(content, "user", true, toolIDToName)
 
 	if len(parts) != 1 {
 		t.Fatalf("expected 1 part, got %d", len(parts))
 	}
-	fr, _ := parts[0].(map[string]any)
-	funcResp, _ := fr["functionResponse"].(map[string]any)
-	if funcResp["id"] != "toolu_123" {
-		t.Errorf("functionResponse.id = %v, want toolu_123", funcResp["id"])
+	if parts[0].FunctionResponse == nil {
+		t.Fatal("functionResponse should not be nil")
 	}
-	response, _ := funcResp["response"].(map[string]any)
-	if response["output"] != "Sunny, 25°C" {
-		t.Errorf("functionResponse.response.output = %v, want 'Sunny, 25°C'", response["output"])
+	// Should resolve name from the ID→name map.
+	if parts[0].FunctionResponse.Name != "get_weather" {
+		t.Errorf("functionResponse.name = %v, want get_weather (resolved from map)", parts[0].FunctionResponse.Name)
+	}
+	if parts[0].FunctionResponse.Response["output"] != "Sunny, 25°C" {
+		t.Errorf("functionResponse.response.output = %v, want 'Sunny, 25°C'", parts[0].FunctionResponse.Response["output"])
 	}
 }
 
-func TestConvertAnthropicContentToGeminiParts_Image(t *testing.T) {
+func TestConvertContentToParts_Image(t *testing.T) {
 	t.Parallel()
 
 	content := []any{
@@ -354,65 +360,58 @@ func TestConvertAnthropicContentToGeminiParts_Image(t *testing.T) {
 			},
 		},
 	}
-	parts := convertAnthropicContentToGeminiParts(content, "user")
+	parts := convertContentToParts(content, "user", true, nil)
 
 	if len(parts) != 1 {
 		t.Fatalf("expected 1 part, got %d", len(parts))
 	}
-	p, _ := parts[0].(map[string]any)
-	inlineData, _ := p["inlineData"].(map[string]any)
-	if inlineData["mimeType"] != "image/png" {
-		t.Errorf("mimeType = %v, want image/png", inlineData["mimeType"])
+	if parts[0].InlineData == nil {
+		t.Fatal("inlineData should not be nil")
 	}
-	if inlineData["data"] != "iVBORw0KGgo=" {
-		t.Errorf("data = %v, want iVBORw0KGgo=", inlineData["data"])
+	if parts[0].InlineData.MimeType != "image/png" {
+		t.Errorf("mimeType = %v, want image/png", parts[0].InlineData.MimeType)
+	}
+	if parts[0].InlineData.Data != "iVBORw0KGgo=" {
+		t.Errorf("data = %v, want iVBORw0KGgo=", parts[0].InlineData.Data)
 	}
 }
 
-func TestConvertAnthropicToolsToGemini(t *testing.T) {
+func TestConvertToolsToGemini(t *testing.T) {
 	t.Parallel()
 
-	tools := []any{
-		map[string]any{
-			"name":        "get_weather",
-			"description": "Get weather for a city",
-			"input_schema": map[string]any{
+	tools := []ClaudeTool{
+		{
+			Name:        "get_weather",
+			Description: "Get weather for a city",
+			InputSchema: map[string]any{
 				"type":       "object",
 				"properties": map[string]any{"city": map[string]any{"type": "string"}},
 			},
 		},
-		map[string]any{
-			"name":        "search",
-			"description": "Search the web",
+		{
+			Name:        "search",
+			Description: "Search the web",
 		},
 	}
 
-	result := convertAnthropicToolsToGemini(tools)
+	result := convertToolsToGemini(tools, false)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 tool wrapper, got %d", len(result))
 	}
-	wrapper, _ := result[0].(map[string]any)
-	declarations, _ := wrapper["functionDeclarations"].([]any)
+	declarations := result[0].FunctionDeclarations
 	if len(declarations) != 2 {
 		t.Fatalf("expected 2 function declarations, got %d", len(declarations))
 	}
 
-	decl0, _ := declarations[0].(map[string]any)
-	if decl0["name"] != "get_weather" {
-		t.Errorf("declarations[0].name = %v, want get_weather", decl0["name"])
+	if declarations[0].Name != "get_weather" {
+		t.Errorf("declarations[0].name = %v, want get_weather", declarations[0].Name)
 	}
-	if decl0["description"] != "Get weather for a city" {
-		t.Errorf("declarations[0].description = %v", decl0["description"])
-	}
-
-	// Tool without input_schema should get default schema.
-	decl1, _ := declarations[1].(map[string]any)
-	if decl1["parametersJsonSchema"] == nil {
-		t.Error("declarations[1].parametersJsonSchema should have default schema")
+	if declarations[0].Description != "Get weather for a city" {
+		t.Errorf("declarations[0].description = %v", declarations[0].Description)
 	}
 }
 
-func TestConvertAnthropicToolChoiceToGemini(t *testing.T) {
+func TestBuildToolConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -426,31 +425,30 @@ func TestConvertAnthropicToolChoiceToGemini(t *testing.T) {
 		{"object auto", map[string]any{"type": "auto"}, "AUTO"},
 		{"object any", map[string]any{"type": "any"}, "ANY"},
 		{"object none", map[string]any{"type": "none"}, "NONE"},
+		{"nil default", nil, "VALIDATED"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := convertAnthropicToolChoiceToGemini(tt.in)
-			fcc, _ := result["functionCallingConfig"].(map[string]any)
-			if fcc["mode"] != tt.mode {
-				t.Errorf("mode = %v, want %v", fcc["mode"], tt.mode)
+			result := buildToolConfig(tt.in)
+			if result.FunctionCallingConfig.Mode != tt.mode {
+				t.Errorf("mode = %v, want %v", result.FunctionCallingConfig.Mode, tt.mode)
 			}
 		})
 	}
 }
 
-func TestConvertAnthropicToolChoiceToGemini_ToolType(t *testing.T) {
+func TestBuildToolConfig_ToolType(t *testing.T) {
 	t.Parallel()
 
-	result := convertAnthropicToolChoiceToGemini(map[string]any{"type": "tool", "name": "get_weather"})
-	fcc, _ := result["functionCallingConfig"].(map[string]any)
-	if fcc["mode"] != "ANY" {
-		t.Errorf("mode = %v, want ANY", fcc["mode"])
+	result := buildToolConfig(map[string]any{"type": "tool", "name": "get_weather"})
+	if result.FunctionCallingConfig.Mode != "ANY" {
+		t.Errorf("mode = %v, want ANY", result.FunctionCallingConfig.Mode)
 	}
-	allowed, ok := fcc["allowedFunctionNames"].([]string)
-	if !ok || len(allowed) != 1 || allowed[0] != "get_weather" {
-		t.Errorf("allowedFunctionNames = %v, want [get_weather]", fcc["allowedFunctionNames"])
+	allowed := result.FunctionCallingConfig.AllowedFunctionNames
+	if len(allowed) != 1 || allowed[0] != "get_weather" {
+		t.Errorf("allowedFunctionNames = %v, want [get_weather]", allowed)
 	}
 }
 
@@ -458,25 +456,27 @@ func TestConvertAnthropicToolChoiceToGemini_ToolType(t *testing.T) {
 // Gemini → Anthropic response conversion tests
 // ──────────────────────────────────────────────────────────────
 
-func TestConvertGeminiToAnthropic_BasicTextResponse(t *testing.T) {
+func TestTransformGeminiToClaudeResponse_BasicTextResponse(t *testing.T) {
 	t.Parallel()
 
-	geminiResp := map[string]any{
-		"candidates": []any{
-			map[string]any{
-				"content": map[string]any{
-					"role":  "model",
-					"parts": []any{map[string]any{"text": "Hello, world!"}},
+	geminiResp := GeminiResponse{
+		Candidates: []GeminiCandidate{
+			{
+				Content: &GeminiContent{
+					Role:  "model",
+					Parts: []GeminiPart{{Text: "Hello, world!"}},
 				},
+				FinishReason: "STOP",
 			},
 		},
-		"usageMetadata": map[string]any{
-			"promptTokenCount":     float64(10),
-			"candidatesTokenCount": float64(5),
+		UsageMetadata: &GeminiUsageMetadata{
+			PromptTokenCount:     10,
+			CandidatesTokenCount: 5,
 		},
 	}
+	respBytes, _ := json.Marshal(geminiResp)
 
-	result, inputTokens, outputTokens := convertGeminiToAnthropic(geminiResp, "gemini-2.5-flash")
+	result, inputTokens, outputTokens := transformGeminiToClaudeResponse(respBytes, "gemini-2.5-flash")
 
 	if result["type"] != "message" {
 		t.Errorf("type = %v, want message", result["type"])
@@ -510,35 +510,37 @@ func TestConvertGeminiToAnthropic_BasicTextResponse(t *testing.T) {
 	}
 }
 
-func TestConvertGeminiToAnthropic_ThinkingResponse(t *testing.T) {
+func TestTransformGeminiToClaudeResponse_ThinkingResponse(t *testing.T) {
 	t.Parallel()
 
-	geminiResp := map[string]any{
-		"candidates": []any{
-			map[string]any{
-				"content": map[string]any{
-					"role": "model",
-					"parts": []any{
-						map[string]any{"text": "Thinking...", "thought": true, "thoughtSignature": "sig-abc"},
-						map[string]any{"text": "The answer is 42."},
+	thought := true
+	geminiResp := GeminiResponse{
+		Candidates: []GeminiCandidate{
+			{
+				Content: &GeminiContent{
+					Role: "model",
+					Parts: []GeminiPart{
+						{Text: "Thinking...", Thought: &thought, ThoughtSignature: "sig-abc"},
+						{Text: "The answer is 42."},
 					},
 				},
 			},
 		},
-		"usageMetadata": map[string]any{
-			"promptTokenCount":     float64(20),
-			"candidatesTokenCount": float64(15),
+		UsageMetadata: &GeminiUsageMetadata{
+			PromptTokenCount:     20,
+			CandidatesTokenCount: 15,
 		},
 	}
+	respBytes, _ := json.Marshal(geminiResp)
 
-	result, _, _ := convertGeminiToAnthropic(geminiResp, "gemini-2.5-flash")
+	result, _, _ := transformGeminiToClaudeResponse(respBytes, "gemini-2.5-flash")
 	content, _ := result["content"].([]any)
 
 	if len(content) != 2 {
 		t.Fatalf("expected 2 content blocks, got %d", len(content))
 	}
 
-	// First block: thinking.
+	// First block: thinking (Gemini model → dummy signature).
 	thinking, _ := content[0].(map[string]any)
 	if thinking["type"] != "thinking" {
 		t.Errorf("block 0 type = %v, want thinking", thinking["type"])
@@ -546,8 +548,8 @@ func TestConvertGeminiToAnthropic_ThinkingResponse(t *testing.T) {
 	if thinking["thinking"] != "Thinking..." {
 		t.Errorf("block 0 thinking = %v, want 'Thinking...'", thinking["thinking"])
 	}
-	if thinking["signature"] != "sig-abc" {
-		t.Errorf("block 0 signature = %v, want sig-abc", thinking["signature"])
+	if thinking["signature"] != DummyThoughtSignature {
+		t.Errorf("block 0 signature = %v, want dummy for Gemini model", thinking["signature"])
 	}
 
 	// Second block: text.
@@ -560,32 +562,31 @@ func TestConvertGeminiToAnthropic_ThinkingResponse(t *testing.T) {
 	}
 }
 
-func TestConvertGeminiToAnthropic_FunctionCallResponse(t *testing.T) {
+func TestTransformGeminiToClaudeResponse_FunctionCallResponse(t *testing.T) {
 	t.Parallel()
 
-	geminiResp := map[string]any{
-		"candidates": []any{
-			map[string]any{
-				"content": map[string]any{
-					"role": "model",
-					"parts": []any{
-						map[string]any{
-							"functionCall": map[string]any{
-								"name": "get_weather",
-								"args": map[string]any{"city": "Tokyo"},
-							},
-						},
+	geminiResp := GeminiResponse{
+		Candidates: []GeminiCandidate{
+			{
+				Content: &GeminiContent{
+					Role: "model",
+					Parts: []GeminiPart{
+						{FunctionCall: &GeminiFunctionCall{
+							Name: "get_weather",
+							Args: map[string]any{"city": "Tokyo"},
+						}},
 					},
 				},
 			},
 		},
-		"usageMetadata": map[string]any{
-			"promptTokenCount":     float64(10),
-			"candidatesTokenCount": float64(5),
+		UsageMetadata: &GeminiUsageMetadata{
+			PromptTokenCount:     10,
+			CandidatesTokenCount: 5,
 		},
 	}
+	respBytes, _ := json.Marshal(geminiResp)
 
-	result, _, _ := convertGeminiToAnthropic(geminiResp, "gemini-2.5-flash")
+	result, _, _ := transformGeminiToClaudeResponse(respBytes, "gemini-2.5-flash")
 	content, _ := result["content"].([]any)
 
 	if len(content) != 1 {
@@ -606,16 +607,22 @@ func TestConvertGeminiToAnthropic_FunctionCallResponse(t *testing.T) {
 	if block["id"] == nil {
 		t.Error("block id should not be nil")
 	}
+
+	// stop_reason should be tool_use when function calls are present.
+	if result["stop_reason"] != "tool_use" {
+		t.Errorf("stop_reason = %v, want tool_use", result["stop_reason"])
+	}
 }
 
-func TestConvertGeminiToAnthropic_EmptyCandidates(t *testing.T) {
+func TestTransformGeminiToClaudeResponse_EmptyCandidates(t *testing.T) {
 	t.Parallel()
 
-	geminiResp := map[string]any{
-		"candidates": []any{},
+	geminiResp := GeminiResponse{
+		Candidates: []GeminiCandidate{},
 	}
+	respBytes, _ := json.Marshal(geminiResp)
 
-	result, _, _ := convertGeminiToAnthropic(geminiResp, "gemini-2.5-flash")
+	result, _, _ := transformGeminiToClaudeResponse(respBytes, "gemini-2.5-flash")
 	content, _ := result["content"].([]any)
 
 	// Should return a default empty text block.
@@ -654,12 +661,12 @@ func TestExtractSystemText(t *testing.T) {
 	})
 }
 
-func TestExtractToolResultContent(t *testing.T) {
+func TestExtractToolResultText(t *testing.T) {
 	t.Parallel()
 
 	t.Run("string content", func(t *testing.T) {
 		t.Parallel()
-		if got := extractToolResultContent("result text"); got != "result text" {
+		if got := extractToolResultText("result text", nil); got != "result text" {
 			t.Errorf("got %q, want 'result text'", got)
 		}
 	})
@@ -670,15 +677,23 @@ func TestExtractToolResultContent(t *testing.T) {
 			map[string]any{"text": "part1"},
 			map[string]any{"text": "part2"},
 		}
-		if got := extractToolResultContent(content); got != "part1part2" {
-			t.Errorf("got %q, want 'part1part2'", got)
+		if got := extractToolResultText(content, nil); got != "part1\npart2" {
+			t.Errorf("got %q, want 'part1\\npart2'", got)
 		}
 	})
 
-	t.Run("nil content", func(t *testing.T) {
+	t.Run("nil content no error", func(t *testing.T) {
 		t.Parallel()
-		if got := extractToolResultContent(nil); got != "" {
-			t.Errorf("got %q, want empty string", got)
+		if got := extractToolResultText(nil, nil); got != "Command executed successfully." {
+			t.Errorf("got %q, want fallback message", got)
+		}
+	})
+
+	t.Run("nil content with error", func(t *testing.T) {
+		t.Parallel()
+		isErr := true
+		if got := extractToolResultText(nil, &isErr); got != "Tool execution failed with no output." {
+			t.Errorf("got %q, want error fallback message", got)
 		}
 	})
 }
@@ -707,6 +722,326 @@ func TestWriteAnthropicSSE(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// New feature tests
+// ──────────────────────────────────────────────────────────────
+
+func TestGenerateStableSessionID(t *testing.T) {
+	t.Parallel()
+
+	msgs := []ClaudeMessage{
+		{Role: "user", Content: "hello world"},
+	}
+
+	id1 := generateStableSessionID(msgs)
+	id2 := generateStableSessionID(msgs)
+
+	if id1 != id2 {
+		t.Errorf("stable session IDs should match: %q != %q", id1, id2)
+	}
+	if len(id1) != 32 {
+		t.Errorf("session ID should be 32 hex chars, got %d: %q", len(id1), id1)
+	}
+}
+
+func TestInjectIdentityPatch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty system", func(t *testing.T) {
+		t.Parallel()
+		result := injectIdentityPatch("")
+		if !strings.Contains(result, identityPatchText) {
+			t.Error("should inject identity text")
+		}
+		if !strings.Contains(result, identityBoundaryStart) {
+			t.Error("should include boundary markers")
+		}
+	})
+
+	t.Run("already has identity", func(t *testing.T) {
+		t.Parallel()
+		result := injectIdentityPatch(identityPatchText + " already here")
+		if strings.Contains(result, identityBoundaryStart) {
+			t.Error("should not re-inject when identity text already present")
+		}
+	})
+
+	t.Run("prepends to existing", func(t *testing.T) {
+		t.Parallel()
+		result := injectIdentityPatch("Custom instructions here")
+		if !strings.HasPrefix(result, identityBoundaryStart) {
+			t.Error("identity patch should be prepended")
+		}
+		if !strings.Contains(result, "Custom instructions here") {
+			t.Error("original text should be preserved")
+		}
+	})
+}
+
+func TestDetectWebSearchTool(t *testing.T) {
+	t.Parallel()
+
+	tools := []ClaudeTool{
+		{Name: "get_weather"},
+		{Name: "web_search"},
+	}
+	if !detectWebSearchTool(tools) {
+		t.Error("should detect web_search tool")
+	}
+
+	toolsNoSearch := []ClaudeTool{
+		{Name: "get_weather"},
+	}
+	if detectWebSearchTool(toolsNoSearch) {
+		t.Error("should not detect web_search when not present")
+	}
+}
+
+func TestDetectMCPTools(t *testing.T) {
+	t.Parallel()
+
+	tools := []ClaudeTool{
+		{Name: "mcp__server__tool"},
+	}
+	if !detectMCPTools(tools) {
+		t.Error("should detect MCP tools")
+	}
+
+	toolsNoMCP := []ClaudeTool{
+		{Name: "get_weather"},
+	}
+	if detectMCPTools(toolsNoMCP) {
+		t.Error("should not detect MCP tools when not present")
+	}
+}
+
+func TestDefaultSafetySettings(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
+
+	if len(envelope.Request.SafetySettings) != 5 {
+		t.Errorf("expected 5 safety settings, got %d", len(envelope.Request.SafetySettings))
+	}
+	for _, ss := range envelope.Request.SafetySettings {
+		if ss.Threshold != "OFF" {
+			t.Errorf("safety threshold = %v, want OFF for %v", ss.Threshold, ss.Category)
+		}
+	}
+}
+
+func TestDefaultStopSequences(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
+
+	gc := envelope.Request.GenerationConfig
+	if gc == nil {
+		t.Fatal("generationConfig should not be nil")
+	}
+	if len(gc.StopSequences) == 0 {
+		t.Error("should have default stop sequences")
+	}
+}
+
+func TestWebSearchModelFallback(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "search for something"}},
+		"tools": []any{
+			map[string]any{"name": "web_search", "description": "Web search"},
+		},
+	}
+	envelope := transformClaudeToGemini(body, "claude-sonnet-4-6", "test")
+
+	if envelope.Model != WebSearchFallbackModel {
+		t.Errorf("model = %v, want %v (web_search fallback)", envelope.Model, WebSearchFallbackModel)
+	}
+	if envelope.RequestType != "web_search" {
+		t.Errorf("requestType = %v, want web_search", envelope.RequestType)
+	}
+
+	// Should have googleSearch tool.
+	hasGoogleSearch := false
+	for _, tool := range envelope.Request.Tools {
+		if tool.GoogleSearch != nil {
+			hasGoogleSearch = true
+		}
+	}
+	if !hasGoogleSearch {
+		t.Error("should have googleSearch tool")
+	}
+}
+
+func TestMapFinishReason(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"STOP", "end_turn"},
+		{"MAX_TOKENS", "max_tokens"},
+		{"SAFETY", "end_turn"},
+		{"MALFORMED_FUNCTION_CALL", "end_turn"},
+		{"", "end_turn"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := mapFinishReason(tt.input); got != tt.want {
+				t.Errorf("mapFinishReason(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildGroundingText(t *testing.T) {
+	t.Parallel()
+
+	gm := &GeminiGroundingMetadata{
+		WebSearchQueries: []string{"test query"},
+		GroundingChunks: []GeminiGroundingChunk{
+			{Web: &GeminiGroundingWeb{URI: "https://example.com", Title: "Example"}},
+		},
+	}
+	text := buildGroundingText(gm)
+	if !strings.Contains(text, "**Sources:**") {
+		t.Error("should contain Sources header")
+	}
+	if !strings.Contains(text, "[Example](https://example.com)") {
+		t.Error("should contain markdown link")
+	}
+}
+
+func TestGenerateSecureID(t *testing.T) {
+	t.Parallel()
+
+	id := generateSecureID()
+	if len(id) != 24 { // 12 bytes = 24 hex chars
+		t.Errorf("secure ID should be 24 hex chars, got %d: %q", len(id), id)
+	}
+}
+
+func TestUsageCalculation(t *testing.T) {
+	t.Parallel()
+
+	usage := &GeminiUsageMetadata{
+		PromptTokenCount:        100,
+		CandidatesTokenCount:    50,
+		CachedContentTokenCount: 30,
+		ThoughtsTokenCount:      20,
+	}
+	inputTokens, outputTokens, cacheRead := extractUsageFromGemini(usage)
+	if inputTokens != 70 { // 100 - 30
+		t.Errorf("inputTokens = %d, want 70 (prompt - cached)", inputTokens)
+	}
+	if outputTokens != 70 { // 50 + 20
+		t.Errorf("outputTokens = %d, want 70 (candidates + thoughts)", outputTokens)
+	}
+	if cacheRead != 30 {
+		t.Errorf("cacheRead = %d, want 30", cacheRead)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────
+// Streaming processor tests
+// ──────────────────────────────────────────────────────────────
+
+func TestStreamingProcessor_BasicTextStream(t *testing.T) {
+	t.Parallel()
+
+	w := httptest.NewRecorder()
+	sp := NewStreamingProcessor(w, "gemini-2.5-flash")
+
+	// Process a text chunk.
+	chunk := GeminiResponse{
+		Candidates: []GeminiCandidate{
+			{Content: &GeminiContent{
+				Role:  "model",
+				Parts: []GeminiPart{{Text: "Hello!"}},
+			}},
+		},
+	}
+	chunkBytes, _ := json.Marshal(chunk)
+	sp.ProcessChunk(chunkBytes)
+
+	inputTokens, _ := sp.Finish()
+
+	body := w.Body.String()
+	if !strings.Contains(body, "message_start") {
+		t.Error("should contain message_start")
+	}
+	if !strings.Contains(body, "content_block_start") {
+		t.Error("should contain content_block_start")
+	}
+	if !strings.Contains(body, "Hello!") {
+		t.Error("should contain text content")
+	}
+	if !strings.Contains(body, "message_stop") {
+		t.Error("should contain message_stop")
+	}
+	if !strings.Contains(body, `"stop_reason":"end_turn"`) {
+		t.Error("should contain end_turn stop_reason")
+	}
+	if sp.AccText() != "Hello!" {
+		t.Errorf("AccText() = %q, want 'Hello!'", sp.AccText())
+	}
+	_ = inputTokens
+}
+
+func TestStreamingProcessor_ToolUseStopReason(t *testing.T) {
+	t.Parallel()
+
+	w := httptest.NewRecorder()
+	sp := NewStreamingProcessor(w, "gemini-2.5-flash")
+
+	chunk := GeminiResponse{
+		Candidates: []GeminiCandidate{
+			{Content: &GeminiContent{
+				Role: "model",
+				Parts: []GeminiPart{
+					{FunctionCall: &GeminiFunctionCall{
+						Name: "test",
+						Args: map[string]any{"x": 1},
+					}},
+				},
+			}},
+		},
+	}
+	chunkBytes, _ := json.Marshal(chunk)
+	sp.ProcessChunk(chunkBytes)
+	sp.Finish()
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"stop_reason":"tool_use"`) {
+		t.Error("should contain tool_use stop_reason when function call present")
+	}
+}
+
+func TestStreamingProcessor_MessageStartGuard(t *testing.T) {
+	t.Parallel()
+
+	w := httptest.NewRecorder()
+	sp := NewStreamingProcessor(w, "gemini-2.5-flash")
+
+	// Finish without any data — should not emit message_stop.
+	sp.Finish()
+
+	body := w.Body.String()
+	if strings.Contains(body, "message_stop") {
+		t.Error("should not emit message_stop if no data was received")
+	}
+}
+
+// ──────────────────────────────────────────────────────────────
 // Streaming integration test
 // ──────────────────────────────────────────────────────────────
 
@@ -714,16 +1049,16 @@ func TestAntigravityRelay_ProxyStreaming_ConvertsGeminiToAnthropicSSE(t *testing
 	t.Parallel()
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify request body is in Gemini envelope format.
+		// Verify request body is in V1Internal envelope format.
 		body, _ := io.ReadAll(r.Body)
-		var envelope map[string]any
+		var envelope V1InternalRequest
 		_ = json.Unmarshal(body, &envelope)
 
-		if envelope["model"] == nil {
+		if envelope.Model == "" {
 			t.Error("envelope should have model field")
 		}
-		if envelope["request"] == nil {
-			t.Error("envelope should have request field")
+		if len(envelope.Request.Contents) == 0 {
+			t.Error("envelope should have request.contents")
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -745,14 +1080,12 @@ func TestAntigravityRelay_ProxyStreaming_ConvertsGeminiToAnthropicSSE(t *testing
 	}))
 	defer ts.Close()
 
-	// Test the SSE conversion by making a direct request to the test server
-	// and verifying the Gemini response format.
+	// Build a request using the new typed API and verify.
 	ctx := context.Background()
 	body := map[string]any{
 		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
 	}
-	geminiBody := convertAnthropicToGemini(body, "gemini-2.5-flash")
-	envelope := buildAntigravityEnvelope(geminiBody, "gemini-2.5-flash", "test-project")
+	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test-project")
 	bodyJSON, _ := json.Marshal(envelope)
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/v1internal:streamGenerateContent?alt=sse", strings.NewReader(string(bodyJSON)))
@@ -843,50 +1176,49 @@ func TestAnthropicToGeminiToAnthropic_RoundTrip(t *testing.T) {
 	}
 
 	// Convert to Gemini format.
-	geminiBody := convertAnthropicToGemini(anthropicBody, "gemini-2.5-flash")
+	envelope := transformClaudeToGemini(anthropicBody, "gemini-2.5-flash", "test")
 
 	// Verify Gemini format has expected fields.
-	if geminiBody["contents"] == nil {
+	if len(envelope.Request.Contents) == 0 {
 		t.Error("gemini body should have contents")
 	}
-	if geminiBody["systemInstruction"] == nil {
+	if envelope.Request.SystemInstruction == nil {
 		t.Error("gemini body should have systemInstruction")
 	}
-	if geminiBody["generationConfig"] == nil {
+	if envelope.Request.GenerationConfig == nil {
 		t.Error("gemini body should have generationConfig")
 	}
-	if geminiBody["tools"] == nil {
+	if len(envelope.Request.Tools) == 0 {
 		t.Error("gemini body should have tools")
 	}
-	if geminiBody["toolConfig"] == nil {
+	if envelope.Request.ToolConfig == nil {
 		t.Error("gemini body should have toolConfig")
 	}
 
 	// Simulate a Gemini response with a function call.
-	geminiResponse := map[string]any{
-		"candidates": []any{
-			map[string]any{
-				"content": map[string]any{
-					"role": "model",
-					"parts": []any{
-						map[string]any{
-							"functionCall": map[string]any{
-								"name": "get_weather",
-								"args": map[string]any{"city": "Tokyo"},
-							},
-						},
+	geminiResponse := GeminiResponse{
+		Candidates: []GeminiCandidate{
+			{
+				Content: &GeminiContent{
+					Role: "model",
+					Parts: []GeminiPart{
+						{FunctionCall: &GeminiFunctionCall{
+							Name: "get_weather",
+							Args: map[string]any{"city": "Tokyo"},
+						}},
 					},
 				},
 			},
 		},
-		"usageMetadata": map[string]any{
-			"promptTokenCount":     float64(50),
-			"candidatesTokenCount": float64(20),
+		UsageMetadata: &GeminiUsageMetadata{
+			PromptTokenCount:     50,
+			CandidatesTokenCount: 20,
 		},
 	}
+	respBytes, _ := json.Marshal(geminiResponse)
 
 	// Convert back to Anthropic format.
-	anthropicResp, inputTokens, outputTokens := convertGeminiToAnthropic(geminiResponse, "gemini-2.5-flash")
+	anthropicResp, inputTokens, outputTokens := transformGeminiToClaudeResponse(respBytes, "gemini-2.5-flash")
 
 	if anthropicResp["type"] != "message" {
 		t.Errorf("response type = %v, want message", anthropicResp["type"])
@@ -908,5 +1240,9 @@ func TestAnthropicToGeminiToAnthropic_RoundTrip(t *testing.T) {
 	}
 	if block["name"] != "get_weather" {
 		t.Errorf("content[0].name = %v, want get_weather", block["name"])
+	}
+	// stop_reason should be tool_use.
+	if anthropicResp["stop_reason"] != "tool_use" {
+		t.Errorf("stop_reason = %v, want tool_use", anthropicResp["stop_reason"])
 	}
 }

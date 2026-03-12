@@ -28,6 +28,7 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { EMPTY_CHANNEL_FORM } from "./channel-dialog"
 import { CodexChannelDetail } from "./codex-channel-detail"
+import { isRuntimeChannelType } from "./codex-channel-draft"
 
 // ─── Inline delete confirmation ────────────────
 // Re-uses ConfirmDeleteDialog from the shared component
@@ -437,7 +438,7 @@ function DraggableChannel({
                 />
               )}
             </div>
-            {(channel.type === 33 || channel.type === 34) && (
+            {isRuntimeChannelType(channel.type) && (
               <CodexChannelDetail
                 channelId={channel.id}
                 channelType={channel.type}
