@@ -107,6 +107,13 @@ describe("runtime channel helpers", () => {
     expect(getRuntimeProviderKey(1)).toBeNull()
   })
 
+  it("detects Codex CLI and Antigravity as runtime-managed providers", () => {
+    expect(isRuntimeChannelType(35)).toBe(true)
+    expect(isRuntimeChannelType(36)).toBe(true)
+    expect(getRuntimeProviderKey(35)).toBe("codex-cli")
+    expect(getRuntimeProviderKey(36)).toBe("antigravity")
+  })
+
   it("adapts runtime drafts to managed credentials and blank base url", () => {
     expect(
       adaptChannelDraftForType(
@@ -126,6 +133,23 @@ describe("runtime channel helpers", () => {
     })
   })
 
+  it("adapts Codex CLI and Antigravity drafts to managed credentials", () => {
+    for (const channelType of [35, 36]) {
+      const result = adaptChannelDraftForType(
+        {
+          ...baseForm,
+          type: 1,
+          baseUrls: [{ url: "https://api.openai.com", delay: 10 }],
+          keys: [{ channelKey: "sk-test", remark: "test" }],
+        },
+        channelType,
+      )
+      expect(result.type).toBe(channelType)
+      expect(result.baseUrls).toEqual([{ url: "", delay: 10 }])
+      expect(result.keys).toEqual([{ channelKey: RUNTIME_MANAGED_CHANNEL_KEY, remark: "test" }])
+    }
+  })
+
   it("clears the managed placeholder when switching back to a generic provider", () => {
     expect(adaptChannelDraftForType(baseForm, 1)).toEqual({
       ...baseForm,
@@ -137,6 +161,8 @@ describe("runtime channel helpers", () => {
   it("hides generic model fetch in runtime mode", () => {
     expect(shouldShowGenericModelFetch(33)).toBe(false)
     expect(shouldShowGenericModelFetch(34)).toBe(false)
+    expect(shouldShowGenericModelFetch(35)).toBe(false)
+    expect(shouldShowGenericModelFetch(36)).toBe(false)
     expect(shouldShowGenericModelFetch(1)).toBe(true)
   })
 })

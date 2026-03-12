@@ -317,6 +317,8 @@ func main() {
 		BatchStore:        batchStore,
 		AsyncStore:        asyncStore,
 		CopilotRelay:      handler.NewCopilotRelay(database),
+		CodexCLIRelay:     handler.NewCodexCLIRelay(database),
+		AntigravityRelay:  handler.NewAntigravityRelay(database),
 		CodexStreamClient: codexStreamClient,
 		CodexHTTPClient:   codexHTTPClient,
 	}

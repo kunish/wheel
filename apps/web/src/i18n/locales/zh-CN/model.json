@@ -30,7 +30,9 @@
     "31": "Novita AI",
     "32": "SiliconFlow",
     "33": "Codex",
-    "34": "GitHub Copilot"
+    "34": "GitHub Copilot",
+    "35": "Codex CLI",
+    "36": "Antigravity"
   },
   "modeLabels": {
     "1": "轮询",
@@ -281,7 +283,9 @@
     "resetAt": "重置时间 {{resetAt}}",
     "providerDescription": {
       "codex": "创建一个由 Runtime 管理的 Codex 渠道，凭证来自 OAuth 或导入的认证文件，而不是手动输入的 API Key。",
-      "copilot": "创建一个由 Runtime 管理的 GitHub Copilot 渠道，使用导入凭证与配额感知的认证文件管理流程。"
+      "copilot": "创建一个由 Runtime 管理的 GitHub Copilot 渠道，使用导入凭证与配额感知的认证文件管理流程。",
+      "codex-cli": "创建一个由 Runtime 管理的 Codex CLI 渠道，使用 OpenAI OAuth 凭证代理到 chatgpt.com Responses API。",
+      "antigravity": "创建一个由 Runtime 管理的 Antigravity 渠道，代理到 Google Cloud Code 内部 API，支持 Anthropic 与 Gemini 协议的双向转换。"
     }
   },
   "routingRules": {

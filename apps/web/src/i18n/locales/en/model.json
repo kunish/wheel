@@ -30,7 +30,9 @@
     "31": "Novita AI",
     "32": "SiliconFlow",
     "33": "Codex",
-    "34": "GitHub Copilot"
+    "34": "GitHub Copilot",
+    "35": "Codex CLI",
+    "36": "Antigravity"
   },
   "modeLabels": {
     "1": "RoundRobin",
@@ -281,7 +283,9 @@
     "resetAt": "Resets at {{resetAt}}",
     "providerDescription": {
       "codex": "Create a runtime-managed Codex channel that pulls credentials from imported auth files or OAuth instead of a pasted API key.",
-      "copilot": "Create a runtime-managed GitHub Copilot channel that uses imported runtime credentials and quota-aware auth-file management."
+      "copilot": "Create a runtime-managed GitHub Copilot channel that uses imported runtime credentials and quota-aware auth-file management.",
+      "codex-cli": "Create a runtime-managed Codex CLI channel that proxies to chatgpt.com Responses API using OpenAI OAuth credentials from imported auth files.",
+      "antigravity": "Create a runtime-managed Antigravity channel that proxies to Google Cloud Code internal API with full Anthropic-to-Gemini protocol conversion."
     }
   },
   "routingRules": {

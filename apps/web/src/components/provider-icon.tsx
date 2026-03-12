@@ -31,6 +31,8 @@ const PROVIDER_LOGO_MAP: Record<number, string> = {
   32: "siliconflow", // SiliconFlow
   33: "openai", // Codex
   34: "github", // GitHub Copilot
+  35: "openai", // Codex CLI
+  36: "google", // Antigravity
 }
 
 function getProviderLogoUrl(channelType: number): string | null {

@@ -2,7 +2,7 @@ import type { ChannelInput } from "@/lib/api/channels"
 
 export const RUNTIME_MANAGED_CHANNEL_KEY = "managed-by-auth-files"
 
-export type RuntimeProviderKey = "codex" | "copilot"
+export type RuntimeProviderKey = "codex" | "copilot" | "codex-cli" | "antigravity"
 
 interface SaveChannelResponse {
   data?: {
@@ -22,6 +22,12 @@ export function getRuntimeProviderKey(channelType?: number): RuntimeProviderKey 
   }
   if (channelType === 34) {
     return "copilot"
+  }
+  if (channelType === 35) {
+    return "codex-cli"
+  }
+  if (channelType === 36) {
+    return "antigravity"
   }
   return null
 }

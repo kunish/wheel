@@ -33,6 +33,8 @@ const (
 	OutboundSiliconFlow OutboundType = 32
 	OutboundCodex       OutboundType = 33 // Codex via embedded runtime
 	OutboundCopilot     OutboundType = 34 // GitHub Copilot via embedded runtime
+	OutboundCodexCLI    OutboundType = 35 // OpenAI Codex CLI (chatgpt.com Responses API)
+	OutboundAntigravity OutboundType = 36 // Google Antigravity (Gemini internal API)
 )
 
 // outboundTypeName returns a human-readable name for the provider type.
@@ -86,6 +88,10 @@ func outboundTypeName(t OutboundType) string {
 		return "codex"
 	case OutboundCopilot:
 		return "copilot"
+	case OutboundCodexCLI:
+		return "codex-cli"
+	case OutboundAntigravity:
+		return "antigravity"
 	default:
 		return "unknown"
 	}
@@ -132,6 +138,10 @@ func DefaultBaseURL(t OutboundType) string {
 		return "http://codex-internal"
 	case OutboundCopilot:
 		return "http://codex-internal"
+	case OutboundCodexCLI:
+		return "https://chatgpt.com"
+	case OutboundAntigravity:
+		return "https://cloudcode-pa.googleapis.com"
 	default:
 		return ""
 	}

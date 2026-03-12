@@ -120,6 +120,12 @@ type RelayHandler struct {
 	// ── Copilot ──
 	CopilotRelay *CopilotRelay
 
+	// ── Codex CLI (chatgpt.com Responses API) ──
+	CodexCLIRelay *CodexCLIRelay
+
+	// ── Antigravity (Google internal Gemini API) ──
+	AntigravityRelay *AntigravityRelay
+
 	// ── Codex runtime (in-process) ──
 	// CodexStreamClient is used for streaming requests to the embedded Codex
 	// runtime via in-memory transport (no TCP). Nil falls back to StreamClient.

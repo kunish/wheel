@@ -66,6 +66,16 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 		return h.executeCopilotStreaming(p)
 	}
 
+	// Codex CLI channels: proxy to chatgpt.com Responses API.
+	if p.Channel.Type == types.OutboundCodexCLI && h.CodexCLIRelay != nil {
+		return h.executeCodexCLIStreaming(p)
+	}
+
+	// Antigravity channels: convert Anthropic → Gemini and proxy to Google internal API.
+	if p.Channel.Type == types.OutboundAntigravity && h.AntigravityRelay != nil {
+		return h.executeAntigravityStreaming(p)
+	}
+
 	streamId := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), p.Channel.ID, p.ApiKeyID)
 
 	h.Observer.StreamStarted(p.C.Request.Context())
@@ -177,6 +187,16 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 	// Copilot channels: call upstream API directly instead of HTTP proxy.
 	if p.Channel.Type == types.OutboundCopilot && h.CopilotRelay != nil {
 		return h.executeCopilotNonStreaming(p)
+	}
+
+	// Codex CLI channels: proxy to chatgpt.com Responses API.
+	if p.Channel.Type == types.OutboundCodexCLI && h.CodexCLIRelay != nil {
+		return h.executeCodexCLINonStreaming(p)
+	}
+
+	// Antigravity channels: convert Anthropic → Gemini and proxy to Google internal API.
+	if p.Channel.Type == types.OutboundAntigravity && h.AntigravityRelay != nil {
+		return h.executeAntigravityNonStreaming(p)
 	}
 
 	// Use the in-process Codex client when available for Codex channels.

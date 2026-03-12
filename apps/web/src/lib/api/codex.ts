@@ -1,19 +1,34 @@
 import { ApiError, apiFetch, apiRawFetch } from "./client"
 
 /**
- * Returns the API URL prefix for runtime-managed channels (Codex / Copilot).
+ * Returns the API URL prefix for runtime-managed channels.
  * Copilot channels (type 34) use `/copilot/` routes, everything else uses `/codex/`.
  */
 function runtimePrefix(channelType?: number): string {
-  return channelType === 34 ? "copilot" : "codex"
+  switch (channelType) {
+    case 34:
+      return "copilot"
+    case 35:
+    case 36:
+    default:
+      return "codex"
+  }
 }
 
 /**
  * Returns the auth-file provider filter string for runtime-managed channels.
- * Copilot channels filter by "copilot", Codex channels filter by "codex".
  */
 export function runtimeProviderFilter(channelType?: number): string {
-  return channelType === 34 ? "copilot" : "codex"
+  switch (channelType) {
+    case 34:
+      return "copilot"
+    case 35:
+      return "codex-cli"
+    case 36:
+      return "antigravity"
+    default:
+      return "codex"
+  }
 }
 
 export interface CodexAuthFile {

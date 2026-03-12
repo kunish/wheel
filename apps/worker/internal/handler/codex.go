@@ -158,7 +158,8 @@ func (h *Handler) codexCapabilities() codexCapabilities {
 
 // isRuntimeChannel returns true if the channel type uses the embedded CLIProxyAPI runtime.
 func isRuntimeChannel(t types.OutboundType) bool {
-	return t == types.OutboundCodex || t == types.OutboundCopilot
+	return t == types.OutboundCodex || t == types.OutboundCopilot ||
+		t == types.OutboundCodexCLI || t == types.OutboundAntigravity
 }
 
 // runtimeProviderFilter returns the auth file provider filter for the given runtime channel type.
@@ -166,6 +167,10 @@ func runtimeProviderFilter(t types.OutboundType) string {
 	switch t {
 	case types.OutboundCopilot:
 		return "copilot"
+	case types.OutboundCodexCLI:
+		return "codex-cli"
+	case types.OutboundAntigravity:
+		return "antigravity"
 	default:
 		return "codex"
 	}
@@ -176,6 +181,10 @@ func canonicalRuntimeProvider(provider string) string {
 	switch provider {
 	case "github-copilot", "github", "copilot":
 		return "copilot"
+	case "codex-cli", "openai-codex-cli":
+		return "codex-cli"
+	case "antigravity", "google-antigravity":
+		return "antigravity"
 	default:
 		return provider
 	}
