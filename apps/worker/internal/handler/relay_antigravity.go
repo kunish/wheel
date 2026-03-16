@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -46,8 +48,9 @@ func NewAntigravityRelay(db *bun.DB) *AntigravityRelay {
 	return &AntigravityRelay{db: db}
 }
 
-// ResolveAccessToken maps a channel key to the actual Google OAuth access_token
-// from the auth files stored in the database.
+// ResolveAccessToken maps a channel key to a fresh Google OAuth access_token.
+// It first tries reading the managed auth file from disk (which contains the
+// latest refreshed token from the runtime), falling back to the database.
 func (r *AntigravityRelay) ResolveAccessToken(ctx context.Context, channelID int, channelKey string) (accessToken string, projectID string, err error) {
 	items, err := dal.ListCodexAuthFiles(ctx, r.db, channelID)
 	if err != nil {
@@ -66,6 +69,14 @@ func (r *AntigravityRelay) ResolveAccessToken(ctx context.Context, channelID int
 		if authIndex != channelKey {
 			continue
 		}
+
+		// Try reading the managed file from disk first — the runtime's
+		// token refresh mechanism keeps this file up to date.
+		if token, projID, diskErr := r.readManagedAuthFile(managedName); diskErr == nil && token != "" {
+			return token, projID, nil
+		}
+
+		// Fallback: read from database (token may be stale).
 		var raw map[string]any
 		if err := json.Unmarshal([]byte(item.Content), &raw); err != nil {
 			return "", "", fmt.Errorf("parse antigravity auth file content: %w", err)
@@ -79,6 +90,22 @@ func (r *AntigravityRelay) ResolveAccessToken(ctx context.Context, channelID int
 	}
 
 	return "", "", fmt.Errorf("no antigravity auth file matches channel key %q", channelKey)
+}
+
+// readManagedAuthFile reads the token from the managed auth file on disk.
+func (r *AntigravityRelay) readManagedAuthFile(managedName string) (string, string, error) {
+	filePath := filepath.Join(codexruntime.ManagedAuthDir(), managedName)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", "", err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return "", "", err
+	}
+	token, _ := raw["access_token"].(string)
+	projID, _ := raw["project_id"].(string)
+	return token, projID, nil
 }
 
 // antigravityBaseURL selects the upstream base URL. For Claude models, prefer

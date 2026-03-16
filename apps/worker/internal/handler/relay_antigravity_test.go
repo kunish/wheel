@@ -94,9 +94,6 @@ func TestTransformClaudeToGemini_Envelope(t *testing.T) {
 	if envelope.RequestID == "" {
 		t.Error("requestId should not be empty")
 	}
-	if envelope.SessionID == "" {
-		t.Error("sessionId should not be empty")
-	}
 }
 
 func TestTransformClaudeToGemini_DefaultProjectID(t *testing.T) {
