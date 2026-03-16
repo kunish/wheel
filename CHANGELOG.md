@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.2](https://github.com/kunish/wheel/compare/v1.31.1...v1.31.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* **ci:** use BUILDPLATFORM for web Docker build to avoid QEMU crash on arm64 ([a8ebde2](https://github.com/kunish/wheel/commit/a8ebde293746a592c7faceb352b24efe0d9d3f40))
+
 ## [1.31.1](https://github.com/kunish/wheel/compare/v1.31.0...v1.31.1) (2026-03-16)
 
 
