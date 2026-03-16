@@ -125,7 +125,7 @@ function SortableDialogItem({
           onChange={(e) => onUpdate({ priority: Number(e.target.value) })}
         />
       )}
-      {mode === 4 && (
+      {(mode === 4 || mode === 5) && (
         <Input
           className="w-20"
           type="number"
@@ -184,6 +184,7 @@ export default function GroupDialog({
       2: t("modeLabels.2"),
       3: t("modeLabels.3"),
       4: t("modeLabels.4"),
+      5: t("modeLabels.5"),
     }),
     [t],
   )

@@ -40,6 +40,7 @@ const ApiReferencePage = lazy(() => import("./pages/api-reference"))
 const TagsPage = lazy(() => import("./pages/tags"))
 const AdaptiveRoutingPage = lazy(() => import("./pages/adaptive-routing"))
 const ObservabilityPage = lazy(() => import("./pages/observability"))
+const TeamsPage = lazy(() => import("./pages/teams"))
 
 const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter
 
@@ -61,6 +62,7 @@ export function AppRouter() {
           <Route path="/model-limits" element={<ModelLimitsPage />} />
           <Route path="/guardrails" element={<GuardrailsPage />} />
           <Route path="/tags" element={<TagsPage />} />
+          <Route path="/teams" element={<TeamsPage />} />
           <Route path="/adaptive-routing" element={<AdaptiveRoutingPage />} />
           <Route path="/observability" element={<ObservabilityPage />} />
           <Route path="/api-reference" element={<ApiReferencePage />} />

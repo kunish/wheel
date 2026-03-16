@@ -18,6 +18,7 @@ import enObservability from "./locales/en/observability.json"
 import enPlayground from "./locales/en/playground.json"
 import enSettings from "./locales/en/settings.json"
 import enTags from "./locales/en/tags.json"
+import enTeams from "./locales/en/teams.json"
 import enUsage from "./locales/en/usage.json"
 
 import zhCNAdaptiveRouting from "./locales/zh-CN/adaptive-routing.json"
@@ -36,6 +37,7 @@ import zhCNObservability from "./locales/zh-CN/observability.json"
 import zhCNPlayground from "./locales/zh-CN/playground.json"
 import zhCNSettings from "./locales/zh-CN/settings.json"
 import zhCNTags from "./locales/zh-CN/tags.json"
+import zhCNTeams from "./locales/zh-CN/teams.json"
 import zhCNUsage from "./locales/zh-CN/usage.json"
 
 export const defaultNS = "common"
@@ -55,6 +57,7 @@ export const ns = [
   "guardrails",
   "api-reference",
   "tags",
+  "teams",
   "adaptive-routing",
   "observability",
 ] as const
@@ -76,6 +79,7 @@ export const resources = {
     guardrails: enGuardrails,
     "api-reference": enApiReference,
     tags: enTags,
+    teams: enTeams,
     "adaptive-routing": enAdaptiveRouting,
     observability: enObservability,
   },
@@ -95,6 +99,7 @@ export const resources = {
     guardrails: zhCNGuardrails,
     "api-reference": zhCNApiReference,
     tags: zhCNTags,
+    teams: zhCNTeams,
     "adaptive-routing": zhCNAdaptiveRouting,
     observability: zhCNObservability,
   },

@@ -1,0 +1,23 @@
+{
+  "title": "团队管理",
+  "description": "管理团队并追踪虚拟密钥的预算使用情况。",
+  "addTeam": "添加团队",
+  "editTeam": "编辑团队",
+  "name": "名称",
+  "namePlaceholder": "输入团队名称",
+  "descriptionLabel": "描述",
+  "descriptionPlaceholder": "输入团队描述",
+  "maxBudget": "最大预算 ($)",
+  "maxBudgetPlaceholder": "0 = 无限制",
+  "spend": "当前花费",
+  "virtualKeys": "个密钥",
+  "empty": "暂无团队。创建一个团队以开始追踪预算。",
+  "createSuccess": "团队已创建",
+  "createError": "创建团队失败",
+  "updateSuccess": "团队已更新",
+  "updateError": "更新团队失败",
+  "deleteSuccess": "团队已删除",
+  "deleteError": "删除团队失败",
+  "deleteConfirmTitle": "删除团队",
+  "deleteConfirmDesc": "确定要删除团队 \"{{name}}\" 吗？虚拟密钥不会被删除。"
+}

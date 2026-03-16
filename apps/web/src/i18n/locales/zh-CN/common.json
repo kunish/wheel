@@ -14,7 +14,8 @@
     "apiReference": "API 文档",
     "settings": "设置",
     "adaptiveRouting": "路由",
-    "observability": "可观测性"
+    "observability": "可观测性",
+    "teams": "团队"
   },
   "navSection": {
     "gateway": "AI 网关",
