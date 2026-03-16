@@ -281,10 +281,10 @@ export function syncCodexKeys(channelId: number, channelType?: number) {
 
 export function startCodexOAuth(channelId: number, channelType?: number) {
   const prefix = runtimePrefix(channelType)
-  return apiFetch<{ success: boolean; data: { url: string; state: string } }>(
-    `/api/v1/channel/${channelId}/${prefix}/oauth/start`,
-    { method: "POST" },
-  )
+  return apiFetch<{
+    success: boolean
+    data: { url: string; state: string; user_code?: string; verification_uri?: string }
+  }>(`/api/v1/channel/${channelId}/${prefix}/oauth/start`, { method: "POST" })
 }
 
 export function getCodexOAuthStatus(channelId: number, state: string, channelType?: number) {

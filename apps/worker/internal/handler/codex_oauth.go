@@ -10,14 +10,27 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
-// StartCodexOAuth initiates a Codex OAuth flow via Codex management API.
-// It proxies GET /v0/management/codex-auth-url?is_webui=true and returns {url, state}.
+// managementAuthEndpoint returns the management API path for initiating OAuth
+// based on the runtime channel type.
+func managementAuthEndpoint(t types.OutboundType) string {
+	switch t {
+	case types.OutboundCopilot:
+		return "/github-auth-url"
+	case types.OutboundAntigravity:
+		return "/antigravity-auth-url"
+	default:
+		return "/codex-auth-url"
+	}
+}
+
+// StartCodexOAuth initiates an OAuth flow via the runtime management API.
+// It selects the correct management endpoint based on the channel type and returns {url, state}.
+// For device-flow providers (e.g. Copilot), user_code is forwarded to the caller.
 func (h *Handler) StartCodexOAuth(c *gin.Context) {
 	channel, err := h.validateCodexChannel(c)
 	if err != nil {
 		return
 	}
-	_ = channel
 
 	if err := h.ensureCodexManagementConfigured(); err != nil {
 		errorJSON(c, http.StatusBadRequest, err.Error())
@@ -40,15 +53,25 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 		snapshot[file.Name] = struct{}{}
 	}
 	var resp struct {
-		URL   string `json:"url"`
-		State string `json:"state"`
+		URL             string `json:"url"`
+		State           string `json:"state"`
+		UserCode        string `json:"user_code,omitempty"`
+		VerificationURI string `json:"verification_uri,omitempty"`
 	}
-	if err := h.codexManagementCall(c, http.MethodGet, "/codex-auth-url", query, nil, &resp); err != nil {
+	authPath := managementAuthEndpoint(channel.Type)
+	if err := h.codexManagementCall(c, http.MethodGet, authPath, query, nil, &resp); err != nil {
 		errorJSON(c, http.StatusBadGateway, err.Error())
 		return
 	}
 	storeOAuthSession(resp.State, codexOAuthSession{ChannelID: channel.ID, Existing: snapshot})
-	successJSON(c, gin.H{"url": resp.URL, "state": resp.State})
+	result := gin.H{"url": resp.URL, "state": resp.State}
+	if resp.UserCode != "" {
+		result["user_code"] = resp.UserCode
+	}
+	if resp.VerificationURI != "" {
+		result["verification_uri"] = resp.VerificationURI
+	}
+	successJSON(c, result)
 }
 
 // GetCodexOAuthStatus polls the OAuth flow status from Codex management API.

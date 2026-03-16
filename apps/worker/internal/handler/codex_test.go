@@ -1337,3 +1337,148 @@ func mustWriteMultipartFile(t *testing.T, writer *multipart.Writer, field string
 		t.Fatalf("write multipart %q error = %v", name, err)
 	}
 }
+
+func TestManagementAuthEndpoint(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelType types.OutboundType
+		want        string
+	}{
+		{"codex", types.OutboundCodex, "/codex-auth-url"},
+		{"copilot", types.OutboundCopilot, "/github-auth-url"},
+		{"codex-cli", types.OutboundCodexCLI, "/codex-auth-url"},
+		{"antigravity", types.OutboundAntigravity, "/antigravity-auth-url"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := managementAuthEndpoint(tt.channelType); got != tt.want {
+				t.Fatalf("managementAuthEndpoint(%d) = %q, want %q", tt.channelType, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStartCodexOAuth_AntigravityRoutesToAntigravityAuthURL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","url":"https://accounts.google.com/o/oauth2/v2/auth?state=test123","state":"test123"}`))
+	}))
+	defer server.Close()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{
+		CodexRuntimeManagementURL: server.URL,
+		CodexRuntimeManagementKey: "secret",
+	}
+	expectCodexChannelTypeLookup(mock, 36, types.OutboundAntigravity)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/36/codex/oauth/start", nil)
+	c.Params = gin.Params{{Key: "id", Value: "36"}}
+
+	h.StartCodexOAuth(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if requestedPath != "/v0/management/antigravity-auth-url" {
+		t.Fatalf("management path = %q, want /v0/management/antigravity-auth-url", requestedPath)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestStartCodexOAuth_CopilotRoutesToGitHubAuthURL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","url":"https://github.com/login/device","state":"test789","user_code":"ABCD-1234","verification_uri":"https://github.com/login/device"}`))
+	}))
+	defer server.Close()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{
+		CodexRuntimeManagementURL: server.URL,
+		CodexRuntimeManagementKey: "secret",
+	}
+	expectCodexChannelTypeLookup(mock, 34, types.OutboundCopilot)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/34/copilot/oauth/start", nil)
+	c.Params = gin.Params{{Key: "id", Value: "34"}}
+
+	h.StartCodexOAuth(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if requestedPath != "/v0/management/github-auth-url" {
+		t.Fatalf("management path = %q, want /v0/management/github-auth-url", requestedPath)
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			URL      string `json:"url"`
+			State    string `json:"state"`
+			UserCode string `json:"user_code"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Data.UserCode != "ABCD-1234" {
+		t.Fatalf("user_code = %q, want ABCD-1234", resp.Data.UserCode)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestStartCodexOAuth_CodexRoutesToCodexAuthURL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","url":"https://auth.openai.com/authorize?state=test456","state":"test456"}`))
+	}))
+	defer server.Close()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{
+		CodexRuntimeManagementURL: server.URL,
+		CodexRuntimeManagementKey: "secret",
+	}
+	expectCodexChannelTypeLookup(mock, 33, types.OutboundCodex)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/33/codex/oauth/start", nil)
+	c.Params = gin.Params{{Key: "id", Value: "33"}}
+
+	h.StartCodexOAuth(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if requestedPath != "/v0/management/codex-auth-url" {
+		t.Fatalf("management path = %q, want /v0/management/codex-auth-url", requestedPath)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}

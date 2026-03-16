@@ -87,7 +87,8 @@ type Service struct {
 	// handlerReady is closed once the server and all background workers
 	// have been initialised so that callers of Handler() know the handler
 	// is safe to use.
-	handlerReady chan struct{}
+	handlerReady     chan struct{}
+	handlerReadyOnce sync.Once
 
 	// pprofServer manages the optional pprof HTTP debug server.
 	pprofServer *pprofServer
@@ -531,10 +532,18 @@ func (s *Service) rebindExecutors() {
 //
 // Returns:
 //   - error: An error if the service fails to start or run
+func (s *Service) signalHandlerReady() {
+	if s == nil || s.handlerReady == nil {
+		return
+	}
+	s.handlerReadyOnce.Do(func() { close(s.handlerReady) })
+}
+
 func (s *Service) Run(ctx context.Context) error {
 	if s == nil {
 		return fmt.Errorf("cliproxy: service is nil")
 	}
+	defer s.signalHandlerReady()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -736,9 +745,7 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 
 	// Signal that the server handler is ready for in-process use.
-	if s.handlerReady != nil {
-		close(s.handlerReady)
-	}
+	s.signalHandlerReady()
 
 	if s.handlerOnly {
 		// In handler-only mode there is no HTTP listener, so just wait
@@ -761,11 +768,14 @@ func (s *Service) Run(ctx context.Context) error {
 // It blocks until the server has been fully initialised (handlerReady is closed).
 // This is only useful in handler-only mode.
 func (s *Service) Handler() http.Handler {
-	if s == nil || s.server == nil {
+	if s == nil {
 		return nil
 	}
 	if s.handlerReady != nil {
 		<-s.handlerReady
+	}
+	if s.server == nil {
+		return nil
 	}
 	return s.server.Handler()
 }

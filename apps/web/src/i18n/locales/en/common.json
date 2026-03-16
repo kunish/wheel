@@ -49,6 +49,7 @@
     "test": "Test",
     "loading": "Loading...",
     "copied": "Copied",
+    "copyFailed": "Failed to copy to clipboard",
     "selectAll": "Select All",
     "deselectAll": "Deselect All"
   },
