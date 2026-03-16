@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.1](https://github.com/kunish/wheel/compare/v1.31.0...v1.31.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* **ci:** pull latest changes before pushing screenshots to avoid rejection ([a161254](https://github.com/kunish/wheel/commit/a16125484edab78712beff4c638b1e2a545b07ab))
+
 ## [1.31.0](https://github.com/kunish/wheel/compare/v1.30.0...v1.31.0) (2026-03-16)
 
 
