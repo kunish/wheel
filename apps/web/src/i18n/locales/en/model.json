@@ -228,6 +228,7 @@
     "oauthWaiting": "Waiting for OAuth login to complete...",
     "oauthSuccess": "OAuth login successful! Auth file has been imported.",
     "oauthError": "OAuth login failed: {{error}}",
+    "oauthDeviceCode": "Enter this code on the page that opens:",
     "oauthCopyLink": "Copy Link",
     "oauthOpenLink": "Open Login Page",
     "oauthLinkCopied": "Link copied to clipboard",

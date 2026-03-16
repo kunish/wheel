@@ -1345,7 +1345,7 @@ func TestManagementAuthEndpoint(t *testing.T) {
 		want        string
 	}{
 		{"codex", types.OutboundCodex, "/codex-auth-url"},
-		{"copilot", types.OutboundCopilot, "/codex-auth-url"},
+		{"copilot", types.OutboundCopilot, "/github-auth-url"},
 		{"codex-cli", types.OutboundCodexCLI, "/codex-auth-url"},
 		{"antigravity", types.OutboundAntigravity, "/antigravity-auth-url"},
 	}
@@ -1389,6 +1389,57 @@ func TestStartCodexOAuth_AntigravityRoutesToAntigravityAuthURL(t *testing.T) {
 	}
 	if requestedPath != "/v0/management/antigravity-auth-url" {
 		t.Fatalf("management path = %q, want /v0/management/antigravity-auth-url", requestedPath)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestStartCodexOAuth_CopilotRoutesToGitHubAuthURL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","url":"https://github.com/login/device","state":"test789","user_code":"ABCD-1234","verification_uri":"https://github.com/login/device"}`))
+	}))
+	defer server.Close()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{
+		CodexRuntimeManagementURL: server.URL,
+		CodexRuntimeManagementKey: "secret",
+	}
+	expectCodexChannelTypeLookup(mock, 34, types.OutboundCopilot)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/34/copilot/oauth/start", nil)
+	c.Params = gin.Params{{Key: "id", Value: "34"}}
+
+	h.StartCodexOAuth(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if requestedPath != "/v0/management/github-auth-url" {
+		t.Fatalf("management path = %q, want /v0/management/github-auth-url", requestedPath)
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			URL      string `json:"url"`
+			State    string `json:"state"`
+			UserCode string `json:"user_code"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Data.UserCode != "ABCD-1234" {
+		t.Fatalf("user_code = %q, want ABCD-1234", resp.Data.UserCode)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

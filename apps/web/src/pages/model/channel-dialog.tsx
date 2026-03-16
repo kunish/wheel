@@ -255,6 +255,7 @@ function CodexOAuthButton({
   const [panelOpen, setPanelOpen] = useState(false)
   const [oauthUrl, setOauthUrl] = useState("")
   const [_oauthState, setOauthState] = useState("")
+  const [oauthUserCode, setOauthUserCode] = useState("")
   const [oauthStatus, setOauthStatus] = useState<
     "idle" | "starting" | "waiting" | "success" | "error"
   >("idle")
@@ -278,11 +279,13 @@ function CodexOAuthButton({
       setOauthError("")
       setOauthUrl("")
       setOauthState("")
+      setOauthUserCode("")
       try {
         const res = await startCodexOAuth(resolvedChannelId, channelType)
-        const { url, state } = res.data
+        const { url, state, user_code } = res.data
         setOauthUrl(url)
         setOauthState(state)
+        if (user_code) setOauthUserCode(user_code)
         setOauthStatus("waiting")
 
         const startTime = Date.now()
@@ -327,6 +330,7 @@ function CodexOAuthButton({
         setOauthStatus("idle")
         setOauthUrl("")
         setOauthState("")
+        setOauthUserCode("")
         setOauthError("")
       }
       setPanelOpen(open)
@@ -380,6 +384,28 @@ function CodexOAuthButton({
 
             {oauthStatus === "waiting" && oauthUrl && (
               <div className="space-y-3">
+                {oauthUserCode && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
+                    <p className="mb-1 text-xs text-muted-foreground">{t("codex.oauthDeviceCode")}</p>
+                    <div className="flex items-center gap-2">
+                      <code className="rounded bg-background px-2 py-1 text-lg font-bold tracking-widest">
+                        {oauthUserCode}
+                      </code>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(oauthUserCode)
+                          toast.success(t("codex.oauthLinkCopied"))
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <div className="rounded-md border p-3">
                   <p className="mb-2 text-xs font-medium break-all">{oauthUrl}</p>
                   <div className="flex gap-2">
