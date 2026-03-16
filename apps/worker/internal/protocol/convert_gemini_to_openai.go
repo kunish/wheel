@@ -4,60 +4,63 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"google.golang.org/genai"
 )
 
 // GeminiRequestToOpenAI converts a Gemini API request to an OpenAI Chat Completions request.
-func GeminiRequestToOpenAI(req *GeminiRequest, modelName string, stream bool) *OpenAIChatRequest {
-	out := &OpenAIChatRequest{
-		Model:  modelName,
-		Stream: Ptr(stream),
+// Uses genai.Content/Part types for the input and produces raw JSON for OpenAI.
+func GeminiRequestToOpenAI(req *GeminiRequest, modelName string, stream bool) ([]byte, error) {
+	out := map[string]any{
+		"model":  modelName,
+		"stream": stream,
 	}
 
 	// Generation config
 	if gc := req.GenerationConfig; gc != nil {
-		out.Temperature = gc.Temperature
-		out.TopP = gc.TopP
-		out.TopK = gc.TopK
-		if gc.MaxOutputTokens != nil {
-			out.MaxTokens = gc.MaxOutputTokens
+		if gc.Temperature != nil {
+			out["temperature"] = float64(*gc.Temperature)
+		}
+		if gc.TopP != nil {
+			out["top_p"] = float64(*gc.TopP)
+		}
+		if gc.TopK != nil {
+			out["top_k"] = float64(*gc.TopK)
+		}
+		if gc.MaxOutputTokens > 0 {
+			out["max_tokens"] = int64(gc.MaxOutputTokens)
 		}
 		if len(gc.StopSequences) > 0 {
-			out.Stop = gc.StopSequences
+			out["stop"] = gc.StopSequences
 		}
-		out.N = gc.CandidateCount
-
-		if tc := gc.ThinkingConfig; tc != nil {
-			if tc.ThinkingLevel != "" {
-				out.ReasoningEffort = strings.ToLower(strings.TrimSpace(tc.ThinkingLevel))
-			} else if tc.ThinkingBudget != nil {
-				out.ReasoningEffort = budgetToLevel(*tc.ThinkingBudget)
-			}
+		if gc.CandidateCount > 0 {
+			out["n"] = int64(gc.CandidateCount)
 		}
 	}
 
-	// Track tool call IDs for matching function responses with function calls
+	var messages []map[string]any
 	var toolCallIDs []string
 
 	// System instruction
 	if si := req.SystemInstruction; si != nil {
-		var sysContentParts []OpenAIContentPart
+		var parts []map[string]any
 		for _, part := range si.Parts {
 			if part.Text != "" {
-				sysContentParts = append(sysContentParts, OpenAIContentPart{Type: "text", Text: part.Text})
+				parts = append(parts, map[string]any{"type": "text", "text": part.Text})
 			}
 			if part.InlineData != nil {
-				sysContentParts = append(sysContentParts, OpenAIContentPart{
-					Type:     "image_url",
-					ImageURL: &OpenAIImageURL{URL: ImageDataURL(part.InlineData.MimeType, part.InlineData.Data)},
+				parts = append(parts, map[string]any{
+					"type":      "image_url",
+					"image_url": map[string]string{"url": ImageDataURL(part.InlineData.MIMEType, string(part.InlineData.Data))},
 				})
 			}
 		}
-		if len(sysContentParts) > 0 {
-			out.Messages = append(out.Messages, OpenAIMessage{Role: "system", Content: sysContentParts})
+		if len(parts) > 0 {
+			messages = append(messages, map[string]any{"role": "system", "content": parts})
 		}
 	}
 
-	// Contents -> messages
+	// Contents
 	for _, content := range req.Contents {
 		role := content.Role
 		if role == "model" {
@@ -65,196 +68,119 @@ func GeminiRequestToOpenAI(req *GeminiRequest, modelName string, stream bool) *O
 		}
 
 		var textBuilder strings.Builder
-		var contentParts []OpenAIContentPart
+		var contentParts []map[string]any
 		onlyText := true
-		var toolCalls []OpenAIToolCall
+		var toolCalls []map[string]any
 
 		for _, part := range content.Parts {
 			if part.Text != "" {
 				textBuilder.WriteString(part.Text)
-				contentParts = append(contentParts, OpenAIContentPart{Type: "text", Text: part.Text})
+				contentParts = append(contentParts, map[string]any{"type": "text", "text": part.Text})
 			}
-
 			if part.InlineData != nil {
 				onlyText = false
-				contentParts = append(contentParts, OpenAIContentPart{
-					Type:     "image_url",
-					ImageURL: &OpenAIImageURL{URL: ImageDataURL(part.InlineData.MimeType, part.InlineData.Data)},
+				contentParts = append(contentParts, map[string]any{
+					"type":      "image_url",
+					"image_url": map[string]string{"url": ImageDataURL(part.InlineData.MIMEType, string(part.InlineData.Data))},
 				})
 			}
-
 			if part.FunctionCall != nil {
 				toolCallID := GenOpenAIToolCallID()
 				toolCallIDs = append(toolCallIDs, toolCallID)
-				argsStr := "{}"
-				if part.FunctionCall.Args != nil {
-					data, err := json.Marshal(part.FunctionCall.Args)
-					if err == nil {
-						argsStr = string(data)
-					}
-				}
-				toolCalls = append(toolCalls, OpenAIToolCall{
-					ID:   toolCallID,
-					Type: "function",
-					Function: OpenAIFunctionCall{
-						Name:      part.FunctionCall.Name,
-						Arguments: argsStr,
+				argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+				toolCalls = append(toolCalls, map[string]any{
+					"id":   toolCallID,
+					"type": "function",
+					"function": map[string]string{
+						"name":      part.FunctionCall.Name,
+						"arguments": string(argsJSON),
 					},
 				})
 			}
-
 			if part.FunctionResponse != nil {
-				toolMsg := OpenAIMessage{
-					Role: "tool",
-				}
+				toolMsg := map[string]any{"role": "tool"}
 				if len(toolCallIDs) > 0 {
-					toolMsg.ToolCallID = toolCallIDs[len(toolCallIDs)-1]
+					toolMsg["tool_call_id"] = toolCallIDs[len(toolCallIDs)-1]
 				} else {
-					toolMsg.ToolCallID = GenOpenAIToolCallID()
+					toolMsg["tool_call_id"] = GenOpenAIToolCallID()
 				}
 				if part.FunctionResponse.Response != nil {
 					if contentField, ok := part.FunctionResponse.Response["content"]; ok {
 						data, _ := json.Marshal(contentField)
-						toolMsg.Content = string(data)
+						toolMsg["content"] = string(data)
 					} else {
 						data, _ := json.Marshal(part.FunctionResponse.Response)
-						toolMsg.Content = string(data)
+						toolMsg["content"] = string(data)
 					}
 				}
-				out.Messages = append(out.Messages, toolMsg)
+				messages = append(messages, toolMsg)
 			}
 		}
 
-		msg := OpenAIMessage{Role: role}
+		msg := map[string]any{"role": role}
 		if len(contentParts) > 0 {
 			if onlyText {
-				msg.Content = textBuilder.String()
+				msg["content"] = textBuilder.String()
 			} else {
-				msg.Content = contentPartsToAny(contentParts)
+				msg["content"] = contentParts
 			}
 		}
 		if len(toolCalls) > 0 {
-			msg.ToolCalls = toolCalls
+			msg["tool_calls"] = toolCalls
 		}
-		out.Messages = append(out.Messages, msg)
+		messages = append(messages, msg)
 	}
 
+	out["messages"] = messages
+
 	// Tools
-	for _, toolDecl := range req.Tools {
-		for _, fd := range toolDecl.FunctionDeclarations {
-			params := fd.Parameters
-			if params == nil {
-				params = fd.ParametersJSONSchema
+	for _, tool := range req.Tools {
+		for _, fd := range tool.FunctionDeclarations {
+			var params any
+			if fd.Parameters != nil {
+				params = fd.Parameters
+			} else if fd.ParametersJsonSchema != nil {
+				params = fd.ParametersJsonSchema
 			}
-			out.Tools = append(out.Tools, OpenAITool{
-				Type: "function",
-				Function: OpenAIFunction{
-					Name:        fd.Name,
-					Description: fd.Description,
-					Parameters:  params,
+			toolDef := map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name":        fd.Name,
+					"description": fd.Description,
 				},
-			})
+			}
+			if params != nil {
+				toolDef["function"].(map[string]any)["parameters"] = params
+			}
+			if out["tools"] == nil {
+				out["tools"] = []any{}
+			}
+			out["tools"] = append(out["tools"].([]any), toolDef)
 		}
 	}
 
 	// Tool config
 	if tc := req.ToolConfig; tc != nil && tc.FunctionCallingConfig != nil {
 		switch tc.FunctionCallingConfig.Mode {
-		case "NONE":
-			out.ToolChoice = "none"
-		case "AUTO":
-			out.ToolChoice = "auto"
-		case "ANY":
-			out.ToolChoice = "required"
+		case genai.FunctionCallingConfigModeNone:
+			out["tool_choice"] = "none"
+		case genai.FunctionCallingConfigModeAuto:
+			out["tool_choice"] = "auto"
+		case genai.FunctionCallingConfigModeAny:
+			out["tool_choice"] = "required"
 		}
 	}
 
-	return out
+	return json.Marshal(out)
 }
 
-func contentPartsToAny(parts []OpenAIContentPart) any {
-	result := make([]any, len(parts))
-	for i, p := range parts {
-		data, _ := json.Marshal(p)
-		var m any
-		_ = json.Unmarshal(data, &m)
-		result[i] = m
-	}
-	return result
+// OpenAI response → Gemini response conversion.
+
+func OpenAIResponseToGemini(resp *genai.GenerateContentResponse) *genai.GenerateContentResponse {
+	return resp
 }
 
-// OpenAI Response -> Gemini Response conversion
-
-// OpenAIResponseToGemini converts an OpenAI non-streaming response to Gemini format.
-func OpenAIResponseToGemini(resp *OpenAIChatResponse) *GeminiResponse {
-	out := &GeminiResponse{
-		Model: resp.Model,
-	}
-
-	for _, choice := range resp.Choices {
-		candidate := GeminiCandidate{
-			Index: choice.Index,
-			Content: &GeminiContent{
-				Role: "model",
-			},
-		}
-
-		msg := choice.Message
-		if msg == nil {
-			msg = choice.Delta
-		}
-		if msg != nil {
-			// Reasoning content
-			if msg.ReasoningContent != nil {
-				for _, text := range collectReasoningTexts(msg.ReasoningContent) {
-					if text == "" {
-						continue
-					}
-					candidate.Content.Parts = append(candidate.Content.Parts, GeminiPart{
-						Text:    text,
-						Thought: Ptr(true),
-					})
-				}
-			}
-
-			// Text content
-			if cs := msg.ContentString(); cs != "" {
-				candidate.Content.Parts = append(candidate.Content.Parts, GeminiPart{Text: cs})
-			}
-
-			// Tool calls
-			for _, tc := range msg.ToolCalls {
-				candidate.Content.Parts = append(candidate.Content.Parts, GeminiPart{
-					FunctionCall: &GeminiFunctionCall{
-						Name: tc.Function.Name,
-						Args: ParseJSONArgs(tc.Function.Arguments),
-					},
-				})
-			}
-		}
-
-		if choice.FinishReason != nil {
-			candidate.FinishReason = MapOpenAIFinishReasonToGemini(*choice.FinishReason)
-		}
-
-		out.Candidates = append(out.Candidates, candidate)
-	}
-
-	if resp.Usage != nil {
-		out.UsageMetadata = &GeminiUsageMetadata{
-			PromptTokenCount:     resp.Usage.PromptTokens,
-			CandidatesTokenCount: resp.Usage.CompletionTokens,
-			TotalTokenCount:      resp.Usage.TotalTokens,
-		}
-		if resp.Usage.CompletionTokensDetails != nil && resp.Usage.CompletionTokensDetails.ReasoningTokens > 0 {
-			out.UsageMetadata.ThoughtsTokenCount = resp.Usage.CompletionTokensDetails.ReasoningTokens
-		}
-	}
-
-	return out
-}
-
-// OpenAI Streaming -> Gemini Streaming conversion
+// OpenAI streaming → Gemini streaming accumulator.
 
 type OpenAIToGeminiAccum struct {
 	ToolCallsAccumulator map[int]*ToolCallAccum
@@ -268,21 +194,57 @@ func NewOpenAIToGeminiAccum() *OpenAIToGeminiAccum {
 	}
 }
 
-// ConvertOpenAIChunkToGemini converts an OpenAI streaming chunk to Gemini format.
-func ConvertOpenAIChunkToGemini(chunk *OpenAIChatResponse, accum *OpenAIToGeminiAccum) []string {
+// ConvertOpenAIChunkToGemini converts an OpenAI streaming chunk to Gemini response format.
+func ConvertOpenAIChunkToGemini(chunkJSON []byte, accum *OpenAIToGeminiAccum) []string {
+	var chunk struct {
+		ID      string `json:"id"`
+		Model   string `json:"model"`
+		Created int64  `json:"created"`
+		Choices []struct {
+			Index        int    `json:"index"`
+			FinishReason string `json:"finish_reason"`
+			Delta        struct {
+				Role             string `json:"role"`
+				Content          string `json:"content"`
+				ReasoningContent any    `json:"reasoning_content"`
+				ToolCalls        []struct {
+					Index    int    `json:"index"`
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"delta"`
+		} `json:"choices"`
+		Usage *struct {
+			PromptTokens            int64 `json:"prompt_tokens"`
+			CompletionTokens        int64 `json:"completion_tokens"`
+			TotalTokens             int64 `json:"total_tokens"`
+			CompletionTokensDetails *struct {
+				ReasoningTokens int64 `json:"reasoning_tokens"`
+			} `json:"completion_tokens_details"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal(chunkJSON, &chunk); err != nil {
+		return nil
+	}
+
 	if len(chunk.Choices) == 0 {
-		// Usage-only chunk
 		if chunk.Usage != nil {
-			resp := GeminiResponse{
-				Model: chunk.Model,
-				UsageMetadata: &GeminiUsageMetadata{
-					PromptTokenCount:     chunk.Usage.PromptTokens,
-					CandidatesTokenCount: chunk.Usage.CompletionTokens,
-					TotalTokenCount:      chunk.Usage.TotalTokens,
+			resp := map[string]any{
+				"candidates": []any{},
+				"model":      chunk.Model,
+				"usageMetadata": map[string]any{
+					"promptTokenCount":     chunk.Usage.PromptTokens,
+					"candidatesTokenCount": chunk.Usage.CompletionTokens,
+					"totalTokenCount":      chunk.Usage.TotalTokens,
 				},
 			}
-			if chunk.Usage.CompletionTokensDetails != nil {
-				resp.UsageMetadata.ThoughtsTokenCount = chunk.Usage.CompletionTokensDetails.ReasoningTokens
+			if chunk.Usage.CompletionTokensDetails != nil && chunk.Usage.CompletionTokensDetails.ReasoningTokens > 0 {
+				resp["usageMetadata"].(map[string]any)["thoughtsTokenCount"] = chunk.Usage.CompletionTokensDetails.ReasoningTokens
 			}
 			data, _ := json.Marshal(resp)
 			return []string{string(data)}
@@ -292,45 +254,36 @@ func ConvertOpenAIChunkToGemini(chunk *OpenAIChatResponse, accum *OpenAIToGemini
 
 	var results []string
 	choice := chunk.Choices[0]
-	delta := choice.Delta
-	if delta == nil {
-		return nil
-	}
 
-	baseTemplate := func() GeminiResponse {
-		return GeminiResponse{
-			Model: chunk.Model,
-			Candidates: []GeminiCandidate{{
-				Content: &GeminiContent{
-					Parts: []GeminiPart{},
-					Role:  "model",
-				},
-				Index: 0,
+	makeResp := func() map[string]any {
+		return map[string]any{
+			"model": chunk.Model,
+			"candidates": []any{map[string]any{
+				"content": map[string]any{"parts": []any{}, "role": "model"},
+				"index":   0,
 			}},
 		}
 	}
 
 	// Reasoning content
-	if delta.ReasoningContent != nil {
-		for _, text := range collectReasoningTexts(delta.ReasoningContent) {
-			if text == "" {
-				continue
+	if choice.Delta.ReasoningContent != nil {
+		if text, ok := choice.Delta.ReasoningContent.(string); ok && text != "" {
+			resp := makeResp()
+			resp["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)["parts"] = []any{
+				map[string]any{"text": text, "thought": true},
 			}
-			resp := baseTemplate()
-			resp.Candidates[0].Content.Parts = []GeminiPart{{
-				Text:    text,
-				Thought: Ptr(true),
-			}}
 			data, _ := json.Marshal(resp)
 			results = append(results, string(data))
 		}
 	}
 
 	// Text content
-	if cs := delta.ContentString(); cs != "" {
-		accum.ContentAccumulator.WriteString(cs)
-		resp := baseTemplate()
-		resp.Candidates[0].Content.Parts = []GeminiPart{{Text: cs}}
+	if choice.Delta.Content != "" {
+		accum.ContentAccumulator.WriteString(choice.Delta.Content)
+		resp := makeResp()
+		resp["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)["parts"] = []any{
+			map[string]any{"text": choice.Delta.Content},
+		}
 		data, _ := json.Marshal(resp)
 		results = append(results, string(data))
 	}
@@ -339,17 +292,11 @@ func ConvertOpenAIChunkToGemini(chunk *OpenAIChatResponse, accum *OpenAIToGemini
 		return results
 	}
 
-	// Tool calls (accumulate)
-	for _, tc := range delta.ToolCalls {
-		index := 0
-		if tc.Index != nil {
-			index = *tc.Index
-		}
+	// Tool calls accumulate
+	for _, tc := range choice.Delta.ToolCalls {
+		index := tc.Index
 		if _, exists := accum.ToolCallsAccumulator[index]; !exists {
-			accum.ToolCallsAccumulator[index] = &ToolCallAccum{
-				ID:   tc.ID,
-				Name: tc.Function.Name,
-			}
+			accum.ToolCallsAccumulator[index] = &ToolCallAccum{ID: tc.ID, Name: tc.Function.Name}
 		}
 		acc := accum.ToolCallsAccumulator[index]
 		if tc.ID != "" {
@@ -364,21 +311,21 @@ func ConvertOpenAIChunkToGemini(chunk *OpenAIChatResponse, accum *OpenAIToGemini
 	}
 
 	// Finish reason - emit accumulated tool calls
-	if choice.FinishReason != nil {
-		resp := baseTemplate()
-		resp.Candidates[0].FinishReason = MapOpenAIFinishReasonToGemini(*choice.FinishReason)
+	if choice.FinishReason != "" {
+		resp := makeResp()
+		resp["candidates"].([]any)[0].(map[string]any)["finishReason"] = MapOpenAIFinishReasonToGeminiString(choice.FinishReason)
 
 		if len(accum.ToolCallsAccumulator) > 0 {
-			var parts []GeminiPart
+			var parts []any
 			for _, acc := range accum.ToolCallsAccumulator {
-				parts = append(parts, GeminiPart{
-					FunctionCall: &GeminiFunctionCall{
-						Name: acc.Name,
-						Args: ParseJSONArgs(acc.Arguments.String()),
+				parts = append(parts, map[string]any{
+					"functionCall": map[string]any{
+						"name": acc.Name,
+						"args": ParseJSONArgs(acc.Arguments.String()),
 					},
 				})
 			}
-			resp.Candidates[0].Content.Parts = parts
+			resp["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)["parts"] = parts
 			accum.ToolCallsAccumulator = make(map[int]*ToolCallAccum)
 		}
 
@@ -389,14 +336,11 @@ func ConvertOpenAIChunkToGemini(chunk *OpenAIChatResponse, accum *OpenAIToGemini
 
 	// Usage
 	if chunk.Usage != nil {
-		resp := baseTemplate()
-		resp.UsageMetadata = &GeminiUsageMetadata{
-			PromptTokenCount:     chunk.Usage.PromptTokens,
-			CandidatesTokenCount: chunk.Usage.CompletionTokens,
-			TotalTokenCount:      chunk.Usage.TotalTokens,
-		}
-		if chunk.Usage.CompletionTokensDetails != nil {
-			resp.UsageMetadata.ThoughtsTokenCount = chunk.Usage.CompletionTokensDetails.ReasoningTokens
+		resp := makeResp()
+		resp["usageMetadata"] = map[string]any{
+			"promptTokenCount":     chunk.Usage.PromptTokens,
+			"candidatesTokenCount": chunk.Usage.CompletionTokens,
+			"totalTokenCount":      chunk.Usage.TotalTokens,
 		}
 		data, _ := json.Marshal(resp)
 		results = append(results, string(data))
@@ -405,7 +349,6 @@ func ConvertOpenAIChunkToGemini(chunk *OpenAIChatResponse, accum *OpenAIToGemini
 	return results
 }
 
-// GeminiTokenCountResponse generates a Gemini-format token count response.
 func GeminiTokenCountResponse(count int64) string {
 	return fmt.Sprintf(`{"totalTokens":%d,"promptTokensDetails":[{"modality":"TEXT","tokenCount":%d}]}`, count, count)
 }

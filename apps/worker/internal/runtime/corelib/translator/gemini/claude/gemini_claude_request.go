@@ -2,17 +2,16 @@
 package claude
 
 import (
+	"bytes"
 	"encoding/json"
+	"strings"
+
+	"google.golang.org/genai"
 
 	"github.com/kunish/wheel/apps/worker/internal/protocol"
 	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/registry"
-	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/thinking"
 	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/translator/gemini/common"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
-
-	"bytes"
-	"strings"
 )
 
 const geminiClaudeThoughtSignature = "skip_thought_signature_validator"
@@ -20,15 +19,13 @@ const geminiClaudeThoughtSignature = "skip_thought_signature_validator"
 // ConvertClaudeRequestToGemini parses a Claude API request and returns a complete
 // Gemini request body (as JSON bytes).
 func ConvertClaudeRequestToGemini(modelName string, inputRawJSON []byte, _ bool) []byte {
-	var req protocol.AnthropicRequest
 	cleanJSON := bytes.Replace(inputRawJSON, []byte(`"url":{"type":"string","format":"uri",`), []byte(`"url":{"type":"string",`), -1)
-	if err := json.Unmarshal(cleanJSON, &req); err != nil {
+
+	geminiReq, err := protocol.AnthropicRequestToGemini(cleanJSON, modelName)
+	if err != nil {
 		return inputRawJSON
 	}
 
-	geminiReq := protocol.AnthropicRequestToGemini(&req, modelName)
-
-	// Override thinking config using the thinking package for accurate model-specific conversion
 	overrideThinkingConfig(inputRawJSON, geminiReq, modelName)
 
 	result, err := json.Marshal(geminiReq)
@@ -49,13 +46,13 @@ func overrideThinkingConfig(rawJSON []byte, geminiReq *protocol.GeminiRequest, m
 	switch t.Get("type").String() {
 	case "enabled":
 		if b := t.Get("budget_tokens"); b.Exists() && b.Type == gjson.Number {
-			budget := int(b.Int())
+			budget := int32(b.Int())
 			if geminiReq.GenerationConfig == nil {
-				geminiReq.GenerationConfig = &protocol.GeminiGenConfig{}
+				geminiReq.GenerationConfig = &genai.GenerateContentConfig{}
 			}
-			geminiReq.GenerationConfig.ThinkingConfig = &protocol.GeminiThinkConfig{
+			geminiReq.GenerationConfig.ThinkingConfig = &genai.ThinkingConfig{
 				ThinkingBudget:  protocol.Ptr(budget),
-				IncludeThoughts: protocol.Ptr(true),
+				IncludeThoughts: true,
 			}
 		}
 	case "adaptive", "auto":
@@ -64,12 +61,12 @@ func overrideThinkingConfig(rawJSON []byte, geminiReq *protocol.GeminiRequest, m
 			effort = strings.ToLower(strings.TrimSpace(v.String()))
 		}
 		if geminiReq.GenerationConfig == nil {
-			geminiReq.GenerationConfig = &protocol.GeminiGenConfig{}
+			geminiReq.GenerationConfig = &genai.GenerateContentConfig{}
 		}
 		if effort != "" {
-			geminiReq.GenerationConfig.ThinkingConfig = &protocol.GeminiThinkConfig{
-				ThinkingLevel:   effort,
-				IncludeThoughts: protocol.Ptr(true),
+			geminiReq.GenerationConfig.ThinkingConfig = &genai.ThinkingConfig{
+				ThinkingLevel:   genai.ThinkingLevel(effort),
+				IncludeThoughts: true,
 			}
 		} else {
 			maxBudget := 0
@@ -77,21 +74,18 @@ func overrideThinkingConfig(rawJSON []byte, geminiReq *protocol.GeminiRequest, m
 				maxBudget = mi.Thinking.Max
 			}
 			if maxBudget > 0 {
-				geminiReq.GenerationConfig.ThinkingConfig = &protocol.GeminiThinkConfig{
-					ThinkingBudget:  protocol.Ptr(maxBudget),
-					IncludeThoughts: protocol.Ptr(true),
+				geminiReq.GenerationConfig.ThinkingConfig = &genai.ThinkingConfig{
+					ThinkingBudget:  protocol.Ptr(int32(maxBudget)),
+					IncludeThoughts: true,
 				}
 			} else {
-				geminiReq.GenerationConfig.ThinkingConfig = &protocol.GeminiThinkConfig{
+				geminiReq.GenerationConfig.ThinkingConfig = &genai.ThinkingConfig{
 					ThinkingLevel:   "high",
-					IncludeThoughts: protocol.Ptr(true),
+					IncludeThoughts: true,
 				}
 			}
 		}
 	}
-
-	_ = thinking.ConvertBudgetToLevel // reference for IDE
-	_ = sjson.Set                     // keep import for common package
 }
 
 func toolNameFromClaudeToolUseID(toolUseID string) string {

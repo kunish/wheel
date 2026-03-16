@@ -3,406 +3,289 @@ package protocol
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/packages/param"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/shared"
 )
 
-// AnthropicRequestToOpenAI converts an Anthropic Messages API request to an OpenAI Chat Completions request.
-func AnthropicRequestToOpenAI(req *AnthropicRequest, modelName string, stream bool) *OpenAIChatRequest {
-	out := &OpenAIChatRequest{
-		Model:  modelName,
-		Stream: Ptr(stream),
+// AnthropicRequestToOpenAI converts an Anthropic Messages API request (raw JSON)
+// to an OpenAI Chat Completions request (raw JSON), using SDK param types.
+func AnthropicRequestToOpenAI(rawJSON []byte, modelName string, stream bool) ([]byte, error) {
+	var req anthropic.MessageNewParams
+	if err := json.Unmarshal(rawJSON, &req); err != nil {
+		return rawJSON, err
 	}
 
+	params := openai.ChatCompletionNewParams{
+		Model: modelName,
+	}
+
+	if stream {
+		params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+			IncludeUsage: openai.Bool(true),
+		}
+	}
+
+	// Max tokens
 	if req.MaxTokens > 0 {
-		out.MaxTokens = &req.MaxTokens
-	}
-	if req.Temperature != nil {
-		out.Temperature = req.Temperature
-	} else if req.TopP != nil {
-		out.TopP = req.TopP
+		params.MaxTokens = openai.Int(req.MaxTokens)
 	}
 
-	out.Stop = convertAnthropicStopSequences(req.StopSequences)
-	out.ReasoningEffort = convertAnthropicThinkingToReasoningEffort(req)
-	if req.User != "" {
-		out.User = req.User
+	// Temperature / TopP
+	if req.Temperature.Valid() {
+		params.Temperature = openai.Float(req.Temperature.Value)
+	} else if req.TopP.Valid() {
+		params.TopP = openai.Float(req.TopP.Value)
 	}
 
-	// System message
-	if req.System != nil {
-		if sysMsg := convertAnthropicSystemToOpenAI(req.System); sysMsg != nil {
-			out.Messages = append(out.Messages, *sysMsg)
+	// Stop sequences
+	if len(req.StopSequences) > 0 {
+		seqs := req.StopSequences
+		if len(seqs) == 1 {
+			params.Stop = openai.ChatCompletionNewParamsStopUnion{OfString: openai.String(seqs[0])}
+		} else {
+			arr := make([]string, len(seqs))
+			copy(arr, seqs)
+			params.Stop = openai.ChatCompletionNewParamsStopUnion{OfStringArray: arr}
+		}
+	}
+
+	// System messages
+	for _, sys := range req.System {
+		if sys.Text != "" {
+			params.Messages = append(params.Messages, openai.SystemMessage(sys.Text))
 		}
 	}
 
 	// Messages
 	for _, msg := range req.Messages {
 		converted := convertAnthropicMessageToOpenAI(msg)
-		out.Messages = append(out.Messages, converted...)
+		params.Messages = append(params.Messages, converted...)
 	}
 
 	// Tools
-	for _, tool := range req.Tools {
-		out.Tools = append(out.Tools, OpenAITool{
-			Type: "function",
-			Function: OpenAIFunction{
+	for _, toolUnion := range req.Tools {
+		if toolUnion.OfTool == nil {
+			continue
+		}
+		tool := toolUnion.OfTool
+		var schemaParam shared.FunctionParameters
+		if !param.IsOmitted(tool.InputSchema) {
+			data, _ := json.Marshal(tool.InputSchema)
+			_ = json.Unmarshal(data, &schemaParam)
+		}
+		params.Tools = append(params.Tools, openai.ChatCompletionToolParam{
+			Function: shared.FunctionDefinitionParam{
 				Name:        tool.Name,
-				Description: tool.Description,
-				Parameters:  tool.InputSchema,
+				Description: openai.String(tool.Description.Value),
+				Parameters:  schemaParam,
 			},
 		})
 	}
 
 	// Tool choice
-	out.ToolChoice = convertAnthropicToolChoiceToOpenAI(req.ToolChoice)
-
-	return out
-}
-
-func convertAnthropicStopSequences(seqs []string) any {
-	if len(seqs) == 0 {
-		return nil
-	}
-	if len(seqs) == 1 {
-		return seqs[0]
-	}
-	return seqs
-}
-
-func convertAnthropicThinkingToReasoningEffort(req *AnthropicRequest) string {
-	if req.Thinking == nil {
-		return ""
-	}
-	switch req.Thinking.Type {
-	case "enabled":
-		if req.Thinking.BudgetTokens > 0 {
-			return budgetToLevel(req.Thinking.BudgetTokens)
-		}
-		return budgetToLevel(-1) // auto
-	case "adaptive", "auto":
-		if req.OutputConfig != nil && req.OutputConfig.Effort != "" {
-			return strings.ToLower(strings.TrimSpace(req.OutputConfig.Effort))
-		}
-		return "xhigh"
-	case "disabled":
-		return budgetToLevel(0)
-	}
-	return ""
-}
-
-func budgetToLevel(budget int) string {
-	switch {
-	case budget == 0:
-		return ""
-	case budget < 0:
-		return "medium"
-	case budget <= 1024:
-		return "low"
-	case budget <= 8192:
-		return "medium"
-	default:
-		return "high"
-	}
-}
-
-func convertAnthropicSystemToOpenAI(system any) *OpenAIMessage {
-	switch v := system.(type) {
-	case string:
-		if v == "" {
-			return nil
-		}
-		return &OpenAIMessage{
-			Role: "system",
-			Content: []OpenAIContentPart{
-				{Type: "text", Text: v},
+	tc := req.ToolChoice
+	if tc.OfAuto != nil {
+		params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{OfAuto: openai.String("auto")}
+	} else if tc.OfAny != nil {
+		params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{OfAuto: openai.String("required")}
+	} else if tc.OfTool != nil {
+		params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{
+			OfChatCompletionNamedToolChoice: &openai.ChatCompletionNamedToolChoiceParam{
+				Function: openai.ChatCompletionNamedToolChoiceFunctionParam{
+					Name: tc.OfTool.Name,
+				},
 			},
 		}
-	case []any:
-		var parts []OpenAIContentPart
-		for _, item := range v {
-			data, err := json.Marshal(item)
-			if err != nil {
-				continue
-			}
-			var block AnthropicContentBlock
-			if err := json.Unmarshal(data, &block); err != nil {
-				continue
-			}
-			if part, ok := anthropicContentPartToOpenAI(block); ok {
-				parts = append(parts, part)
-			}
-		}
-		if len(parts) == 0 {
-			return nil
-		}
-		return &OpenAIMessage{
-			Role:    "system",
-			Content: parts,
-		}
 	}
-	return nil
+
+	return json.Marshal(params)
 }
 
-func convertAnthropicMessageToOpenAI(msg AnthropicMessage) []OpenAIMessage {
-	// Handle simple string content
-	if s, ok := msg.Content.(string); ok {
-		return []OpenAIMessage{{
-			Role:    msg.Role,
-			Content: s,
-		}}
-	}
+func convertAnthropicMessageToOpenAI(msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
+	role := string(msg.Role)
+	var result []openai.ChatCompletionMessageParamUnion
 
-	blocks := parseAnthropicContentBlocks(msg.Content)
-	if len(blocks) == 0 {
-		return nil
-	}
-
-	var contentParts []OpenAIContentPart
+	var textParts []string
 	var reasoningParts []string
-	var toolCalls []OpenAIToolCall
-	var toolResults []OpenAIMessage
+	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	var toolResults []openai.ChatCompletionMessageParamUnion
 
-	for _, block := range blocks {
-		switch block.Type {
-		case "thinking":
-			if msg.Role == "assistant" {
-				text := block.Thinking
+	for _, block := range msg.Content {
+		if block.OfText != nil {
+			textParts = append(textParts, block.OfText.Text)
+		}
+		if block.OfThinking != nil {
+			if role == "assistant" {
+				text := block.OfThinking.Thinking
 				if strings.TrimSpace(text) != "" {
 					reasoningParts = append(reasoningParts, text)
 				}
 			}
-		case "redacted_thinking":
-			// Explicitly ignored
-		case "text", "image":
-			if part, ok := anthropicContentPartToOpenAI(block); ok {
-				contentParts = append(contentParts, part)
-			}
-		case "tool_use":
-			if msg.Role == "assistant" {
-				argsStr := "{}"
-				if block.Input != nil {
-					data, err := json.Marshal(block.Input)
-					if err == nil {
-						argsStr = string(data)
-					}
-				}
-				toolCalls = append(toolCalls, OpenAIToolCall{
-					ID:   block.ID,
-					Type: "function",
-					Function: OpenAIFunctionCall{
-						Name:      block.Name,
-						Arguments: argsStr,
-					},
-				})
-			}
-		case "tool_result":
-			toolResults = append(toolResults, OpenAIMessage{
-				Role:       "tool",
-				ToolCallID: block.ToolUseID,
-				Content:    convertAnthropicToolResultToOpenAI(block),
+		}
+		if block.OfToolUse != nil && role == "assistant" {
+			argsJSON, _ := json.Marshal(block.OfToolUse.Input)
+			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+				ID: block.OfToolUse.ID,
+				Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					Name:      block.OfToolUse.Name,
+					Arguments: string(argsJSON),
+				},
 			})
+		}
+		if block.OfToolResult != nil {
+			contentStr := extractToolResultContentSDK(block.OfToolResult.Content)
+			toolResults = append(toolResults, openai.ToolMessage(block.OfToolResult.ToolUseID, contentStr))
 		}
 	}
 
-	var result []OpenAIMessage
-
-	// Tool results go first (to maintain OpenAI ordering: tool results follow the assistant's tool_calls)
+	// Tool results first (OpenAI requires tool results to immediately follow assistant tool_calls)
 	result = append(result, toolResults...)
 
-	hasContent := len(contentParts) > 0
-	hasReasoning := len(reasoningParts) > 0
-	hasToolCalls := len(toolCalls) > 0
-
-	if msg.Role == "assistant" {
-		if hasContent || hasReasoning || hasToolCalls {
-			outMsg := OpenAIMessage{Role: "assistant"}
-			if hasContent {
-				outMsg.Content = contentParts
-			} else {
-				outMsg.Content = ""
+	if role == "assistant" {
+		if len(textParts) > 0 || len(reasoningParts) > 0 || len(toolCalls) > 0 {
+			assistantMsg := openai.ChatCompletionAssistantMessageParam{
+				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+					OfString: openai.String(strings.Join(textParts, "")),
+				},
 			}
-			if hasReasoning {
-				outMsg.ReasoningContent = strings.Join(reasoningParts, "\n\n")
+			if len(toolCalls) > 0 {
+				assistantMsg.ToolCalls = toolCalls
 			}
-			if hasToolCalls {
-				outMsg.ToolCalls = toolCalls
-			}
-			result = append(result, outMsg)
+			result = append(result, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
 		}
-	} else if hasContent {
-		result = append(result, OpenAIMessage{
-			Role:    msg.Role,
-			Content: contentParts,
-		})
+	} else if len(textParts) > 0 {
+		result = append(result, openai.UserMessage(strings.Join(textParts, "")))
 	}
 
 	return result
 }
 
-func anthropicContentPartToOpenAI(block AnthropicContentBlock) (OpenAIContentPart, bool) {
-	switch block.Type {
-	case "text":
-		if strings.TrimSpace(block.Text) == "" {
-			return OpenAIContentPart{}, false
+func extractToolResultContentSDK(blocks []anthropic.ToolResultBlockParamContentUnion) string {
+	var parts []string
+	for _, block := range blocks {
+		if block.OfText != nil {
+			parts = append(parts, block.OfText.Text)
 		}
-		return OpenAIContentPart{Type: "text", Text: block.Text}, true
-	case "image":
-		var imageURL string
-		if block.Source != nil {
-			switch block.Source.Type {
-			case "base64":
-				imageURL = ImageDataURL(block.Source.MediaType, block.Source.Data)
-			case "url":
-				imageURL = block.Source.URL
-			}
-		}
-		if imageURL == "" {
-			return OpenAIContentPart{}, false
-		}
-		return OpenAIContentPart{
-			Type:     "image_url",
-			ImageURL: &OpenAIImageURL{URL: imageURL},
-		}, true
 	}
-	return OpenAIContentPart{}, false
+	return strings.Join(parts, "\n\n")
 }
 
-func convertAnthropicToolResultToOpenAI(block AnthropicContentBlock) any {
-	content := block.ToolResultContent
-	if content == nil {
-		return ""
+// OpenAIResponseToAnthropic converts an OpenAI Chat Completion response to Anthropic Message format.
+func OpenAIResponseToAnthropic(resp *openai.ChatCompletion) *anthropic.Message {
+	msg := &anthropic.Message{
+		ID:   resp.ID,
+		Role: "assistant",
 	}
 
-	switch v := content.(type) {
-	case string:
-		return v
-	case []any:
-		var textParts []string
-		var hasImage bool
-		var parts []OpenAIContentPart
+	if len(resp.Choices) > 0 {
+		choice := resp.Choices[0]
 
-		for _, item := range v {
-			itemMap, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			itemType, _ := itemMap["type"].(string)
-
-			switch itemType {
-			case "text":
-				text, _ := itemMap["text"].(string)
-				textParts = append(textParts, text)
-				parts = append(parts, OpenAIContentPart{Type: "text", Text: text})
-			case "image":
-				hasImage = true
-				source, _ := itemMap["source"].(map[string]any)
-				if source != nil {
-					srcType, _ := source["type"].(string)
-					switch srcType {
-					case "base64":
-						mediaType, _ := source["media_type"].(string)
-						data, _ := source["data"].(string)
-						parts = append(parts, OpenAIContentPart{
-							Type:     "image_url",
-							ImageURL: &OpenAIImageURL{URL: ImageDataURL(mediaType, data)},
-						})
-					case "url":
-						url, _ := source["url"].(string)
-						parts = append(parts, OpenAIContentPart{
-							Type:     "image_url",
-							ImageURL: &OpenAIImageURL{URL: url},
-						})
-					}
-				}
-			default:
-				if text, ok := itemMap["text"].(string); ok {
-					textParts = append(textParts, text)
-				}
-			}
+		// Text content
+		if choice.Message.Content != "" {
+			msg.Content = append(msg.Content, anthropic.ContentBlockUnion{
+				Type: "text",
+				Text: choice.Message.Content,
+			})
 		}
 
-		if hasImage {
-			return contentPartsToAny(parts)
+		// Tool calls
+		for _, tc := range choice.Message.ToolCalls {
+			msg.Content = append(msg.Content, anthropic.ContentBlockUnion{
+				Type:  "tool_use",
+				ID:    tc.ID,
+				Name:  tc.Function.Name,
+				Input: json.RawMessage(tc.Function.Arguments),
+			})
 		}
-		return strings.Join(textParts, "\n\n")
 
-	case map[string]any:
-		itemType, _ := v["type"].(string)
-		if itemType == "image" {
-			source, _ := v["source"].(map[string]any)
-			if source != nil {
-				srcType, _ := source["type"].(string)
-				switch srcType {
-				case "base64":
-					mediaType, _ := source["media_type"].(string)
-					data, _ := source["data"].(string)
-					return contentPartsToAny([]OpenAIContentPart{{
-						Type:     "image_url",
-						ImageURL: &OpenAIImageURL{URL: ImageDataURL(mediaType, data)},
-					}})
-				case "url":
-					url, _ := source["url"].(string)
-					return contentPartsToAny([]OpenAIContentPart{{
-						Type:     "image_url",
-						ImageURL: &OpenAIImageURL{URL: url},
-					}})
-				}
-			}
-		}
-		if text, ok := v["text"].(string); ok {
-			return text
-		}
-		data, _ := json.Marshal(v)
-		return string(data)
+		// Finish reason
+		reason := MapOpenAIFinishReasonToAnthropic(string(choice.FinishReason))
+		msg.StopReason = anthropic.StopReason(reason)
 	}
 
-	data, _ := json.Marshal(content)
-	return string(data)
+	inputTokens := resp.Usage.PromptTokens
+	outputTokens := resp.Usage.CompletionTokens
+	cachedTokens := resp.Usage.PromptTokensDetails.CachedTokens
+
+	if cachedTokens > 0 && inputTokens >= cachedTokens {
+		inputTokens -= cachedTokens
+	}
+
+	msg.Usage = anthropic.Usage{
+		InputTokens:          inputTokens,
+		OutputTokens:         outputTokens,
+		CacheReadInputTokens: cachedTokens,
+	}
+
+	return msg
 }
 
-func convertAnthropicToolChoiceToOpenAI(choice any) any {
-	if choice == nil {
-		return nil
-	}
+// Streaming accumulator types (kept from our protocol package since SDKs
+// don't provide streaming state management).
 
-	switch v := choice.(type) {
-	case string:
-		return v
-	case map[string]any:
-		tcType, _ := v["type"].(string)
-		switch tcType {
-		case "auto":
-			return "auto"
-		case "any":
-			return "required"
-		case "tool":
-			name, _ := v["name"].(string)
-			return OpenAIToolChoiceFunction{
-				Type:     "function",
-				Function: OpenAIToolChoiceFunctionName{Name: name},
-			}
-		default:
-			return "auto"
-		}
-	}
-	return nil
+type OpenAIToAnthropicAccum struct {
+	MessageID                 string
+	Model                     string
+	CreatedAt                 int64
+	ToolNameMap               map[string]string
+	SawToolCall               bool
+	ContentAccumulator        strings.Builder
+	ToolCallsAccumulator      map[int]*ToolCallAccum
+	TextContentBlockStarted   bool
+	ThinkingBlockStarted      bool
+	FinishReason              string
+	ContentBlocksStopped      bool
+	MessageDeltaSent          bool
+	MessageStarted            bool
+	MessageStopSent           bool
+	ToolCallBlockIndexes      map[int]int
+	TextContentBlockIndex     int
+	ThinkingContentBlockIndex int
+	NextContentBlockIndex     int
 }
 
-func parseAnthropicContentBlocks(content any) []AnthropicContentBlock {
-	arr, ok := content.([]any)
-	if !ok {
-		return nil
+type ToolCallAccum struct {
+	ID        string
+	Name      string
+	Arguments strings.Builder
+}
+
+func NewOpenAIToAnthropicAccum() *OpenAIToAnthropicAccum {
+	return &OpenAIToAnthropicAccum{
+		ToolCallBlockIndexes:      make(map[int]int),
+		TextContentBlockIndex:     -1,
+		ThinkingContentBlockIndex: -1,
+		NextContentBlockIndex:     0,
 	}
-	var blocks []AnthropicContentBlock
-	for _, item := range arr {
-		data, err := json.Marshal(item)
-		if err != nil {
-			continue
-		}
-		var block AnthropicContentBlock
-		if err := json.Unmarshal(data, &block); err != nil {
-			continue
-		}
-		blocks = append(blocks, block)
+}
+
+func (a *OpenAIToAnthropicAccum) EffectiveFinishReason() string {
+	if a.SawToolCall {
+		return "tool_calls"
 	}
-	return blocks
+	return a.FinishReason
+}
+
+func (a *OpenAIToAnthropicAccum) toolContentBlockIndex(openAIToolIndex int) int {
+	if idx, ok := a.ToolCallBlockIndexes[openAIToolIndex]; ok {
+		return idx
+	}
+	idx := a.NextContentBlockIndex
+	a.NextContentBlockIndex++
+	a.ToolCallBlockIndexes[openAIToolIndex] = idx
+	return idx
+}
+
+// Streaming SSE conversion functions - these use raw JSON since SSE events
+// are text-based and need precise formatting.
+// They are kept from the previous implementation and work with the existing
+// corelib translator response functions.
+// (The streaming conversion logic remains in the translator layer)
+
+// AnthropicTokenCountResponse generates an Anthropic-format token count response.
+func AnthropicTokenCountResponse(count int64) string {
+	return SafeJSONString(map[string]int64{"input_tokens": count})
 }

@@ -4,34 +4,41 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/packages/param"
+	"google.golang.org/genai"
 )
 
 // DefaultGeminiSafetySettings returns the default safety settings for Gemini requests.
-func DefaultGeminiSafetySettings() []GeminiSafety {
-	categories := []string{
-		"HARM_CATEGORY_DANGEROUS_CONTENT",
-		"HARM_CATEGORY_HARASSMENT",
-		"HARM_CATEGORY_HATE_SPEECH",
-		"HARM_CATEGORY_SEXUALLY_EXPLICIT",
-		"HARM_CATEGORY_CIVIC_INTEGRITY",
+func DefaultGeminiSafetySettings() []*genai.SafetySetting {
+	categories := []genai.HarmCategory{
+		genai.HarmCategoryDangerousContent,
+		genai.HarmCategoryHarassment,
+		genai.HarmCategoryHateSpeech,
+		genai.HarmCategorySexuallyExplicit,
+		genai.HarmCategoryCivicIntegrity,
 	}
-	settings := make([]GeminiSafety, len(categories))
+	settings := make([]*genai.SafetySetting, len(categories))
 	for i, cat := range categories {
-		settings[i] = GeminiSafety{
+		settings[i] = &genai.SafetySetting{
 			Category:  cat,
-			Threshold: "BLOCK_NONE",
+			Threshold: genai.HarmBlockThresholdBlockNone,
 		}
 	}
 	return settings
 }
 
-// AnthropicRequestToGemini converts an Anthropic Messages API request to a Gemini request.
-func AnthropicRequestToGemini(req *AnthropicRequest, modelName string) *GeminiRequest {
-	// Strip "url" format from JSON schemas (Gemini doesn't support it)
-	rawReq, _ := json.Marshal(req)
-	rawReq = bytes.Replace(rawReq, []byte(`"url":{"type":"string","format":"uri",`), []byte(`"url":{"type":"string",`), -1)
-	var cleanReq AnthropicRequest
-	_ = json.Unmarshal(rawReq, &cleanReq)
+// AnthropicRequestToGemini converts an Anthropic Messages API request (raw JSON)
+// to a Gemini request body using genai SDK types.
+func AnthropicRequestToGemini(rawJSON []byte, modelName string) (*GeminiRequest, error) {
+	// Strip "url" format from JSON schemas
+	rawJSON = bytes.Replace(rawJSON, []byte(`"url":{"type":"string","format":"uri",`), []byte(`"url":{"type":"string",`), -1)
+
+	var req anthropic.MessageNewParams
+	if err := json.Unmarshal(rawJSON, &req); err != nil {
+		return nil, err
+	}
 
 	out := &GeminiRequest{
 		Model:          modelName,
@@ -39,241 +46,144 @@ func AnthropicRequestToGemini(req *AnthropicRequest, modelName string) *GeminiRe
 	}
 
 	// System instruction
-	if cleanReq.System != nil {
-		sysParts := convertAnthropicSystemToGeminiParts(cleanReq.System)
-		if len(sysParts) > 0 {
-			out.SystemInstruction = &GeminiContent{
-				Role:  "user",
-				Parts: sysParts,
-			}
+	var sysParts []*genai.Part
+	for _, sys := range req.System {
+		if sys.Text != "" {
+			sysParts = append(sysParts, genai.NewPartFromText(sys.Text))
 		}
 	}
+	if len(sysParts) > 0 {
+		out.SystemInstruction = &genai.Content{Role: "user", Parts: sysParts}
+	}
 
-	// Messages -> Contents
-	for _, msg := range cleanReq.Messages {
-		content := convertAnthropicMessageToGeminiContent(msg)
+	// Messages → Contents
+	for _, msg := range req.Messages {
+		content := convertAnthropicMsgToGeminiContent(msg)
 		if content != nil {
-			out.Contents = append(out.Contents, *content)
+			out.Contents = append(out.Contents, content)
 		}
 	}
 
 	// Tools
-	if len(cleanReq.Tools) > 0 {
-		var funcDecls []GeminiFuncDecl
-		for _, tool := range cleanReq.Tools {
-			fd := GeminiFuncDecl{
-				Name:        tool.Name,
-				Description: tool.Description,
+	if len(req.Tools) > 0 {
+		var funcDecls []*genai.FunctionDeclaration
+		for _, toolUnion := range req.Tools {
+			if toolUnion.OfTool == nil {
+				continue
 			}
-			if tool.InputSchema != nil {
-				fd.ParametersJSONSchema = tool.InputSchema
+			tool := toolUnion.OfTool
+			fd := &genai.FunctionDeclaration{
+				Name:        tool.Name,
+				Description: tool.Description.Value,
+			}
+			if !param.IsOmitted(tool.InputSchema) {
+				fd.ParametersJsonSchema = tool.InputSchema.Properties
 			}
 			funcDecls = append(funcDecls, fd)
 		}
 		if len(funcDecls) > 0 {
-			out.Tools = []GeminiToolDecl{{FunctionDeclarations: funcDecls}}
+			out.Tools = []*genai.Tool{{FunctionDeclarations: funcDecls}}
 		}
 	}
 
 	// Tool choice
-	if cleanReq.ToolChoice != nil {
-		out.ToolConfig = convertAnthropicToolChoiceToGemini(cleanReq.ToolChoice)
+	if !param.IsOmitted(req.ToolChoice) {
+		tc := req.ToolChoice
+		config := &genai.FunctionCallingConfig{}
+		if tc.OfAuto != nil {
+			config.Mode = genai.FunctionCallingConfigModeAuto
+		} else if tc.OfNone != nil {
+			config.Mode = genai.FunctionCallingConfigModeNone
+		} else if tc.OfAny != nil {
+			config.Mode = genai.FunctionCallingConfigModeAny
+		} else if tc.OfTool != nil {
+			config.Mode = genai.FunctionCallingConfigModeAny
+			config.AllowedFunctionNames = []string{tc.OfTool.Name}
+		}
+		out.ToolConfig = &genai.ToolConfig{FunctionCallingConfig: config}
 	}
-
-	// Thinking config
-	convertAnthropicThinkingToGemini(&cleanReq, out, modelName)
 
 	// Generation config params
-	if cleanReq.Temperature != nil {
+	if req.Temperature.Valid() {
 		if out.GenerationConfig == nil {
-			out.GenerationConfig = &GeminiGenConfig{}
+			out.GenerationConfig = &genai.GenerateContentConfig{}
 		}
-		out.GenerationConfig.Temperature = cleanReq.Temperature
+		out.GenerationConfig.Temperature = Ptr(float32(req.Temperature.Value))
 	}
-	if cleanReq.TopP != nil {
+	if req.TopP.Valid() {
 		if out.GenerationConfig == nil {
-			out.GenerationConfig = &GeminiGenConfig{}
+			out.GenerationConfig = &genai.GenerateContentConfig{}
 		}
-		out.GenerationConfig.TopP = cleanReq.TopP
-	}
-	if cleanReq.TopK != nil {
-		if out.GenerationConfig == nil {
-			out.GenerationConfig = &GeminiGenConfig{}
-		}
-		k := int64(*cleanReq.TopK)
-		out.GenerationConfig.TopK = &k
+		out.GenerationConfig.TopP = Ptr(float32(req.TopP.Value))
 	}
 
-	return out
+	return out, nil
 }
 
-func convertAnthropicSystemToGeminiParts(system any) []GeminiPart {
-	switch v := system.(type) {
-	case string:
-		if v != "" {
-			return []GeminiPart{{Text: v}}
-		}
-	case []any:
-		var parts []GeminiPart
-		for _, item := range v {
-			data, err := json.Marshal(item)
-			if err != nil {
-				continue
-			}
-			var block AnthropicContentBlock
-			if err := json.Unmarshal(data, &block); err != nil {
-				continue
-			}
-			if block.Type == "text" && block.Text != "" {
-				parts = append(parts, GeminiPart{Text: block.Text})
-			}
-		}
-		return parts
-	}
-	return nil
-}
-
-func convertAnthropicMessageToGeminiContent(msg AnthropicMessage) *GeminiContent {
-	role := msg.Role
+func convertAnthropicMsgToGeminiContent(msg anthropic.MessageParam) *genai.Content {
+	role := string(msg.Role)
 	if role == "assistant" {
 		role = "model"
 	}
 
-	content := &GeminiContent{Role: role}
+	content := &genai.Content{Role: role}
 
-	if s, ok := msg.Content.(string); ok {
-		content.Parts = []GeminiPart{{Text: s}}
-		return content
-	}
-
-	blocks := parseAnthropicContentBlocks(msg.Content)
-	for _, block := range blocks {
-		switch block.Type {
-		case "text":
-			content.Parts = append(content.Parts, GeminiPart{Text: block.Text})
-
-		case "tool_use":
+	for _, block := range msg.Content {
+		if block.OfText != nil {
+			content.Parts = append(content.Parts, genai.NewPartFromText(block.OfText.Text))
+		}
+		if block.OfToolUse != nil {
 			var args map[string]any
-			if block.Input != nil {
-				data, err := json.Marshal(block.Input)
+			if block.OfToolUse.Input != nil {
+				data, err := json.Marshal(block.OfToolUse.Input)
 				if err == nil {
 					_ = json.Unmarshal(data, &args)
 				}
 			}
-			funcName := block.Name
-			if block.ID != "" {
-				if derived := toolNameFromClaudeToolUseID(block.ID); derived != "" {
+			funcName := block.OfToolUse.Name
+			if block.OfToolUse.ID != "" {
+				if derived := toolNameFromClaudeToolUseID(block.OfToolUse.ID); derived != "" {
 					funcName = derived
 				}
 			}
-			content.Parts = append(content.Parts, GeminiPart{
-				ThoughtSignature: "skip_thought_signature_validator",
-				FunctionCall: &GeminiFunctionCall{
-					Name: funcName,
-					Args: args,
-				},
+			content.Parts = append(content.Parts, &genai.Part{
+				ThoughtSignature: []byte("skip_thought_signature_validator"),
+				FunctionCall:     &genai.FunctionCall{Name: funcName, Args: args},
 			})
-
-		case "tool_result":
+		}
+		if block.OfToolResult != nil {
 			funcName := ""
-			if block.ToolUseID != "" {
-				funcName = toolNameFromClaudeToolUseID(block.ToolUseID)
+			if block.OfToolResult.ToolUseID != "" {
+				funcName = toolNameFromClaudeToolUseID(block.OfToolResult.ToolUseID)
 				if funcName == "" {
-					funcName = block.ToolUseID
+					funcName = block.OfToolResult.ToolUseID
 				}
 			}
 			responseData := ""
-			if block.Text != "" {
-				responseData = block.Text
+			for _, cb := range block.OfToolResult.Content {
+				if cb.OfText != nil {
+					responseData = cb.OfText.Text
+				}
 			}
-			content.Parts = append(content.Parts, GeminiPart{
-				FunctionResponse: &GeminiFuncResponse{
-					Name: funcName,
-					Response: map[string]any{
-						"result": responseData,
+			content.Parts = append(content.Parts, genai.NewPartFromFunctionResponse(funcName, map[string]any{"result": responseData}))
+		}
+		if block.OfImage != nil {
+			src := block.OfImage.Source
+			if src.OfBase64 != nil {
+				content.Parts = append(content.Parts, &genai.Part{
+					InlineData: &genai.Blob{
+						MIMEType: string(src.OfBase64.MediaType),
+						Data:     []byte(src.OfBase64.Data),
 					},
-				},
-			})
+				})
+			}
 		}
 	}
 
 	if len(content.Parts) == 0 {
 		return nil
 	}
-
 	return content
-}
-
-func convertAnthropicToolChoiceToGemini(choice any) *GeminiToolConfig {
-	tc := &GeminiToolConfig{
-		FunctionCallingConfig: &GeminiFuncCallingConfig{},
-	}
-
-	switch v := choice.(type) {
-	case string:
-		switch v {
-		case "auto":
-			tc.FunctionCallingConfig.Mode = "AUTO"
-		case "none":
-			tc.FunctionCallingConfig.Mode = "NONE"
-		case "any":
-			tc.FunctionCallingConfig.Mode = "ANY"
-		}
-	case map[string]any:
-		tcType, _ := v["type"].(string)
-		switch tcType {
-		case "auto":
-			tc.FunctionCallingConfig.Mode = "AUTO"
-		case "none":
-			tc.FunctionCallingConfig.Mode = "NONE"
-		case "any":
-			tc.FunctionCallingConfig.Mode = "ANY"
-		case "tool":
-			tc.FunctionCallingConfig.Mode = "ANY"
-			if name, ok := v["name"].(string); ok && name != "" {
-				tc.FunctionCallingConfig.AllowedFunctionNames = []string{name}
-			}
-		}
-	}
-
-	return tc
-}
-
-func convertAnthropicThinkingToGemini(req *AnthropicRequest, out *GeminiRequest, modelName string) {
-	if req.Thinking == nil {
-		return
-	}
-	switch req.Thinking.Type {
-	case "enabled":
-		if req.Thinking.BudgetTokens > 0 {
-			if out.GenerationConfig == nil {
-				out.GenerationConfig = &GeminiGenConfig{}
-			}
-			out.GenerationConfig.ThinkingConfig = &GeminiThinkConfig{
-				ThinkingBudget:  Ptr(req.Thinking.BudgetTokens),
-				IncludeThoughts: Ptr(true),
-			}
-		}
-	case "adaptive", "auto":
-		if out.GenerationConfig == nil {
-			out.GenerationConfig = &GeminiGenConfig{}
-		}
-		effort := ""
-		if req.OutputConfig != nil && req.OutputConfig.Effort != "" {
-			effort = strings.ToLower(strings.TrimSpace(req.OutputConfig.Effort))
-		}
-		if effort != "" {
-			out.GenerationConfig.ThinkingConfig = &GeminiThinkConfig{
-				ThinkingLevel:   effort,
-				IncludeThoughts: Ptr(true),
-			}
-		} else {
-			out.GenerationConfig.ThinkingConfig = &GeminiThinkConfig{
-				ThinkingLevel:   "high",
-				IncludeThoughts: Ptr(true),
-			}
-		}
-	}
 }
 
 func toolNameFromClaudeToolUseID(toolUseID string) string {

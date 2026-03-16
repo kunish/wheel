@@ -8,6 +8,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/protocol"
 	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/thinking"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // ConvertGeminiRequestToOpenAI parses and transforms a Gemini API request into OpenAI Chat Completions API format.
@@ -17,14 +18,13 @@ func ConvertGeminiRequestToOpenAI(modelName string, inputRawJSON []byte, stream 
 		return inputRawJSON
 	}
 
-	out := protocol.GeminiRequestToOpenAI(&req, modelName, stream)
-
-	// Use the thinking package's ConvertBudgetToLevel for accurate conversion
-	out.ReasoningEffort = convertGeminiThinkingWithPackage(inputRawJSON)
-
-	result, err := json.Marshal(out)
+	result, err := protocol.GeminiRequestToOpenAI(&req, modelName, stream)
 	if err != nil {
 		return inputRawJSON
+	}
+
+	if effort := convertGeminiThinkingWithPackage(inputRawJSON); effort != "" {
+		result, _ = sjson.SetBytes(result, "reasoning_effort", effort)
 	}
 
 	return result

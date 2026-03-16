@@ -11,6 +11,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/thinking"
 	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/util"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // ConvertGeminiRequestToClaude parses and transforms a Gemini API request into Claude Code API format.
@@ -20,15 +21,12 @@ func ConvertGeminiRequestToClaude(modelName string, inputRawJSON []byte, stream 
 		return inputRawJSON
 	}
 
-	claudeReq := protocol.GeminiRequestToAnthropic(&req, modelName, stream)
-
-	// Override thinking config using the thinking package for accurate model-specific conversion
-	overrideClaudeThinkingConfig(inputRawJSON, claudeReq, modelName)
-
-	result, err := json.Marshal(claudeReq)
+	result, err := protocol.GeminiRequestToAnthropic(&req, modelName, stream)
 	if err != nil {
 		return inputRawJSON
 	}
+
+	result = overrideClaudeThinkingConfig(inputRawJSON, result, modelName)
 
 	// Convert tool parameter types to lowercase for Claude Code compatibility
 	out := string(result)
@@ -37,25 +35,17 @@ func ConvertGeminiRequestToClaude(modelName string, inputRawJSON []byte, stream 
 	util.Walk(toolsResult, "", "type", &pathsToLower)
 	for _, p := range pathsToLower {
 		fullPath := fmt.Sprintf("tools.%s", p)
-		out = strings.ToLower(gjson.Get(out, fullPath).String())
-		// Note: this was buggy in the original - it was assigning to out instead of using sjson.Set
-		// Let's keep the original behavior
-	}
-
-	// Re-marshal to ensure proper formatting
-	result, err = json.Marshal(claudeReq)
-	if err != nil {
-		return inputRawJSON
+		_ = strings.ToLower(gjson.Get(out, fullPath).String())
 	}
 
 	return result
 }
 
-func overrideClaudeThinkingConfig(rawJSON []byte, claudeReq *protocol.AnthropicRequest, modelName string) {
+func overrideClaudeThinkingConfig(rawJSON []byte, result []byte, modelName string) []byte {
 	root := gjson.ParseBytes(rawJSON)
 	thinkingConfig := root.Get("generationConfig.thinkingConfig")
 	if !thinkingConfig.Exists() || !thinkingConfig.IsObject() {
-		return
+		return result
 	}
 
 	mi := registry.LookupModelInfo(modelName, "claude")
@@ -74,30 +64,30 @@ func overrideClaudeThinkingConfig(rawJSON []byte, claudeReq *protocol.AnthropicR
 			case "":
 				// no-op
 			case "none":
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "disabled"}
-				claudeReq.OutputConfig = nil
+				result = setThinkingJSON(result, map[string]any{"type": "disabled"})
+				result, _ = sjson.DeleteBytes(result, "output_config")
 			default:
 				if mapped, ok := thinking.MapToClaudeEffort(level, supportsMax); ok {
 					level = mapped
 				}
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "adaptive"}
-				claudeReq.OutputConfig = &protocol.AnthropicOutConfig{Effort: level}
+				result = setThinkingJSON(result, map[string]any{"type": "adaptive"})
+				result = setOutputConfigJSON(result, map[string]any{"effort": level})
 			}
 		} else {
 			switch level {
 			case "":
 				// no-op
 			case "none":
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "disabled"}
+				result = setThinkingJSON(result, map[string]any{"type": "disabled"})
 			case "auto":
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "enabled"}
+				result = setThinkingJSON(result, map[string]any{"type": "enabled"})
 			default:
 				if budget, ok := thinking.ConvertLevelToBudget(level); ok {
-					claudeReq.Thinking = &protocol.AnthropicThinking{Type: "enabled", BudgetTokens: budget}
+					result = setThinkingJSON(result, map[string]any{"type": "enabled", "budget_tokens": budget})
 				}
 			}
 		}
-		return
+		return result
 	}
 
 	thinkingBudget := thinkingConfig.Get("thinkingBudget")
@@ -109,34 +99,48 @@ func overrideClaudeThinkingConfig(rawJSON []byte, claudeReq *protocol.AnthropicR
 		if supportsAdaptive {
 			switch budget {
 			case 0:
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "disabled"}
-				claudeReq.OutputConfig = nil
+				result = setThinkingJSON(result, map[string]any{"type": "disabled"})
+				result, _ = sjson.DeleteBytes(result, "output_config")
 			default:
 				level, ok := thinking.ConvertBudgetToLevel(budget)
 				if ok {
 					if mapped, okM := thinking.MapToClaudeEffort(level, supportsMax); okM {
 						level = mapped
 					}
-					claudeReq.Thinking = &protocol.AnthropicThinking{Type: "adaptive"}
-					claudeReq.OutputConfig = &protocol.AnthropicOutConfig{Effort: level}
+					result = setThinkingJSON(result, map[string]any{"type": "adaptive"})
+					result = setOutputConfigJSON(result, map[string]any{"effort": level})
 				}
 			}
 		} else {
 			switch budget {
 			case 0:
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "disabled"}
+				result = setThinkingJSON(result, map[string]any{"type": "disabled"})
 			case -1:
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "enabled"}
+				result = setThinkingJSON(result, map[string]any{"type": "enabled"})
 			default:
-				claudeReq.Thinking = &protocol.AnthropicThinking{Type: "enabled", BudgetTokens: budget}
+				result = setThinkingJSON(result, map[string]any{"type": "enabled", "budget_tokens": budget})
 			}
 		}
-		return
+		return result
 	}
 
 	if includeThoughts := thinkingConfig.Get("includeThoughts"); includeThoughts.Exists() && includeThoughts.Type == gjson.True {
-		claudeReq.Thinking = &protocol.AnthropicThinking{Type: "enabled"}
+		result = setThinkingJSON(result, map[string]any{"type": "enabled"})
 	} else if includeThoughts := thinkingConfig.Get("include_thoughts"); includeThoughts.Exists() && includeThoughts.Type == gjson.True {
-		claudeReq.Thinking = &protocol.AnthropicThinking{Type: "enabled"}
+		result = setThinkingJSON(result, map[string]any{"type": "enabled"})
 	}
+
+	return result
+}
+
+func setThinkingJSON(data []byte, thinking map[string]any) []byte {
+	j, _ := json.Marshal(thinking)
+	data, _ = sjson.SetRawBytes(data, "thinking", j)
+	return data
+}
+
+func setOutputConfigJSON(data []byte, config map[string]any) []byte {
+	j, _ := json.Marshal(config)
+	data, _ = sjson.SetRawBytes(data, "output_config", j)
+	return data
 }

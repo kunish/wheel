@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"google.golang.org/genai"
+
 	"github.com/kunish/wheel/apps/worker/internal/protocol"
 )
 
@@ -15,8 +17,8 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 	messages, _ := outBody["messages"].([]any)
 	delete(outBody, "messages")
 
-	var systemParts []protocol.GeminiPart
-	var contents []protocol.GeminiContent
+	var systemParts []*genai.Part
+	var contents []*genai.Content
 
 	for _, m := range messages {
 		msg, ok := m.(map[string]any)
@@ -29,11 +31,11 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 			systemParts = append(systemParts, contentToGeminiPartsList(msg["content"])...)
 		case "assistant":
 			parts := assistantToGeminiPartsList(msg)
-			contents = append(contents, protocol.GeminiContent{Role: "model", Parts: parts})
+			contents = append(contents, &genai.Content{Role: "model", Parts: parts})
 		case "tool":
 			contents = append(contents, toolResultToGeminiContentTyped(msg))
 		default:
-			contents = append(contents, protocol.GeminiContent{
+			contents = append(contents, &genai.Content{
 				Role:  "user",
 				Parts: contentToGeminiPartsList(msg["content"]),
 			})
@@ -43,22 +45,23 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 	geminiReq := protocol.GeminiRequest{Contents: contents}
 
 	if len(systemParts) > 0 {
-		geminiReq.SystemInstruction = &protocol.GeminiContent{Parts: systemParts}
+		geminiReq.SystemInstruction = &genai.Content{Parts: systemParts}
 	}
 
-	genConfig := &protocol.GeminiGenConfig{}
+	genConfig := &genai.GenerateContentConfig{}
 	hasGenConfig := false
 	if t, ok := outBody["temperature"].(float64); ok {
-		genConfig.Temperature = &t
+		f := float32(t)
+		genConfig.Temperature = &f
 		hasGenConfig = true
 	}
 	if tp, ok := outBody["top_p"].(float64); ok {
-		genConfig.TopP = &tp
+		f := float32(tp)
+		genConfig.TopP = &f
 		hasGenConfig = true
 	}
 	if mt, ok := outBody["max_tokens"].(float64); ok && mt > 0 {
-		v := int64(mt)
-		genConfig.MaxOutputTokens = &v
+		genConfig.MaxOutputTokens = int32(mt)
 		hasGenConfig = true
 	}
 	if stop, ok := outBody["stop"].([]any); ok {
@@ -107,15 +110,15 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 	}
 }
 
-func contentToGeminiPartsList(content any) []protocol.GeminiPart {
+func contentToGeminiPartsList(content any) []*genai.Part {
 	if s, ok := content.(string); ok {
-		return []protocol.GeminiPart{{Text: s}}
+		return []*genai.Part{{Text: s}}
 	}
 	parts, ok := content.([]any)
 	if !ok {
-		return []protocol.GeminiPart{{Text: fmt.Sprint(content)}}
+		return []*genai.Part{{Text: fmt.Sprint(content)}}
 	}
-	var result []protocol.GeminiPart
+	var result []*genai.Part
 	for _, p := range parts {
 		part, ok := p.(map[string]any)
 		if !ok {
@@ -125,16 +128,16 @@ func contentToGeminiPartsList(content any) []protocol.GeminiPart {
 		switch partType {
 		case "text":
 			text, _ := part["text"].(string)
-			result = append(result, protocol.GeminiPart{Text: text})
+			result = append(result, &genai.Part{Text: text})
 		case "image_url":
 			if imgURL, ok := part["image_url"].(map[string]any); ok {
 				url, _ := imgURL["url"].(string)
 				if strings.HasPrefix(url, "data:") {
 					mediaType, data := protocol.ParseDataURL(url)
-					result = append(result, protocol.GeminiPart{
-						InlineData: &protocol.GeminiInlineData{
-							MimeType: mediaType,
-							Data:     data,
+					result = append(result, &genai.Part{
+						InlineData: &genai.Blob{
+							MIMEType: mediaType,
+							Data:     []byte(data),
 						},
 					})
 				}
@@ -142,17 +145,17 @@ func contentToGeminiPartsList(content any) []protocol.GeminiPart {
 		}
 	}
 	if len(result) == 0 {
-		result = append(result, protocol.GeminiPart{Text: ""})
+		result = append(result, &genai.Part{Text: ""})
 	}
 	return result
 }
 
-func assistantToGeminiPartsList(msg map[string]any) []protocol.GeminiPart {
+func assistantToGeminiPartsList(msg map[string]any) []*genai.Part {
 	toolCalls, ok := msg["tool_calls"].([]any)
 	if ok && len(toolCalls) > 0 {
-		var parts []protocol.GeminiPart
+		var parts []*genai.Part
 		if content, ok := msg["content"].(string); ok && content != "" {
-			parts = append(parts, protocol.GeminiPart{Text: content})
+			parts = append(parts, &genai.Part{Text: content})
 		}
 		for _, tc := range toolCalls {
 			tcMap, ok := tc.(map[string]any)
@@ -165,8 +168,8 @@ func assistantToGeminiPartsList(msg map[string]any) []protocol.GeminiPart {
 			}
 			name, _ := fn["name"].(string)
 			args := protocol.ParseJSONArgs(fmt.Sprint(fn["arguments"]))
-			parts = append(parts, protocol.GeminiPart{
-				FunctionCall: &protocol.GeminiFunctionCall{Name: name, Args: args},
+			parts = append(parts, &genai.Part{
+				FunctionCall: &genai.FunctionCall{Name: name, Args: args},
 			})
 		}
 		return parts
@@ -174,7 +177,7 @@ func assistantToGeminiPartsList(msg map[string]any) []protocol.GeminiPart {
 	return contentToGeminiPartsList(msg["content"])
 }
 
-func toolResultToGeminiContentTyped(msg map[string]any) protocol.GeminiContent {
+func toolResultToGeminiContentTyped(msg map[string]any) *genai.Content {
 	name, _ := msg["name"].(string)
 	content := msg["content"]
 	var response map[string]any
@@ -190,10 +193,10 @@ func toolResultToGeminiContentTyped(msg map[string]any) protocol.GeminiContent {
 	} else {
 		response = map[string]any{"result": fmt.Sprint(content)}
 	}
-	return protocol.GeminiContent{
+	return &genai.Content{
 		Role: "user",
-		Parts: []protocol.GeminiPart{{
-			FunctionResponse: &protocol.GeminiFuncResponse{
+		Parts: []*genai.Part{{
+			FunctionResponse: &genai.FunctionResponse{
 				Name:     name,
 				Response: response,
 			},
@@ -201,8 +204,8 @@ func toolResultToGeminiContentTyped(msg map[string]any) protocol.GeminiContent {
 	}
 }
 
-func convertOpenAIToolsToGeminiTyped(tools []any) []protocol.GeminiToolDecl {
-	var decls []protocol.GeminiFuncDecl
+func convertOpenAIToolsToGeminiTyped(tools []any) []*genai.Tool {
+	var decls []*genai.FunctionDeclaration
 	for _, t := range tools {
 		tool, ok := t.(map[string]any)
 		if !ok || tool["type"] != "function" {
@@ -212,21 +215,63 @@ func convertOpenAIToolsToGeminiTyped(tools []any) []protocol.GeminiToolDecl {
 		if !ok {
 			continue
 		}
-		decl := protocol.GeminiFuncDecl{
+		decl := &genai.FunctionDeclaration{
 			Name: fmt.Sprint(fn["name"]),
 		}
 		if desc, ok := fn["description"].(string); ok {
 			decl.Description = desc
 		}
 		if params := fn["parameters"]; params != nil {
-			decl.Parameters = params
+			decl.ParametersJsonSchema = params
 		}
 		decls = append(decls, decl)
 	}
 	if len(decls) == 0 {
 		return nil
 	}
-	return []protocol.GeminiToolDecl{{FunctionDeclarations: decls}}
+	return []*genai.Tool{{FunctionDeclarations: decls}}
+}
+
+// Local types for OpenAI response serialization (the SDK types have special
+// field types that are inconvenient for building responses from scratch).
+
+type relayOpenAIResponse struct {
+	ID      string              `json:"id"`
+	Object  string              `json:"object"`
+	Created int64               `json:"created"`
+	Model   string              `json:"model"`
+	Choices []relayOpenAIChoice `json:"choices"`
+	Usage   *relayOpenAIUsage   `json:"usage,omitempty"`
+}
+
+type relayOpenAIChoice struct {
+	Index        int32              `json:"index"`
+	Message      *relayOpenAIMsg    `json:"message,omitempty"`
+	FinishReason *string            `json:"finish_reason,omitempty"`
+}
+
+type relayOpenAIMsg struct {
+	Role      string                `json:"role"`
+	Content   any                   `json:"content"`
+	ToolCalls []relayOpenAIToolCall `json:"tool_calls,omitempty"`
+}
+
+type relayOpenAIToolCall struct {
+	Index    *int                    `json:"index,omitempty"`
+	ID       string                  `json:"id"`
+	Type     string                  `json:"type"`
+	Function relayOpenAIFunctionCall `json:"function"`
+}
+
+type relayOpenAIFunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type relayOpenAIUsage struct {
+	PromptTokens     int32 `json:"prompt_tokens"`
+	CompletionTokens int32 `json:"completion_tokens"`
+	TotalTokens      int32 `json:"total_tokens"`
 }
 
 // convertGeminiResponse converts a Gemini response to OpenAI format.
@@ -235,12 +280,17 @@ func convertGeminiResponse(geminiResp map[string]any) map[string]any {
 	if err != nil {
 		return geminiResp
 	}
-	var resp protocol.GeminiResponse
+	var resp genai.GenerateContentResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return geminiResp
 	}
 
-	openaiResp := geminiResponseToOpenAI(&resp)
+	modelName, _ := geminiResp["model"].(string)
+	if modelName == "" {
+		modelName = resp.ModelVersion
+	}
+
+	openaiResp := geminiResponseToOpenAI(&resp, modelName)
 	result, err := json.Marshal(openaiResp)
 	if err != nil {
 		return geminiResp
@@ -250,18 +300,18 @@ func convertGeminiResponse(geminiResp map[string]any) map[string]any {
 	return out
 }
 
-func geminiResponseToOpenAI(resp *protocol.GeminiResponse) *protocol.OpenAIChatResponse {
-	out := &protocol.OpenAIChatResponse{
+func geminiResponseToOpenAI(resp *genai.GenerateContentResponse, modelName string) *relayOpenAIResponse {
+	out := &relayOpenAIResponse{
 		ID:      "chatcmpl-gemini",
 		Object:  "chat.completion",
-		Created: int64(currentUnixSec()),
-		Model:   resp.Model,
+		Created: currentUnixSec(),
+		Model:   modelName,
 	}
 
 	for _, candidate := range resp.Candidates {
-		choice := protocol.OpenAIChoice{
+		choice := relayOpenAIChoice{
 			Index: candidate.Index,
-			Message: &protocol.OpenAIMessage{
+			Message: &relayOpenAIMsg{
 				Role: "assistant",
 			},
 		}
@@ -275,11 +325,11 @@ func geminiResponseToOpenAI(resp *protocol.GeminiResponse) *protocol.OpenAIChatR
 				if part.FunctionCall != nil {
 					argsJSON, _ := json.Marshal(part.FunctionCall.Args)
 					idx := len(choice.Message.ToolCalls)
-					choice.Message.ToolCalls = append(choice.Message.ToolCalls, protocol.OpenAIToolCall{
+					choice.Message.ToolCalls = append(choice.Message.ToolCalls, relayOpenAIToolCall{
 						Index: &idx,
 						ID:    fmt.Sprintf("call_%d", idx),
 						Type:  "function",
-						Function: protocol.OpenAIFunctionCall{
+						Function: relayOpenAIFunctionCall{
 							Name:      part.FunctionCall.Name,
 							Arguments: string(argsJSON),
 						},
@@ -296,7 +346,7 @@ func geminiResponseToOpenAI(resp *protocol.GeminiResponse) *protocol.OpenAIChatR
 		}
 
 		if candidate.FinishReason != "" {
-			reason := protocol.MapGeminiFinishReasonToOpenAI(candidate.FinishReason)
+			reason := protocol.MapGeminiFinishReasonToOpenAI(string(candidate.FinishReason))
 			choice.FinishReason = &reason
 		}
 
@@ -304,7 +354,7 @@ func geminiResponseToOpenAI(resp *protocol.GeminiResponse) *protocol.OpenAIChatR
 	}
 
 	if resp.UsageMetadata != nil {
-		out.Usage = &protocol.OpenAIUsage{
+		out.Usage = &relayOpenAIUsage{
 			PromptTokens:     resp.UsageMetadata.PromptTokenCount,
 			CompletionTokens: resp.UsageMetadata.CandidatesTokenCount,
 			TotalTokens:      resp.UsageMetadata.PromptTokenCount + resp.UsageMetadata.CandidatesTokenCount,

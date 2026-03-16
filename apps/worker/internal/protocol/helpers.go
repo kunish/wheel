@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+
+	"google.golang.org/genai"
 )
 
-// MapOpenAIFinishReasonToAnthropic maps OpenAI finish reasons to Anthropic equivalents.
+// Finish reason mapping between providers.
+
 func MapOpenAIFinishReasonToAnthropic(reason string) string {
 	switch reason {
 	case "stop":
@@ -26,7 +29,6 @@ func MapOpenAIFinishReasonToAnthropic(reason string) string {
 	}
 }
 
-// MapAnthropicStopReasonToOpenAI maps Anthropic stop reasons to OpenAI equivalents.
 func MapAnthropicStopReasonToOpenAI(reason string) string {
 	switch reason {
 	case "end_turn", "stop_sequence":
@@ -40,8 +42,22 @@ func MapAnthropicStopReasonToOpenAI(reason string) string {
 	}
 }
 
-// MapOpenAIFinishReasonToGemini maps OpenAI finish reasons to Gemini equivalents.
-func MapOpenAIFinishReasonToGemini(reason string) string {
+func MapOpenAIFinishReasonToGemini(reason string) genai.FinishReason {
+	switch reason {
+	case "stop":
+		return genai.FinishReasonStop
+	case "length":
+		return genai.FinishReasonMaxTokens
+	case "tool_calls":
+		return genai.FinishReasonStop
+	case "content_filter":
+		return genai.FinishReasonSafety
+	default:
+		return genai.FinishReasonStop
+	}
+}
+
+func MapOpenAIFinishReasonToGeminiString(reason string) string {
 	switch reason {
 	case "stop":
 		return "STOP"
@@ -56,7 +72,6 @@ func MapOpenAIFinishReasonToGemini(reason string) string {
 	}
 }
 
-// MapGeminiFinishReasonToOpenAI maps Gemini finish reasons to OpenAI equivalents.
 func MapGeminiFinishReasonToOpenAI(reason string) string {
 	switch reason {
 	case "STOP":
@@ -70,7 +85,6 @@ func MapGeminiFinishReasonToOpenAI(reason string) string {
 	}
 }
 
-// MapGeminiFinishReasonToAnthropic maps Gemini finish reasons to Anthropic equivalents.
 func MapGeminiFinishReasonToAnthropic(reason string) string {
 	switch reason {
 	case "STOP":
@@ -84,7 +98,6 @@ func MapGeminiFinishReasonToAnthropic(reason string) string {
 	}
 }
 
-// MapAnthropicStopReasonToGemini maps Anthropic stop reasons to Gemini equivalents.
 func MapAnthropicStopReasonToGemini(reason string) string {
 	switch reason {
 	case "end_turn", "stop_sequence":
@@ -98,12 +111,12 @@ func MapAnthropicStopReasonToGemini(reason string) string {
 	}
 }
 
-// GenOpenAIToolCallID generates a unique tool call ID in the OpenAI format (call_<alphanum>).
+// ID generation.
+
 func GenOpenAIToolCallID() string {
 	return "call_" + randomAlphanumeric(24)
 }
 
-// GenAnthropicToolUseID generates a unique tool use ID in the Anthropic format (toolu_<alphanum>).
 func GenAnthropicToolUseID() string {
 	return "toolu_" + randomAlphanumeric(24)
 }

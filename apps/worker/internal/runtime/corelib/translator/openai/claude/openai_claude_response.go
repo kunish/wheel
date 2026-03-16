@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/openai/openai-go"
+
 	"github.com/kunish/wheel/apps/worker/internal/protocol"
 	"github.com/kunish/wheel/apps/worker/internal/runtime/corelib/util"
 )
@@ -38,7 +40,7 @@ func ConvertOpenAIResponseToClaude(_ context.Context, _ string, originalRequestR
 		return protocol.ConvertOpenAIDoneToAnthropic(accum)
 	}
 
-	var chunk protocol.OpenAIChatResponse
+	var chunk openai.ChatCompletionChunk
 	if err := json.Unmarshal(rawJSON, &chunk); err != nil {
 		return []string{}
 	}
@@ -48,7 +50,7 @@ func ConvertOpenAIResponseToClaude(_ context.Context, _ string, originalRequestR
 
 // ConvertOpenAIResponseToClaudeNonStream converts a non-streaming OpenAI response to a non-streaming Anthropic response.
 func ConvertOpenAIResponseToClaudeNonStream(_ context.Context, _ string, originalRequestRawJSON, requestRawJSON, rawJSON []byte, _ *any) string {
-	var resp protocol.OpenAIChatResponse
+	var resp openai.ChatCompletion
 	if err := json.Unmarshal(rawJSON, &resp); err != nil {
 		return string(rawJSON)
 	}
@@ -56,7 +58,6 @@ func ConvertOpenAIResponseToClaudeNonStream(_ context.Context, _ string, origina
 	toolNameMap := util.ToolNameMapFromClaudeRequest(originalRequestRawJSON)
 	anthropicResp := protocol.OpenAIResponseToAnthropic(&resp)
 
-	// Apply tool name mapping
 	if toolNameMap != nil {
 		for i, block := range anthropicResp.Content {
 			if block.Type == "tool_use" {
