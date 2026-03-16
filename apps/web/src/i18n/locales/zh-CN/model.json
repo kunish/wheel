@@ -229,6 +229,8 @@
     "oauthSuccess": "OAuth 登录成功！认证文件已导入。",
     "oauthError": "OAuth 登录失败：{{error}}",
     "oauthDeviceCode": "请在打开的页面中输入以下验证码：",
+    "oauthCopyCode": "复制验证码",
+    "oauthCodeCopied": "验证码已复制到剪贴板",
     "oauthCopyLink": "复制链接",
     "oauthOpenLink": "打开登录页面",
     "oauthLinkCopied": "链接已复制到剪贴板",

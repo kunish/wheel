@@ -773,11 +773,11 @@ export function CodexChannelDetail({
                         variant="ghost"
                         size="sm"
                         className="h-7 text-xs"
-                        aria-label={t("codex.oauthCopyLink")}
-                        title={t("codex.oauthCopyLink")}
+                        aria-label={t("codex.oauthCopyCode")}
+                        title={t("codex.oauthCopyCode")}
                         onClick={() => {
                           void navigator.clipboard.writeText(oauthUserCode)
-                          toast.success(t("codex.oauthLinkCopied"))
+                          toast.success(t("codex.oauthCodeCopied"))
                         }}
                       >
                         <Copy className="h-3 w-3" />
