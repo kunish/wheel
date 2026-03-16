@@ -775,9 +775,13 @@ export function CodexChannelDetail({
                         className="h-7 text-xs"
                         aria-label={t("codex.oauthCopyCode")}
                         title={t("codex.oauthCopyCode")}
-                        onClick={() => {
-                          void navigator.clipboard.writeText(oauthUserCode)
-                          toast.success(t("codex.oauthCodeCopied"))
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(oauthUserCode)
+                            toast.success(t("codex.oauthCodeCopied"))
+                          } catch {
+                            toast.error(t("actions.copyFailed", { ns: "common" }))
+                          }
                         }}
                       >
                         <Copy className="h-3 w-3" />
@@ -793,9 +797,13 @@ export function CodexChannelDetail({
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(oauthUrl)
-                        toast.success(t("codex.oauthLinkCopied"))
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(oauthUrl)
+                          toast.success(t("codex.oauthLinkCopied"))
+                        } catch {
+                          toast.error(t("actions.copyFailed", { ns: "common" }))
+                        }
                       }}
                     >
                       <Copy className="mr-1 h-3 w-3" />
