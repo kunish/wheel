@@ -1,8 +1,4 @@
 // Package claude provides request translation functionality for Anthropic to OpenAI API.
-// It handles parsing and transforming Anthropic API requests into OpenAI Chat Completions API format,
-// extracting model information, system instructions, message contents, and tool declarations.
-// The package performs JSON data transformation to ensure compatibility
-// between Anthropic API format and OpenAI API's expected format.
 package claude
 
 import (
@@ -14,318 +10,297 @@ import (
 )
 
 // ConvertClaudeRequestToOpenAI parses and transforms an Anthropic API request into OpenAI Chat Completions API format.
-// It extracts the model name, system instruction, message contents, and tool declarations
-// from the raw JSON request and returns them in the format expected by the OpenAI API.
 func ConvertClaudeRequestToOpenAI(modelName string, inputRawJSON []byte, stream bool) []byte {
-	rawJSON := inputRawJSON
-	// Base OpenAI Chat Completions API template
-	out := `{"model":"","messages":[]}`
+	root := gjson.ParseBytes(inputRawJSON)
 
-	root := gjson.ParseBytes(rawJSON)
+	result := `{"model":"","stream":false}`
+	result, _ = sjson.Set(result, "model", modelName)
+	result, _ = sjson.Set(result, "stream", stream)
 
-	// Model mapping
-	out, _ = sjson.Set(out, "model", modelName)
+	if stream {
+		result, _ = sjson.SetRaw(result, "stream_options", `{"include_usage":true}`)
+	}
 
 	// Max tokens
-	if maxTokens := root.Get("max_tokens"); maxTokens.Exists() {
-		out, _ = sjson.Set(out, "max_tokens", maxTokens.Int())
+	if mt := root.Get("max_tokens"); mt.Exists() && mt.Int() > 0 {
+		result, _ = sjson.Set(result, "max_tokens", mt.Int())
 	}
 
-	// Temperature
-	if temp := root.Get("temperature"); temp.Exists() {
-		out, _ = sjson.Set(out, "temperature", temp.Float())
-	} else if topP := root.Get("top_p"); topP.Exists() { // Top P
-		out, _ = sjson.Set(out, "top_p", topP.Float())
+	// Temperature / TopP
+	if t := root.Get("temperature"); t.Exists() {
+		result, _ = sjson.Set(result, "temperature", t.Float())
+	} else if tp := root.Get("top_p"); tp.Exists() {
+		result, _ = sjson.Set(result, "top_p", tp.Float())
 	}
 
-	// Stop sequences -> stop
-	if stopSequences := root.Get("stop_sequences"); stopSequences.Exists() {
-		if stopSequences.IsArray() {
-			var stops []string
-			stopSequences.ForEach(func(_, value gjson.Result) bool {
-				stops = append(stops, value.String())
-				return true
-			})
-			if len(stops) > 0 {
-				if len(stops) == 1 {
-					out, _ = sjson.Set(out, "stop", stops[0])
-				} else {
-					out, _ = sjson.Set(out, "stop", stops)
+	// Stop sequences
+	if stops := root.Get("stop_sequences"); stops.Exists() && stops.IsArray() {
+		arr := stops.Array()
+		if len(arr) == 1 {
+			result, _ = sjson.Set(result, "stop", arr[0].String())
+		} else if len(arr) > 1 {
+			var seqs []string
+			for _, s := range arr {
+				seqs = append(seqs, s.String())
+			}
+			result, _ = sjson.Set(result, "stop", seqs)
+		}
+	}
+
+	messagesJSON := "[]"
+
+	// System messages
+	sysField := root.Get("system")
+	if sysField.Exists() {
+		if sysField.Type == gjson.String && strings.TrimSpace(sysField.String()) != "" {
+			msg := `{"role":"system","content":""}`
+			msg, _ = sjson.Set(msg, "content", sysField.String())
+			messagesJSON, _ = sjson.SetRaw(messagesJSON, "-1", msg)
+		} else if sysField.IsArray() {
+			partsJSON := "[]"
+			hasParts := false
+			for _, block := range sysField.Array() {
+				if block.Get("type").String() == "text" && strings.TrimSpace(block.Get("text").String()) != "" {
+					part := `{"type":"text","text":""}`
+					part, _ = sjson.Set(part, "text", block.Get("text").String())
+					partsJSON, _ = sjson.SetRaw(partsJSON, "-1", part)
+					hasParts = true
 				}
+			}
+			if hasParts {
+				msg := `{"role":"system"}`
+				msg, _ = sjson.SetRaw(msg, "content", partsJSON)
+				messagesJSON, _ = sjson.SetRaw(messagesJSON, "-1", msg)
 			}
 		}
 	}
 
-	// Stream
-	out, _ = sjson.Set(out, "stream", stream)
+	// Messages
+	root.Get("messages").ForEach(func(_, msg gjson.Result) bool {
+		role := msg.Get("role").String()
+		content := msg.Get("content")
 
-	// Thinking: Convert Claude thinking.budget_tokens to OpenAI reasoning_effort
-	if thinkingConfig := root.Get("thinking"); thinkingConfig.Exists() && thinkingConfig.IsObject() {
-		if thinkingType := thinkingConfig.Get("type"); thinkingType.Exists() {
-			switch thinkingType.String() {
-			case "enabled":
-				if budgetTokens := thinkingConfig.Get("budget_tokens"); budgetTokens.Exists() {
-					budget := int(budgetTokens.Int())
-					if effort, ok := thinking.ConvertBudgetToLevel(budget); ok && effort != "" {
-						out, _ = sjson.Set(out, "reasoning_effort", effort)
-					}
-				} else {
-					// No budget_tokens specified, default to "auto" for enabled thinking
-					if effort, ok := thinking.ConvertBudgetToLevel(-1); ok && effort != "" {
-						out, _ = sjson.Set(out, "reasoning_effort", effort)
-					}
-				}
-			case "adaptive", "auto":
-				// Adaptive thinking can carry an explicit effort in output_config.effort (Claude 4.6).
-				// Pass through directly; ApplyThinking handles clamping to target model's levels.
-				effort := ""
-				if v := root.Get("output_config.effort"); v.Exists() && v.Type == gjson.String {
-					effort = strings.ToLower(strings.TrimSpace(v.String()))
-				}
-				if effort != "" {
-					out, _ = sjson.Set(out, "reasoning_effort", effort)
-				} else {
-					out, _ = sjson.Set(out, "reasoning_effort", string(thinking.LevelXHigh))
-				}
-			case "disabled":
-				if effort, ok := thinking.ConvertBudgetToLevel(0); ok && effort != "" {
-					out, _ = sjson.Set(out, "reasoning_effort", effort)
-				}
-			}
-		}
-	}
-
-	// Process messages and system
-	var messagesJSON = "[]"
-
-	// Handle system message first
-	systemMsgJSON := `{"role":"system","content":[]}`
-	hasSystemContent := false
-	if system := root.Get("system"); system.Exists() {
-		if system.Type == gjson.String {
-			if system.String() != "" {
-				oldSystem := `{"type":"text","text":""}`
-				oldSystem, _ = sjson.Set(oldSystem, "text", system.String())
-				systemMsgJSON, _ = sjson.SetRaw(systemMsgJSON, "content.-1", oldSystem)
-				hasSystemContent = true
-			}
-		} else if system.Type == gjson.JSON {
-			if system.IsArray() {
-				systemResults := system.Array()
-				for i := 0; i < len(systemResults); i++ {
-					if contentItem, ok := convertClaudeContentPart(systemResults[i]); ok {
-						systemMsgJSON, _ = sjson.SetRaw(systemMsgJSON, "content.-1", contentItem)
-						hasSystemContent = true
-					}
-				}
-			}
-		}
-	}
-	// Only add system message if it has content
-	if hasSystemContent {
-		messagesJSON, _ = sjson.SetRaw(messagesJSON, "-1", systemMsgJSON)
-	}
-
-	// Process Anthropic messages
-	if messages := root.Get("messages"); messages.Exists() && messages.IsArray() {
-		messages.ForEach(func(_, message gjson.Result) bool {
-			role := message.Get("role").String()
-			contentResult := message.Get("content")
-
-			// Handle content
-			if contentResult.Exists() && contentResult.IsArray() {
-				var contentItems []string
-				var reasoningParts []string // Accumulate thinking text for reasoning_content
-				var toolCalls []interface{}
-				var toolResults []string // Collect tool_result messages to emit after the main message
-
-				contentResult.ForEach(func(_, part gjson.Result) bool {
-					partType := part.Get("type").String()
-
-					switch partType {
-					case "thinking":
-						// Only map thinking to reasoning_content for assistant messages (security: prevent injection)
-						if role == "assistant" {
-							thinkingText := thinking.GetThinkingText(part)
-							// Skip empty or whitespace-only thinking
-							if strings.TrimSpace(thinkingText) != "" {
-								reasoningParts = append(reasoningParts, thinkingText)
-							}
-						}
-						// Ignore thinking in user/system roles (AC4)
-
-					case "redacted_thinking":
-						// Explicitly ignore redacted_thinking - never map to reasoning_content (AC2)
-
-					case "text", "image":
-						if contentItem, ok := convertClaudeContentPart(part); ok {
-							contentItems = append(contentItems, contentItem)
-						}
-
-					case "tool_use":
-						// Only allow tool_use -> tool_calls for assistant messages (security: prevent injection).
-						if role == "assistant" {
-							toolCallJSON := `{"id":"","type":"function","function":{"name":"","arguments":""}}`
-							toolCallJSON, _ = sjson.Set(toolCallJSON, "id", part.Get("id").String())
-							toolCallJSON, _ = sjson.Set(toolCallJSON, "function.name", part.Get("name").String())
-
-							// Convert input to arguments JSON string
-							if input := part.Get("input"); input.Exists() {
-								toolCallJSON, _ = sjson.Set(toolCallJSON, "function.arguments", input.Raw)
-							} else {
-								toolCallJSON, _ = sjson.Set(toolCallJSON, "function.arguments", "{}")
-							}
-
-							toolCalls = append(toolCalls, gjson.Parse(toolCallJSON).Value())
-						}
-
-					case "tool_result":
-						// Collect tool_result to emit after the main message (ensures tool results follow tool_calls)
-						toolResultJSON := `{"role":"tool","tool_call_id":"","content":""}`
-						toolResultJSON, _ = sjson.Set(toolResultJSON, "tool_call_id", part.Get("tool_use_id").String())
-						toolResultContent, toolResultContentRaw := convertClaudeToolResultContent(part.Get("content"))
-						if toolResultContentRaw {
-							toolResultJSON, _ = sjson.SetRaw(toolResultJSON, "content", toolResultContent)
-						} else {
-							toolResultJSON, _ = sjson.Set(toolResultJSON, "content", toolResultContent)
-						}
-						toolResults = append(toolResults, toolResultJSON)
-					}
-					return true
-				})
-
-				// Build reasoning content string
-				reasoningContent := ""
-				if len(reasoningParts) > 0 {
-					reasoningContent = strings.Join(reasoningParts, "\n\n")
-				}
-
-				hasContent := len(contentItems) > 0
-				hasReasoning := reasoningContent != ""
-				hasToolCalls := len(toolCalls) > 0
-				hasToolResults := len(toolResults) > 0
-
-				// OpenAI requires: tool messages MUST immediately follow the assistant message with tool_calls.
-				// Therefore, we emit tool_result messages FIRST (they respond to the previous assistant's tool_calls),
-				// then emit the current message's content.
-				for _, toolResultJSON := range toolResults {
-					messagesJSON, _ = sjson.Set(messagesJSON, "-1", gjson.Parse(toolResultJSON).Value())
-				}
-
-				// For assistant messages: emit a single unified message with content, tool_calls, and reasoning_content
-				// This avoids splitting into multiple assistant messages which breaks OpenAI tool-call adjacency
-				if role == "assistant" {
-					if hasContent || hasReasoning || hasToolCalls {
-						msgJSON := `{"role":"assistant"}`
-
-						// Add content (as array if we have items, empty string if reasoning-only)
-						if hasContent {
-							contentArrayJSON := "[]"
-							for _, contentItem := range contentItems {
-								contentArrayJSON, _ = sjson.SetRaw(contentArrayJSON, "-1", contentItem)
-							}
-							msgJSON, _ = sjson.SetRaw(msgJSON, "content", contentArrayJSON)
-						} else {
-							// Ensure content field exists for OpenAI compatibility
-							msgJSON, _ = sjson.Set(msgJSON, "content", "")
-						}
-
-						// Add reasoning_content if present
-						if hasReasoning {
-							msgJSON, _ = sjson.Set(msgJSON, "reasoning_content", reasoningContent)
-						}
-
-						// Add tool_calls if present (in same message as content)
-						if hasToolCalls {
-							msgJSON, _ = sjson.Set(msgJSON, "tool_calls", toolCalls)
-						}
-
-						messagesJSON, _ = sjson.Set(messagesJSON, "-1", gjson.Parse(msgJSON).Value())
-					}
-				} else {
-					// For non-assistant roles: emit content message if we have content
-					// If the message only contains tool_results (no text/image), we still processed them above
-					if hasContent {
-						msgJSON := `{"role":""}`
-						msgJSON, _ = sjson.Set(msgJSON, "role", role)
-
-						contentArrayJSON := "[]"
-						for _, contentItem := range contentItems {
-							contentArrayJSON, _ = sjson.SetRaw(contentArrayJSON, "-1", contentItem)
-						}
-						msgJSON, _ = sjson.SetRaw(msgJSON, "content", contentArrayJSON)
-
-						messagesJSON, _ = sjson.Set(messagesJSON, "-1", gjson.Parse(msgJSON).Value())
-					} else if hasToolResults && !hasContent {
-						// tool_results already emitted above, no additional user message needed
-					}
-				}
-
-			} else if contentResult.Exists() && contentResult.Type == gjson.String {
-				// Simple string content
-				msgJSON := `{"role":"","content":""}`
-				msgJSON, _ = sjson.Set(msgJSON, "role", role)
-				msgJSON, _ = sjson.Set(msgJSON, "content", contentResult.String())
-				messagesJSON, _ = sjson.Set(messagesJSON, "-1", gjson.Parse(msgJSON).Value())
-			}
-
+		if content.Type == gjson.String {
+			m := `{"role":"","content":""}`
+			m, _ = sjson.Set(m, "role", role)
+			m, _ = sjson.Set(m, "content", content.String())
+			messagesJSON, _ = sjson.SetRaw(messagesJSON, "-1", m)
 			return true
-		})
-	}
-
-	// Set messages
-	if gjson.Parse(messagesJSON).IsArray() && len(gjson.Parse(messagesJSON).Array()) > 0 {
-		out, _ = sjson.SetRaw(out, "messages", messagesJSON)
-	}
-
-	// Process tools - convert Anthropic tools to OpenAI functions
-	if tools := root.Get("tools"); tools.Exists() && tools.IsArray() {
-		var toolsJSON = "[]"
-
-		tools.ForEach(func(_, tool gjson.Result) bool {
-			openAIToolJSON := `{"type":"function","function":{"name":"","description":""}}`
-			openAIToolJSON, _ = sjson.Set(openAIToolJSON, "function.name", tool.Get("name").String())
-			openAIToolJSON, _ = sjson.Set(openAIToolJSON, "function.description", tool.Get("description").String())
-
-			// Convert Anthropic input_schema to OpenAI function parameters
-			if inputSchema := tool.Get("input_schema"); inputSchema.Exists() {
-				openAIToolJSON, _ = sjson.Set(openAIToolJSON, "function.parameters", inputSchema.Value())
-			}
-
-			toolsJSON, _ = sjson.Set(toolsJSON, "-1", gjson.Parse(openAIToolJSON).Value())
-			return true
-		})
-
-		if gjson.Parse(toolsJSON).IsArray() && len(gjson.Parse(toolsJSON).Array()) > 0 {
-			out, _ = sjson.SetRaw(out, "tools", toolsJSON)
 		}
+
+		if !content.IsArray() {
+			return true
+		}
+
+		if role == "assistant" {
+			messagesJSON = convertAssistantMessage(content, messagesJSON)
+		} else {
+			messagesJSON = convertUserMessage(role, content, messagesJSON)
+		}
+		return true
+	})
+
+	result, _ = sjson.SetRaw(result, "messages", messagesJSON)
+
+	// Tools
+	toolsJSON := "[]"
+	hasTools := false
+	root.Get("tools").ForEach(func(_, tool gjson.Result) bool {
+		name := tool.Get("name").String()
+		if name == "" {
+			return true
+		}
+		toolDef := `{"type":"function","function":{"name":""}}`
+		toolDef, _ = sjson.Set(toolDef, "function.name", name)
+		if desc := tool.Get("description"); desc.Exists() {
+			toolDef, _ = sjson.Set(toolDef, "function.description", desc.String())
+		}
+		if schema := tool.Get("input_schema"); schema.Exists() {
+			toolDef, _ = sjson.SetRaw(toolDef, "function.parameters", schema.Raw)
+		}
+		toolsJSON, _ = sjson.SetRaw(toolsJSON, "-1", toolDef)
+		hasTools = true
+		return true
+	})
+	if hasTools {
+		result, _ = sjson.SetRaw(result, "tools", toolsJSON)
 	}
 
-	// Tool choice mapping - convert Anthropic tool_choice to OpenAI format
-	if toolChoice := root.Get("tool_choice"); toolChoice.Exists() {
-		switch toolChoice.Get("type").String() {
+	// Tool choice
+	tc := root.Get("tool_choice")
+	if tc.Exists() {
+		tcType := tc.Get("type").String()
+		switch tcType {
 		case "auto":
-			out, _ = sjson.Set(out, "tool_choice", "auto")
+			result, _ = sjson.Set(result, "tool_choice", "auto")
 		case "any":
-			out, _ = sjson.Set(out, "tool_choice", "required")
+			result, _ = sjson.Set(result, "tool_choice", "required")
 		case "tool":
-			// Specific tool choice
-			toolName := toolChoice.Get("name").String()
-			toolChoiceJSON := `{"type":"function","function":{"name":""}}`
-			toolChoiceJSON, _ = sjson.Set(toolChoiceJSON, "function.name", toolName)
-			out, _ = sjson.SetRaw(out, "tool_choice", toolChoiceJSON)
-		default:
-			// Default to auto if not specified
-			out, _ = sjson.Set(out, "tool_choice", "auto")
+			if name := tc.Get("name"); name.Exists() {
+				result, _ = sjson.SetRaw(result, "tool_choice", `{"type":"function","function":{"name":"`+name.String()+`"}}`)
+			}
 		}
 	}
 
-	// Handle user parameter (for tracking)
-	if user := root.Get("user"); user.Exists() {
-		out, _ = sjson.Set(out, "user", user.String())
+	// Reasoning effort from thinking config
+	if effort := convertThinkingWithPackage(inputRawJSON); effort != "" {
+		result, _ = sjson.Set(result, "reasoning_effort", effort)
 	}
 
-	return []byte(out)
+	return []byte(result)
+}
+
+func convertAssistantMessage(content gjson.Result, messagesJSON string) string {
+	var textParts []string
+	var reasoningParts []string
+	toolCallsJSON := "[]"
+	hasToolCalls := false
+	contentPartsJSON := "[]"
+	hasContentParts := false
+
+	content.ForEach(func(_, block gjson.Result) bool {
+		blockType := block.Get("type").String()
+		switch blockType {
+		case "text":
+			text := block.Get("text").String()
+			textParts = append(textParts, text)
+			part := `{"type":"text","text":""}`
+			part, _ = sjson.Set(part, "text", text)
+			contentPartsJSON, _ = sjson.SetRaw(contentPartsJSON, "-1", part)
+			hasContentParts = true
+		case "thinking":
+			text := block.Get("thinking").String()
+			if strings.TrimSpace(text) != "" {
+				reasoningParts = append(reasoningParts, text)
+			}
+		case "tool_use":
+			id := block.Get("id").String()
+			name := block.Get("name").String()
+			input := block.Get("input")
+			tc := `{"id":"","type":"function","function":{"name":"","arguments":""}}`
+			tc, _ = sjson.Set(tc, "id", id)
+			tc, _ = sjson.Set(tc, "function.name", name)
+			if input.Exists() {
+				tc, _ = sjson.Set(tc, "function.arguments", input.Raw)
+			} else {
+				tc, _ = sjson.Set(tc, "function.arguments", "{}")
+			}
+			toolCallsJSON, _ = sjson.SetRaw(toolCallsJSON, "-1", tc)
+			hasToolCalls = true
+		}
+		return true
+	})
+
+	msg := `{"role":"assistant"}`
+
+	if hasContentParts {
+		msg, _ = sjson.SetRaw(msg, "content", contentPartsJSON)
+	} else if len(textParts) > 0 {
+		msg, _ = sjson.Set(msg, "content", strings.Join(textParts, ""))
+	} else {
+		msg, _ = sjson.Set(msg, "content", "")
+	}
+
+	if hasToolCalls {
+		msg, _ = sjson.SetRaw(msg, "tool_calls", toolCallsJSON)
+	}
+
+	if len(reasoningParts) > 0 {
+		msg, _ = sjson.Set(msg, "reasoning_content", strings.Join(reasoningParts, "\n\n"))
+	}
+
+	messagesJSON, _ = sjson.SetRaw(messagesJSON, "-1", msg)
+	return messagesJSON
+}
+
+func convertUserMessage(role string, content gjson.Result, messagesJSON string) string {
+	var toolResults []string
+	contentPartsJSON := "[]"
+	hasContentParts := false
+
+	content.ForEach(func(_, block gjson.Result) bool {
+		blockType := block.Get("type").String()
+		switch blockType {
+		case "text":
+			text := block.Get("text").String()
+			if strings.TrimSpace(text) != "" {
+				part := `{"type":"text","text":""}`
+				part, _ = sjson.Set(part, "text", text)
+				contentPartsJSON, _ = sjson.SetRaw(contentPartsJSON, "-1", part)
+				hasContentParts = true
+			}
+		case "image":
+			if partJSON, ok := convertClaudeContentPart(block); ok {
+				contentPartsJSON, _ = sjson.SetRaw(contentPartsJSON, "-1", partJSON)
+				hasContentParts = true
+			}
+		case "tool_result":
+			toolUseID := block.Get("tool_use_id").String()
+			toolContent := block.Get("content")
+			contentStr, isArray := convertClaudeToolResultContent(toolContent)
+
+			toolMsg := `{"role":"tool","tool_call_id":"","content":""}`
+			toolMsg, _ = sjson.Set(toolMsg, "tool_call_id", toolUseID)
+			if isArray {
+				toolMsg, _ = sjson.SetRaw(toolMsg, "content", contentStr)
+			} else {
+				toolMsg, _ = sjson.Set(toolMsg, "content", contentStr)
+			}
+			toolResults = append(toolResults, toolMsg)
+		}
+		return true
+	})
+
+	// Tool results must come before user content
+	for _, tr := range toolResults {
+		messagesJSON, _ = sjson.SetRaw(messagesJSON, "-1", tr)
+	}
+
+	if hasContentParts {
+		msg := `{"role":""}`
+		msg, _ = sjson.Set(msg, "role", role)
+		msg, _ = sjson.SetRaw(msg, "content", contentPartsJSON)
+		messagesJSON, _ = sjson.SetRaw(messagesJSON, "-1", msg)
+	}
+
+	return messagesJSON
+}
+
+func convertThinkingWithPackage(rawJSON []byte) string {
+	root := gjson.ParseBytes(rawJSON)
+	thinkingConfig := root.Get("thinking")
+	if !thinkingConfig.Exists() || !thinkingConfig.IsObject() {
+		return ""
+	}
+
+	thinkingType := thinkingConfig.Get("type").String()
+	switch thinkingType {
+	case "enabled":
+		if budgetTokens := thinkingConfig.Get("budget_tokens"); budgetTokens.Exists() {
+			budget := int(budgetTokens.Int())
+			if effort, ok := thinking.ConvertBudgetToLevel(budget); ok && effort != "" {
+				return effort
+			}
+		} else {
+			if effort, ok := thinking.ConvertBudgetToLevel(-1); ok && effort != "" {
+				return effort
+			}
+		}
+	case "adaptive", "auto":
+		effort := ""
+		if v := root.Get("output_config.effort"); v.Exists() && v.Type == gjson.String {
+			effort = strings.ToLower(strings.TrimSpace(v.String()))
+		}
+		if effort != "" {
+			return effort
+		}
+		return string(thinking.LevelXHigh)
+	case "disabled":
+		if effort, ok := thinking.ConvertBudgetToLevel(0); ok && effort != "" {
+			return effort
+		}
+	}
+	return ""
 }
 
 func convertClaudeContentPart(part gjson.Result) (string, bool) {
@@ -450,3 +425,4 @@ func convertClaudeToolResultContent(content gjson.Result) (string, bool) {
 
 	return content.Raw, false
 }
+

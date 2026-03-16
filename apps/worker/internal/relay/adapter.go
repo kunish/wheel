@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kunish/wheel/apps/worker/internal/protocol"
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
@@ -519,29 +520,11 @@ func ConvertToAnthropicResponse(openaiResp map[string]any) map[string]any {
 }
 
 func mapAnthropicStopReason(reason string) string {
-	switch reason {
-	case "end_turn", "stop_sequence":
-		return "stop"
-	case "max_tokens":
-		return "length"
-	case "tool_use":
-		return "tool_calls"
-	default:
-		return "stop"
-	}
+	return protocol.MapAnthropicStopReasonToOpenAI(reason)
 }
 
 func mapOpenAIFinishReason(reason string) string {
-	switch reason {
-	case "stop":
-		return "end_turn"
-	case "length":
-		return "max_tokens"
-	case "tool_calls":
-		return "tool_use"
-	default:
-		return "end_turn"
-	}
+	return protocol.MapOpenAIFinishReasonToAnthropic(reason)
 }
 
 func copyBody(body map[string]any) map[string]any {
@@ -613,14 +596,7 @@ func convertOpenAIContentToAnthropic(content any) any {
 }
 
 func parseDataURL(dataURL string) (mediaType, data string) {
-	after := strings.TrimPrefix(dataURL, "data:")
-	parts := strings.SplitN(after, ",", 2)
-	if len(parts) != 2 {
-		return "application/octet-stream", ""
-	}
-	mediaType = strings.TrimSuffix(parts[0], ";base64")
-	data = parts[1]
-	return
+	return protocol.ParseDataURL(dataURL)
 }
 
 func toInt(v any) int {
