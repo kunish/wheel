@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.0](https://github.com/kunish/wheel/compare/v1.31.2...v1.32.0) (2026-03-16)
+
+
+### Features
+
+* fix chart colors, add cache token tracking, Responses API relay, and server-side log stats ([7b06de8](https://github.com/kunish/wheel/commit/7b06de8cc3df8305c98dd9c7487afc0e469cded6))
+
 ## [1.31.2](https://github.com/kunish/wheel/compare/v1.31.1...v1.31.2) (2026-03-16)
 
 
