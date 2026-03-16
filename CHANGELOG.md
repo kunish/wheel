@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.1](https://github.com/kunish/wheel/compare/v1.32.0...v1.32.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* allow authenticated requests to bypass remote management check ([366f074](https://github.com/kunish/wheel/commit/366f0748fc23ed1ce7d535371d215a79dcd5dcf4))
+
 ## [1.32.0](https://github.com/kunish/wheel/compare/v1.31.2...v1.32.0) (2026-03-16)
 
 
