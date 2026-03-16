@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kunish/wheel/apps/worker/internal/middleware"
 )
 
 // RegisterNativeProviderRoutes registers provider-native routes that act as
@@ -17,14 +18,13 @@ import (
 func (h *RelayHandler) RegisterNativeProviderRoutes(r *gin.Engine) {
 	// Anthropic native: POST /anthropic/v1/messages
 	anthropic := r.Group("/anthropic")
+	anthropic.Use(middleware.ApiKeyAuth(h.DB))
 	anthropic.POST("/v1/messages", h.handleAnthropicNative)
 
 	// Gemini native: POST /gemini/v1beta/models/:model:generateContent
 	gemini := r.Group("/gemini")
+	gemini.Use(middleware.ApiKeyAuth(h.DB))
 	gemini.POST("/v1beta/models/:model", h.handleGeminiNative)
-
-	// Generic passthrough for any provider: POST /:provider/*path
-	// This allows SDKs to use Wheel as a base URL directly
 }
 
 // handleAnthropicNative handles Anthropic-format requests at /anthropic/v1/messages.
