@@ -141,8 +141,27 @@ func main() {
 		return relay.RateLimitConfig{RPM: rpmVal, TPM: tpmVal}
 	})
 
-	// ── Plugin Pipeline ──
-	plugins := relay.NewPluginPipeline(rateLimitPlugin)
+	// ── Guardrail Plugin (enforces DB-managed content rules) ──
+	guardrailPlugin := relay.NewGuardrailPlugin(database)
+
+	// ── Semantic Cache Plugin ──
+	cacheStopCh := make(chan struct{})
+	semanticCache := relay.NewSemanticCachePlugin(relay.SemanticCacheConfig{
+		TTL:        5 * time.Minute,
+		MaxEntries: 10000,
+		Enabled:    true,
+	})
+	semanticCache.StartCleanup(cacheStopCh)
+
+	// ── LiteLLM Compatibility Plugin ──
+	litellmPlugin := relay.NewLiteLLMCompatPlugin()
+
+	// ── Plugin Pipeline (order: rate_limit → guardrail → litellm → cache) ──
+	plugins := relay.NewPluginPipeline(rateLimitPlugin, guardrailPlugin, litellmPlugin, semanticCache)
+
+	// ── Adaptive Balancer (wraps base balancer with metrics-driven weight adjustment) ──
+	adaptiveBalancer := relay.NewAdaptiveBalancer(bal)
+	adaptiveBalancer.Start()
 
 	// ── HTTP Clients (with timeout) ──
 	nonStreamClient := &http.Client{Timeout: 120 * time.Second}
@@ -300,17 +319,18 @@ func main() {
 			DLock:                 dlock,
 			CodexManagementClient: codexHTTPClient,
 		},
-		Broadcast:         hub.Broadcast,
-		StreamTracker:     hub,
-		LogWriter:         logWriter,
-		Observer:          obs,
-		CircuitBreakers:   cbm,
-		Sessions:          sm,
-		Balancer:          bal,
-		HTTPClient:        nonStreamClient,
-		StreamClient:      streamClient,
-		Plugins:           plugins,
-		RoutingEngine:     routingEngine,
+		Broadcast:        hub.Broadcast,
+		StreamTracker:    hub,
+		LogWriter:        logWriter,
+		Observer:         obs,
+		CircuitBreakers:  cbm,
+		Sessions:         sm,
+		Balancer:         bal,
+		AdaptiveBalancer: adaptiveBalancer,
+		HTTPClient:       nonStreamClient,
+		StreamClient:     streamClient,
+		Plugins:          plugins,
+		RoutingEngine:    routingEngine,
 		HealthChecker:     healthChecker,
 		MCPManager:        mcpManager,
 		MCPServer:         mcpSrv,
@@ -384,6 +404,8 @@ func main() {
 	// Wait for shutdown signal
 	<-ctx.Done()
 	log.Println("[shutdown] Signal received, shutting down...")
+	close(cacheStopCh)
+	adaptiveBalancer.Stop()
 
 	// Gracefully shut down HTTP server (stop accepting new requests)
 	if err := srv.Shutdown(context.Background()); err != nil {

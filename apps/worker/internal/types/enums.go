@@ -155,6 +155,7 @@ const (
 	GroupModeRandom     GroupMode = 2
 	GroupModeFailover   GroupMode = 3
 	GroupModeWeighted   GroupMode = 4
+	GroupModeAdaptive   GroupMode = 5
 )
 
 // AutoGroupType controls automatic group creation behavior.

@@ -23,7 +23,9 @@ func (n *noopEmbeddingProvider) Embed(ctx context.Context, text string) ([]float
 	return nil, nil
 }
 
-// semanticCacheConfig defines the configuration for the semantic cache plugin.
+// SemanticCacheConfig defines the configuration for the semantic cache plugin.
+type SemanticCacheConfig = semanticCacheConfig
+
 type semanticCacheConfig struct {
 	TTL           time.Duration // cache entry TTL
 	MaxEntries    int           // max number of cached entries
@@ -56,9 +58,13 @@ type semanticCachePlugin struct {
 	embedder embeddingProvider
 }
 
-// newSemanticCachePlugin creates a new semantic cache plugin.
+// NewSemanticCachePlugin creates a new semantic cache plugin.
 // An optional embeddingProvider can be passed for similarity mode;
 // when omitted a noopEmbeddingProvider is used.
+func NewSemanticCachePlugin(config semanticCacheConfig, embedder ...embeddingProvider) *semanticCachePlugin {
+	return newSemanticCachePlugin(config, embedder...)
+}
+
 func newSemanticCachePlugin(config semanticCacheConfig, embedder ...embeddingProvider) *semanticCachePlugin {
 	exclude := make(map[string]bool, len(config.ExcludeModels))
 	for _, m := range config.ExcludeModels {
@@ -97,6 +103,15 @@ func (p *semanticCachePlugin) PreHook(ctx *RelayContext) *ShortCircuit {
 	}
 	if p.exclude[ctx.RequestModel] {
 		return nil
+	}
+
+	// Request header controls: X-Wheel-Cache-Bypass skips cache entirely
+	if ctx.GinCtx != nil {
+		if ctx.GinCtx.GetHeader("X-Wheel-Cache-Bypass") == "true" ||
+			ctx.GinCtx.GetHeader("X-Wheel-Cache-No-Store") == "true" {
+			ctx.Set("cache_bypass", true)
+			return nil
+		}
 	}
 
 	key := cacheKey(ctx.RequestModel, ctx.Body["messages"])
@@ -152,6 +167,9 @@ func (p *semanticCachePlugin) PostHook(ctx *RelayContext, resp *RelayPluginRespo
 		return
 	}
 	if resp.Body == nil {
+		return
+	}
+	if bypass, _ := ctx.Get("cache_bypass"); bypass == true {
 		return
 	}
 

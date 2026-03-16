@@ -61,7 +61,12 @@ func (h *RelayHandler) selectChannels(c *gin.Context, model string, apiKeyId int
 		return nil
 	}
 
-	orderedItems := h.Balancer.SelectChannelOrder(group.Mode, group.Items, group.ID)
+	var orderedItems []types.GroupItem
+	if h.AdaptiveBalancer != nil {
+		orderedItems = h.AdaptiveBalancer.SelectChannelOrder(group.Mode, group.Items, group.ID)
+	} else {
+		orderedItems = h.Balancer.SelectChannelOrder(group.Mode, group.Items, group.ID)
+	}
 
 	channelMap := make(map[int]*types.Channel, len(allChannels))
 	for i := range allChannels {
@@ -94,17 +99,18 @@ func (h *RelayHandler) selectChannels(c *gin.Context, model string, apiKeyId int
 // RelayHandler holds dependencies for the relay routes.
 type RelayHandler struct {
 	Handler
-	Broadcast       types.BroadcastFunc
-	StreamTracker   types.StreamTracker
-	LogWriter       *db.LogWriter
-	Observer        *observe.Observer
-	CircuitBreakers *relay.CircuitBreakerManager
-	Sessions        *relay.SessionManager
-	Balancer        *relay.BalancerState
-	HTTPClient      *http.Client // non-streaming (120s timeout)
-	StreamClient    *http.Client // streaming (30s connect timeout, no overall timeout)
+	Broadcast        types.BroadcastFunc
+	StreamTracker    types.StreamTracker
+	LogWriter        *db.LogWriter
+	Observer         *observe.Observer
+	CircuitBreakers  *relay.CircuitBreakerManager
+	Sessions         *relay.SessionManager
+	Balancer         *relay.BalancerState
+	AdaptiveBalancer *relay.AdaptiveBalancer
+	HTTPClient       *http.Client // non-streaming (120s timeout)
+	StreamClient     *http.Client // streaming (30s connect timeout, no overall timeout)
 
-	// ── New: Plugin pipeline, routing engine, health checker ──
+	// ── Plugin pipeline, routing engine, health checker ──
 	Plugins       *relay.PluginPipeline
 	RoutingEngine *relay.RoutingEngine
 	HealthChecker *relay.HealthChecker
@@ -127,12 +133,8 @@ type RelayHandler struct {
 	AntigravityRelay *AntigravityRelay
 
 	// ── Codex runtime (in-process) ──
-	// CodexStreamClient is used for streaming requests to the embedded Codex
-	// runtime via in-memory transport (no TCP). Nil falls back to StreamClient.
 	CodexStreamClient *http.Client
-	// CodexHTTPClient is used for non-streaming requests to the embedded Codex
-	// runtime via in-memory transport. Nil falls back to HTTPClient.
-	CodexHTTPClient *http.Client
+	CodexHTTPClient   *http.Client
 }
 
 // RegisterRelayRoutes registers relay and related /v1 routes on a Gin engine.
@@ -178,6 +180,9 @@ func (h *RelayHandler) RegisterRelayRoutes(r *gin.Engine) {
 		mcp.Use(middleware.ApiKeyAuth(h.DB))
 		mcp.Any("/*path", gin.WrapH(mcpHandler))
 	}
+
+	// Native provider routes (drop-in replacement for provider SDKs)
+	h.RegisterNativeProviderRoutes(r)
 }
 
 // RegisterRelayAdminRoutes registers admin-level routes that need RelayHandler
@@ -204,6 +209,13 @@ func (h *RelayHandler) RegisterRelayAdminRoutes(r *gin.Engine) {
 
 	// MCP OAuth discovery
 	admin.POST("/mcp/oauth/discover", h.DiscoverOAuthMetadata)
+
+	// Team management (budget aggregation)
+	admin.GET("/team/list", h.ListTeams)
+	admin.POST("/team/create", h.CreateTeam)
+	admin.POST("/team/update", h.UpdateTeam)
+	admin.DELETE("/team/delete/:id", h.DeleteTeam)
+	admin.GET("/team/budgets", h.GetTeamBudgets)
 }
 
 // ── GET /v1/models ──────────────────────────────────────────────

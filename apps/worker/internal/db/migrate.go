@@ -220,6 +220,20 @@ var initSchema = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 	)`,
+	`CREATE TABLE IF NOT EXISTS teams (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		name VARCHAR(255) NOT NULL,
+		description TEXT NOT NULL,
+		max_budget DOUBLE DEFAULT 0 NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+	)`,
+	`CREATE TABLE IF NOT EXISTS session_sticky (
+		` + "`key`" + ` VARCHAR(512) PRIMARY KEY,
+		channel_id INT NOT NULL,
+		channel_key_id INT NOT NULL,
+		updated_at BIGINT NOT NULL
+	)`,
 }
 
 // initIndexes contains indexes created after tables exist.
@@ -236,6 +250,9 @@ var initIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_model_limits_model ON model_limits(model)`,
 	`CREATE INDEX IF NOT EXISTS idx_virtual_keys_api_key_id ON virtual_keys(api_key_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_codex_auth_files_channel_id ON codex_auth_files(channel_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_teams_name ON teams(name)`,
+	`CREATE INDEX IF NOT EXISTS idx_session_sticky_updated_at ON session_sticky(updated_at)`,
+	`CREATE INDEX IF NOT EXISTS idx_virtual_keys_team_id ON virtual_keys(team_id)`,
 }
 
 // initAlters upgrades existing columns (idempotent).
