@@ -554,7 +554,9 @@ func (s *Server) registerOAuthCallbackRoute(path, provider string) {
 			errStr = c.Query("error_description")
 		}
 		if state != "" && s.oauthCallbackWriter != nil {
-			_, _ = s.oauthCallbackWriter(s.cfg.AuthDir, provider, state, code, errStr)
+			if _, writeErr := s.oauthCallbackWriter(s.cfg.AuthDir, provider, state, code, errStr); writeErr != nil {
+				log.WithError(writeErr).WithField("provider", provider).Error("oauth callback writer failed")
+			}
 		}
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.String(http.StatusOK, oauthCallbackSuccessHTML)

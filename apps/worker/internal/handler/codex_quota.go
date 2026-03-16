@@ -67,6 +67,28 @@ func (h *Handler) ListCodexQuota(c *gin.Context) {
 		return
 	}
 
+	// Antigravity channels do not have a ChatGPT-style quota API.
+	// Return auth file entries with available metadata (project_id, email).
+	if channel.Type == types.OutboundAntigravity {
+		items := make([]codexQuotaItem, len(paged))
+		for i, file := range paged {
+			item := codexQuotaItem{
+				Name:      file.Name,
+				Email:     file.Email,
+				AuthIndex: file.AuthIndex,
+			}
+			if file.AuthIndex == "" {
+				item.Error = "missing auth_index"
+			} else if projectID := stringFromMap(file.Raw, "project_id", "projectId"); projectID != "" {
+				item.PlanType = "project:" + projectID
+			}
+			items[i] = item
+		}
+		h.storeQuotaCache(channel.ID, paged, items)
+		successJSON(c, gin.H{"items": items, "total": total, "page": page, "pageSize": pageSize})
+		return
+	}
+
 	items := h.collectCodexQuotaItems(c.Request.Context(), paged, codexQuotaFetchConcurrency, func(ctx context.Context, file codexAuthFile) (codexQuotaWindow, codexQuotaWindow, string, error) {
 		accountID := stringFromMap(file.Raw, "account_id", "accountId")
 		if accountID == "" {

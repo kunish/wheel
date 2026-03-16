@@ -38,6 +38,9 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 	}
 
 	query := url.Values{"is_webui": []string{"true"}}
+	if workerPort := strings.TrimSpace(h.Config.Port); workerPort != "" {
+		query.Set("callback_port", workerPort)
+	}
 	authDir, err := h.resolveCodexLocalAuthDir()
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())

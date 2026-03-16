@@ -3,6 +3,8 @@ package mgmthandler
 import (
 	"context"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	sdkcliproxy "github.com/kunish/wheel/apps/worker/internal/runtime/sdk/cliproxy"
@@ -19,9 +21,14 @@ func (h *ManagementHandler) guardHandler(c *gin.Context) bool {
 	return true
 }
 
-// newAuthContext creates a context derived from the request, populated with auth info.
+// newAuthContext creates a background context populated with auth info from
+// the request. We intentionally use context.Background() instead of
+// c.Request.Context() because OAuth handlers spawn background goroutines
+// that outlive the HTTP request. Using the request context would cause it
+// to be canceled when the handler returns, breaking subsequent HTTP calls
+// (token exchange, user info fetch, etc.) in those goroutines.
 func newAuthContext(c *gin.Context) context.Context {
-	ctx := c.Request.Context()
+	ctx := context.Background()
 	return sdkcliproxy.PopulateAuthContext(ctx, c)
 }
 
@@ -69,7 +76,18 @@ func (h *ManagementHandler) startPKCECallbackForwarder(c *gin.Context, port int,
 		return setup, nil
 	}
 
-	targetURL, err := managementCallbackURL(h.cfg.Port, h.cfg.TLS.Enable, callbackPath)
+	// Use the caller's port (e.g. the worker's listening port) when provided,
+	// so that the callback forwarder redirects to a port that is actually
+	// listening. This is necessary when the runtime runs in handler-only mode
+	// and does not bind its own TCP port.
+	callbackPort := h.cfg.Port
+	if override := strings.TrimSpace(c.Query("callback_port")); override != "" {
+		if parsed, err := strconv.Atoi(override); err == nil && parsed > 0 {
+			callbackPort = parsed
+		}
+	}
+
+	targetURL, err := managementCallbackURL(callbackPort, h.cfg.TLS.Enable, callbackPath)
 	if err != nil {
 		log.WithError(err).Errorf("failed to compute %s callback target", providerName)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "callback server unavailable"})

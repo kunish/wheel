@@ -145,12 +145,6 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
 		stopForwarderInstance(port, prev)
 	}
 
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen on %s: %w", addr, err)
-	}
-
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		target := targetBase
 		if raw := r.URL.RawQuery; raw != "" {
@@ -171,10 +165,44 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
 	}
 	done := make(chan struct{})
 
+	// Listen on IPv4 loopback.
+	ipv4Addr := fmt.Sprintf("127.0.0.1:%d", port)
+	ln4, err4 := net.Listen("tcp4", ipv4Addr)
+
+	// Also try IPv6 loopback so that browsers resolving "localhost" to ::1 can connect.
+	ipv6Addr := fmt.Sprintf("[::1]:%d", port)
+	ln6, err6 := net.Listen("tcp6", ipv6Addr)
+
+	if err4 != nil && err6 != nil {
+		return nil, fmt.Errorf("failed to listen on %s and %s: %w", ipv4Addr, ipv6Addr, err4)
+	}
+
+	// Combine both listeners into a single logical listener.
+	combinedDone := make(chan struct{})
+	var serveWg sync.WaitGroup
+
+	if ln4 != nil {
+		serveWg.Add(1)
+		go func() {
+			defer serveWg.Done()
+			if errServe := srv.Serve(ln4); errServe != nil && !errors.Is(errServe, http.ErrServerClosed) {
+				log.WithError(errServe).Warnf("callback forwarder for %s (ipv4) stopped unexpectedly", provider)
+			}
+		}()
+	}
+	if ln6 != nil {
+		serveWg.Add(1)
+		go func() {
+			defer serveWg.Done()
+			if errServe := srv.Serve(ln6); errServe != nil && !errors.Is(errServe, http.ErrServerClosed) {
+				log.WithError(errServe).Warnf("callback forwarder for %s (ipv6) stopped unexpectedly", provider)
+			}
+		}()
+	}
+
 	go func() {
-		if errServe := srv.Serve(ln); errServe != nil && !errors.Is(errServe, http.ErrServerClosed) {
-			log.WithError(errServe).Warnf("callback forwarder for %s stopped unexpectedly", provider)
-		}
+		serveWg.Wait()
+		close(combinedDone)
 		close(done)
 	}()
 
@@ -188,7 +216,14 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
 	callbackForwarders[port] = forwarder
 	callbackForwardersMu.Unlock()
 
-	log.Infof("callback forwarder for %s listening on %s", provider, addr)
+	var listenAddrs []string
+	if ln4 != nil {
+		listenAddrs = append(listenAddrs, ipv4Addr)
+	}
+	if ln6 != nil {
+		listenAddrs = append(listenAddrs, ipv6Addr)
+	}
+	log.Infof("callback forwarder for %s listening on %s", provider, strings.Join(listenAddrs, " and "))
 
 	return forwarder, nil
 }
@@ -237,7 +272,7 @@ func (h *Handler) managementCallbackURL(path string) (string, error) {
 	if h.cfg.TLS.Enable {
 		scheme = "https"
 	}
-	return fmt.Sprintf("%s://127.0.0.1:%d%s", scheme, h.cfg.Port, path), nil
+	return fmt.Sprintf("%s://localhost:%d%s", scheme, h.cfg.Port, path), nil
 }
 
 func (h *Handler) ListAuthFiles(c *gin.Context) {

@@ -319,18 +319,18 @@ func main() {
 			DLock:                 dlock,
 			CodexManagementClient: codexHTTPClient,
 		},
-		Broadcast:        hub.Broadcast,
-		StreamTracker:    hub,
-		LogWriter:        logWriter,
-		Observer:         obs,
-		CircuitBreakers:  cbm,
-		Sessions:         sm,
-		Balancer:         bal,
-		AdaptiveBalancer: adaptiveBalancer,
-		HTTPClient:       nonStreamClient,
-		StreamClient:     streamClient,
-		Plugins:          plugins,
-		RoutingEngine:    routingEngine,
+		Broadcast:         hub.Broadcast,
+		StreamTracker:     hub,
+		LogWriter:         logWriter,
+		Observer:          obs,
+		CircuitBreakers:   cbm,
+		Sessions:          sm,
+		Balancer:          bal,
+		AdaptiveBalancer:  adaptiveBalancer,
+		HTTPClient:        nonStreamClient,
+		StreamClient:      streamClient,
+		Plugins:           plugins,
+		RoutingEngine:     routingEngine,
 		HealthChecker:     healthChecker,
 		MCPManager:        mcpManager,
 		MCPServer:         mcpSrv,
@@ -348,6 +348,24 @@ func main() {
 	h.RegisterRoutes(r)
 	rh.RegisterRelayRoutes(r)
 	rh.RegisterRelayAdminRoutes(r)
+
+	// Mount OAuth callback routes on the worker's router when the runtime
+	// runs in handler-only mode. The callback forwarder redirects the
+	// browser to these routes on the worker's port, which then proxies
+	// the request to the embedded runtime handler.
+	if codexResult != nil && codexResult.handler != nil {
+		callbackPaths := []string{
+			"/anthropic/callback",
+			"/codex/callback",
+			"/google/callback",
+			"/iflow/callback",
+			"/antigravity/callback",
+			"/kiro/callback",
+		}
+		for _, path := range callbackPaths {
+			r.GET(path, gin.WrapH(codexResult.handler))
+		}
+	}
 
 	// Prometheus metrics endpoint
 	if metricsHandler := obs.MetricsHandler(); metricsHandler != nil {

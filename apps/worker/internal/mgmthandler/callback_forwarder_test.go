@@ -133,7 +133,7 @@ func TestManagementCallbackURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if url != "http://127.0.0.1:8787/codex/callback" {
+	if url != "http://localhost:8787/codex/callback" {
 		t.Errorf("url = %q", url)
 	}
 
@@ -141,7 +141,7 @@ func TestManagementCallbackURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if url != "https://127.0.0.1:443/google/callback" {
+	if url != "https://localhost:443/google/callback" {
 		t.Errorf("url = %q", url)
 	}
 
