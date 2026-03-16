@@ -773,6 +773,8 @@ export function CodexChannelDetail({
                         variant="ghost"
                         size="sm"
                         className="h-7 text-xs"
+                        aria-label={t("codex.oauthCopyLink")}
+                        title={t("codex.oauthCopyLink")}
                         onClick={() => {
                           void navigator.clipboard.writeText(oauthUserCode)
                           toast.success(t("codex.oauthLinkCopied"))
