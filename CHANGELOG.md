@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.2](https://github.com/kunish/wheel/compare/v1.32.1...v1.32.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* resolve Antigravity OAuth login flow failing in handler-only mode ([9af459b](https://github.com/kunish/wheel/commit/9af459bf524113b8fc83d4fc2ef4fbe9b86cbe28))
+
 ## [1.32.1](https://github.com/kunish/wheel/compare/v1.32.0...v1.32.1) (2026-03-16)
 
 
