@@ -761,11 +761,14 @@ func (s *Service) Run(ctx context.Context) error {
 // It blocks until the server has been fully initialised (handlerReady is closed).
 // This is only useful in handler-only mode.
 func (s *Service) Handler() http.Handler {
-	if s == nil || s.server == nil {
+	if s == nil {
 		return nil
 	}
 	if s.handlerReady != nil {
 		<-s.handlerReady
+	}
+	if s.server == nil {
+		return nil
 	}
 	return s.server.Handler()
 }
