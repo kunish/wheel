@@ -10,14 +10,24 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
-// StartCodexOAuth initiates a Codex OAuth flow via Codex management API.
-// It proxies GET /v0/management/codex-auth-url?is_webui=true and returns {url, state}.
+// managementAuthEndpoint returns the management API path for initiating OAuth
+// based on the runtime channel type.
+func managementAuthEndpoint(t types.OutboundType) string {
+	switch t {
+	case types.OutboundAntigravity:
+		return "/antigravity-auth-url"
+	default:
+		return "/codex-auth-url"
+	}
+}
+
+// StartCodexOAuth initiates an OAuth flow via the runtime management API.
+// It selects the correct management endpoint based on the channel type and returns {url, state}.
 func (h *Handler) StartCodexOAuth(c *gin.Context) {
 	channel, err := h.validateCodexChannel(c)
 	if err != nil {
 		return
 	}
-	_ = channel
 
 	if err := h.ensureCodexManagementConfigured(); err != nil {
 		errorJSON(c, http.StatusBadRequest, err.Error())
@@ -43,7 +53,8 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 		URL   string `json:"url"`
 		State string `json:"state"`
 	}
-	if err := h.codexManagementCall(c, http.MethodGet, "/codex-auth-url", query, nil, &resp); err != nil {
+	authPath := managementAuthEndpoint(channel.Type)
+	if err := h.codexManagementCall(c, http.MethodGet, authPath, query, nil, &resp); err != nil {
 		errorJSON(c, http.StatusBadGateway, err.Error())
 		return
 	}
