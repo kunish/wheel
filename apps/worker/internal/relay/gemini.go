@@ -4,18 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/kunish/wheel/apps/worker/internal/protocol"
 )
 
 func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, channel ChannelConfig) UpstreamRequest {
 	outBody := copyBody(body)
 	delete(outBody, "model")
 
-	// Convert messages to Gemini contents + systemInstruction
 	messages, _ := outBody["messages"].([]any)
 	delete(outBody, "messages")
 
-	var systemParts []any
-	var contents []any
+	var systemParts []protocol.GeminiPart
+	var contents []protocol.GeminiContent
 
 	for _, m := range messages {
 		msg, ok := m.(map[string]any)
@@ -25,43 +26,40 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 		role, _ := msg["role"].(string)
 		switch role {
 		case "system":
-			systemParts = append(systemParts, contentToGeminiParts(msg["content"]))
+			systemParts = append(systemParts, contentToGeminiPartsList(msg["content"])...)
 		case "assistant":
-			parts := assistantToGeminiParts(msg)
-			contents = append(contents, map[string]any{"role": "model", "parts": parts})
+			parts := assistantToGeminiPartsList(msg)
+			contents = append(contents, protocol.GeminiContent{Role: "model", Parts: parts})
 		case "tool":
-			contents = append(contents, toolResultToGeminiContent(msg))
+			contents = append(contents, toolResultToGeminiContentTyped(msg))
 		default:
-			contents = append(contents, map[string]any{
-				"role":  "user",
-				"parts": contentToGeminiParts(msg["content"]),
+			contents = append(contents, protocol.GeminiContent{
+				Role:  "user",
+				Parts: contentToGeminiPartsList(msg["content"]),
 			})
 		}
 	}
 
-	geminiBody := map[string]any{"contents": contents}
+	geminiReq := protocol.GeminiRequest{Contents: contents}
 
 	if len(systemParts) > 0 {
-		// Flatten all system parts into one systemInstruction
-		var allParts []any
-		for _, sp := range systemParts {
-			if parts, ok := sp.([]any); ok {
-				allParts = append(allParts, parts...)
-			}
-		}
-		geminiBody["systemInstruction"] = map[string]any{"parts": allParts}
+		geminiReq.SystemInstruction = &protocol.GeminiContent{Parts: systemParts}
 	}
 
-	// generationConfig
-	genConfig := map[string]any{}
-	if t, ok := outBody["temperature"]; ok {
-		genConfig["temperature"] = t
+	genConfig := &protocol.GeminiGenConfig{}
+	hasGenConfig := false
+	if t, ok := outBody["temperature"].(float64); ok {
+		genConfig.Temperature = &t
+		hasGenConfig = true
 	}
-	if tp, ok := outBody["top_p"]; ok {
-		genConfig["topP"] = tp
+	if tp, ok := outBody["top_p"].(float64); ok {
+		genConfig.TopP = &tp
+		hasGenConfig = true
 	}
 	if mt, ok := outBody["max_tokens"].(float64); ok && mt > 0 {
-		genConfig["maxOutputTokens"] = int(mt)
+		v := int64(mt)
+		genConfig.MaxOutputTokens = &v
+		hasGenConfig = true
 	}
 	if stop, ok := outBody["stop"].([]any); ok {
 		var seqs []string
@@ -71,21 +69,23 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 			}
 		}
 		if len(seqs) > 0 {
-			genConfig["stopSequences"] = seqs
+			genConfig.StopSequences = seqs
+			hasGenConfig = true
 		}
 	}
-	if len(genConfig) > 0 {
-		geminiBody["generationConfig"] = genConfig
+	if hasGenConfig {
+		geminiReq.GenerationConfig = genConfig
 	}
 
-	// Convert tools
 	if tools, ok := outBody["tools"].([]any); ok {
-		geminiBody["tools"] = convertOpenAIToolsToGemini(tools)
+		geminiReq.Tools = convertOpenAIToolsToGeminiTyped(tools)
 	}
 
-	applyParamOverrides(geminiBody, channel.ParamOverride)
+	geminiBody, _ := json.Marshal(geminiReq)
+	var geminiMap map[string]any
+	_ = json.Unmarshal(geminiBody, &geminiMap)
+	applyParamOverrides(geminiMap, channel.ParamOverride)
 
-	// Determine endpoint based on stream flag
 	stream, _ := body["stream"].(bool)
 	var endpoint string
 	if stream {
@@ -99,7 +99,7 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 		headers[h.Key] = h.Value
 	}
 
-	bodyJSON, _ := json.Marshal(geminiBody)
+	bodyJSON, _ := json.Marshal(geminiMap)
 	return UpstreamRequest{
 		URL:     baseUrl + endpoint,
 		Headers: headers,
@@ -107,16 +107,15 @@ func buildGeminiRequest(baseUrl, key string, body map[string]any, model string, 
 	}
 }
 
-// contentToGeminiParts converts OpenAI content (string or array) to Gemini parts.
-func contentToGeminiParts(content any) []any {
+func contentToGeminiPartsList(content any) []protocol.GeminiPart {
 	if s, ok := content.(string); ok {
-		return []any{map[string]any{"text": s}}
+		return []protocol.GeminiPart{{Text: s}}
 	}
 	parts, ok := content.([]any)
 	if !ok {
-		return []any{map[string]any{"text": fmt.Sprint(content)}}
+		return []protocol.GeminiPart{{Text: fmt.Sprint(content)}}
 	}
-	var result []any
+	var result []protocol.GeminiPart
 	for _, p := range parts {
 		part, ok := p.(map[string]any)
 		if !ok {
@@ -126,16 +125,16 @@ func contentToGeminiParts(content any) []any {
 		switch partType {
 		case "text":
 			text, _ := part["text"].(string)
-			result = append(result, map[string]any{"text": text})
+			result = append(result, protocol.GeminiPart{Text: text})
 		case "image_url":
 			if imgURL, ok := part["image_url"].(map[string]any); ok {
 				url, _ := imgURL["url"].(string)
 				if strings.HasPrefix(url, "data:") {
-					mediaType, data := parseDataURL(url)
-					result = append(result, map[string]any{
-						"inlineData": map[string]any{
-							"mimeType": mediaType,
-							"data":     data,
+					mediaType, data := protocol.ParseDataURL(url)
+					result = append(result, protocol.GeminiPart{
+						InlineData: &protocol.GeminiInlineData{
+							MimeType: mediaType,
+							Data:     data,
 						},
 					})
 				}
@@ -143,17 +142,17 @@ func contentToGeminiParts(content any) []any {
 		}
 	}
 	if len(result) == 0 {
-		result = append(result, map[string]any{"text": ""})
+		result = append(result, protocol.GeminiPart{Text: ""})
 	}
 	return result
 }
 
-func assistantToGeminiParts(msg map[string]any) []any {
+func assistantToGeminiPartsList(msg map[string]any) []protocol.GeminiPart {
 	toolCalls, ok := msg["tool_calls"].([]any)
 	if ok && len(toolCalls) > 0 {
-		var parts []any
+		var parts []protocol.GeminiPart
 		if content, ok := msg["content"].(string); ok && content != "" {
-			parts = append(parts, map[string]any{"text": content})
+			parts = append(parts, protocol.GeminiPart{Text: content})
 		}
 		for _, tc := range toolCalls {
 			tcMap, ok := tc.(map[string]any)
@@ -165,51 +164,45 @@ func assistantToGeminiParts(msg map[string]any) []any {
 				continue
 			}
 			name, _ := fn["name"].(string)
-			var args any = map[string]any{}
-			if argsStr, ok := fn["arguments"].(string); ok {
-				var parsed any
-				if err := json.Unmarshal([]byte(argsStr), &parsed); err == nil {
-					args = parsed
-				}
-			}
-			parts = append(parts, map[string]any{
-				"functionCall": map[string]any{"name": name, "args": args},
+			args := protocol.ParseJSONArgs(fmt.Sprint(fn["arguments"]))
+			parts = append(parts, protocol.GeminiPart{
+				FunctionCall: &protocol.GeminiFunctionCall{Name: name, Args: args},
 			})
 		}
 		return parts
 	}
-	return contentToGeminiParts(msg["content"])
+	return contentToGeminiPartsList(msg["content"])
 }
 
-func toolResultToGeminiContent(msg map[string]any) map[string]any {
+func toolResultToGeminiContentTyped(msg map[string]any) protocol.GeminiContent {
 	name, _ := msg["name"].(string)
 	content := msg["content"]
-	var response any
+	var response map[string]any
 	if s, ok := content.(string); ok {
-		var parsed any
+		var parsed map[string]any
 		if err := json.Unmarshal([]byte(s), &parsed); err == nil {
 			response = parsed
 		} else {
 			response = map[string]any{"result": s}
 		}
+	} else if m, ok := content.(map[string]any); ok {
+		response = m
 	} else {
-		response = content
+		response = map[string]any{"result": fmt.Sprint(content)}
 	}
-	return map[string]any{
-		"role": "user",
-		"parts": []any{
-			map[string]any{
-				"functionResponse": map[string]any{
-					"name":     name,
-					"response": response,
-				},
+	return protocol.GeminiContent{
+		Role: "user",
+		Parts: []protocol.GeminiPart{{
+			FunctionResponse: &protocol.GeminiFuncResponse{
+				Name:     name,
+				Response: response,
 			},
-		},
+		}},
 	}
 }
 
-func convertOpenAIToolsToGemini(tools []any) []any {
-	var decls []any
+func convertOpenAIToolsToGeminiTyped(tools []any) []protocol.GeminiToolDecl {
+	var decls []protocol.GeminiFuncDecl
 	for _, t := range tools {
 		tool, ok := t.(map[string]any)
 		if !ok || tool["type"] != "function" {
@@ -219,114 +212,153 @@ func convertOpenAIToolsToGemini(tools []any) []any {
 		if !ok {
 			continue
 		}
-		decl := map[string]any{
-			"name": fn["name"],
+		decl := protocol.GeminiFuncDecl{
+			Name: fmt.Sprint(fn["name"]),
 		}
-		if desc, ok := fn["description"].(string); ok && desc != "" {
-			decl["description"] = desc
+		if desc, ok := fn["description"].(string); ok {
+			decl.Description = desc
 		}
 		if params := fn["parameters"]; params != nil {
-			decl["parameters"] = params
+			decl.Parameters = params
 		}
 		decls = append(decls, decl)
 	}
 	if len(decls) == 0 {
 		return nil
 	}
-	return []any{map[string]any{"functionDeclarations": decls}}
+	return []protocol.GeminiToolDecl{{FunctionDeclarations: decls}}
 }
 
 // convertGeminiResponse converts a Gemini response to OpenAI format.
 func convertGeminiResponse(geminiResp map[string]any) map[string]any {
-	candidates, _ := geminiResp["candidates"].([]any)
+	data, err := json.Marshal(geminiResp)
+	if err != nil {
+		return geminiResp
+	}
+	var resp protocol.GeminiResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return geminiResp
+	}
 
-	var text string
-	var toolCalls []any
-	var finishReason string
-	tcIdx := 0
+	openaiResp := geminiResponseToOpenAI(&resp)
+	result, err := json.Marshal(openaiResp)
+	if err != nil {
+		return geminiResp
+	}
+	var out map[string]any
+	_ = json.Unmarshal(result, &out)
+	return out
+}
 
-	if len(candidates) > 0 {
-		cand, _ := candidates[0].(map[string]any)
-		finishReason, _ = cand["finishReason"].(string)
-		if content, ok := cand["content"].(map[string]any); ok {
-			parts, _ := content["parts"].([]any)
-			for _, p := range parts {
-				part, ok := p.(map[string]any)
-				if !ok {
-					continue
+func geminiResponseToOpenAI(resp *protocol.GeminiResponse) *protocol.OpenAIChatResponse {
+	out := &protocol.OpenAIChatResponse{
+		ID:      "chatcmpl-gemini",
+		Object:  "chat.completion",
+		Created: int64(currentUnixSec()),
+		Model:   resp.Model,
+	}
+
+	for _, candidate := range resp.Candidates {
+		choice := protocol.OpenAIChoice{
+			Index: candidate.Index,
+			Message: &protocol.OpenAIMessage{
+				Role: "assistant",
+			},
+		}
+
+		if candidate.Content != nil {
+			var text strings.Builder
+			for _, part := range candidate.Content.Parts {
+				if part.Text != "" {
+					text.WriteString(part.Text)
 				}
-				if t, ok := part["text"].(string); ok {
-					text += t
-				}
-				if fc, ok := part["functionCall"].(map[string]any); ok {
-					name, _ := fc["name"].(string)
-					argsJSON, _ := json.Marshal(fc["args"])
-					toolCalls = append(toolCalls, map[string]any{
-						"index": tcIdx,
-						"id":    fmt.Sprintf("call_%d", tcIdx),
-						"type":  "function",
-						"function": map[string]any{
-							"name":      name,
-							"arguments": string(argsJSON),
+				if part.FunctionCall != nil {
+					argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+					idx := len(choice.Message.ToolCalls)
+					choice.Message.ToolCalls = append(choice.Message.ToolCalls, protocol.OpenAIToolCall{
+						Index: &idx,
+						ID:    fmt.Sprintf("call_%d", idx),
+						Type:  "function",
+						Function: protocol.OpenAIFunctionCall{
+							Name:      part.FunctionCall.Name,
+							Arguments: string(argsJSON),
 						},
 					})
-					tcIdx++
 				}
 			}
+			if text.Len() > 0 {
+				choice.Message.Content = text.String()
+			} else if len(choice.Message.ToolCalls) > 0 {
+				choice.Message.Content = nil
+			} else {
+				choice.Message.Content = ""
+			}
+		}
+
+		if candidate.FinishReason != "" {
+			reason := protocol.MapGeminiFinishReasonToOpenAI(candidate.FinishReason)
+			choice.FinishReason = &reason
+		}
+
+		out.Choices = append(out.Choices, choice)
+	}
+
+	if resp.UsageMetadata != nil {
+		out.Usage = &protocol.OpenAIUsage{
+			PromptTokens:     resp.UsageMetadata.PromptTokenCount,
+			CompletionTokens: resp.UsageMetadata.CandidatesTokenCount,
+			TotalTokens:      resp.UsageMetadata.PromptTokenCount + resp.UsageMetadata.CandidatesTokenCount,
 		}
 	}
 
-	message := map[string]any{"role": "assistant"}
-	if text != "" {
-		message["content"] = text
-	} else if len(toolCalls) > 0 {
-		message["content"] = nil
-	} else {
-		message["content"] = ""
-	}
-	if len(toolCalls) > 0 {
-		message["tool_calls"] = toolCalls
-	}
-
-	usage, _ := geminiResp["usageMetadata"].(map[string]any)
-	promptTokens := toInt(usage["promptTokenCount"])
-	completionTokens := toInt(usage["candidatesTokenCount"])
-	cachedTokens := toInt(usage["cachedContentTokenCount"])
-
-	usageMap := map[string]any{
-		"prompt_tokens":     promptTokens,
-		"completion_tokens": completionTokens,
-		"total_tokens":      promptTokens + completionTokens,
-	}
-	if cachedTokens > 0 {
-		usageMap["prompt_tokens_details"] = map[string]any{"cached_tokens": cachedTokens}
-	}
-
-	return map[string]any{
-		"id":      "chatcmpl-gemini",
-		"object":  "chat.completion",
-		"created": float64(currentUnixSec()),
-		"model":   geminiResp["modelVersion"],
-		"choices": []any{
-			map[string]any{
-				"index":         0,
-				"message":       message,
-				"finish_reason": mapGeminiFinishReason(finishReason),
-			},
-		},
-		"usage": usageMap,
-	}
+	return out
 }
 
 func mapGeminiFinishReason(reason string) string {
-	switch reason {
-	case "STOP":
-		return "stop"
-	case "MAX_TOKENS":
-		return "length"
-	case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII":
-		return "content_filter"
-	default:
-		return "stop"
+	return protocol.MapGeminiFinishReasonToOpenAI(reason)
+}
+
+// Legacy wrappers for vertex.go and other callers that use map[string]any.
+
+func contentToGeminiParts(content any) []any {
+	parts := contentToGeminiPartsList(content)
+	result := make([]any, len(parts))
+	for i, p := range parts {
+		data, _ := json.Marshal(p)
+		var m any
+		_ = json.Unmarshal(data, &m)
+		result[i] = m
 	}
+	return result
+}
+
+func assistantToGeminiParts(msg map[string]any) []any {
+	parts := assistantToGeminiPartsList(msg)
+	result := make([]any, len(parts))
+	for i, p := range parts {
+		data, _ := json.Marshal(p)
+		var m any
+		_ = json.Unmarshal(data, &m)
+		result[i] = m
+	}
+	return result
+}
+
+func toolResultToGeminiContent(msg map[string]any) map[string]any {
+	content := toolResultToGeminiContentTyped(msg)
+	data, _ := json.Marshal(content)
+	var result map[string]any
+	_ = json.Unmarshal(data, &result)
+	return result
+}
+
+func convertOpenAIToolsToGemini(tools []any) []any {
+	typed := convertOpenAIToolsToGeminiTyped(tools)
+	if typed == nil {
+		return nil
+	}
+	data, _ := json.Marshal(typed)
+	var result []any
+	_ = json.Unmarshal(data, &result)
+	return result
 }
