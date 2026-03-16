@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -185,4 +186,39 @@ func (h *Handler) SyncCodexKeys(c *gin.Context) {
 
 	h.Cache.Delete("channels")
 	successJSON(c, gin.H{"synced": len(keys), "authFiles": len(codexFiles)})
+}
+
+// bestEffortSyncCodexChannelKeys synchronises auth files as channel keys
+// without failing the caller on error. Called automatically after OAuth import.
+func (h *Handler) bestEffortSyncCodexChannelKeys(ctx context.Context, channelID int) {
+	channel, err := dal.GetChannel(ctx, h.DB, channelID)
+	if err != nil || channel == nil {
+		return
+	}
+	files, err := h.listManagedCodexAuthFiles(ctx, channelID)
+	if err != nil {
+		return
+	}
+	var matched []codexAuthFile
+	for _, f := range files {
+		if runtimeProviderMatches(channel.Type, f.Provider) && !f.Disabled {
+			matched = append(matched, f)
+		}
+	}
+	keys := make([]types.ChannelKeyInput, 0, len(matched))
+	for _, f := range matched {
+		remark := f.Email
+		if remark == "" {
+			remark = f.Name
+		}
+		key := f.AuthIndex
+		if key == "" {
+			key = f.Name
+		}
+		keys = append(keys, types.ChannelKeyInput{ChannelKey: key, Remark: remark})
+	}
+	if err := dal.SyncChannelKeys(ctx, h.DB, channelID, keys); err != nil {
+		return
+	}
+	h.Cache.Delete("channels")
 }

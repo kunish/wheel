@@ -8,8 +8,9 @@ function runtimePrefix(channelType?: number): string {
   switch (channelType) {
     case 34:
       return "copilot"
-    case 35:
     case 36:
+      return "antigravity"
+    case 35:
     default:
       return "codex"
   }

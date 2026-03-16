@@ -79,6 +79,19 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/channel/:id/copilot/oauth/start", h.StartCodexOAuth)
 	admin.GET("/channel/:id/copilot/oauth/status", h.GetCodexOAuthStatus)
 
+	// Antigravity channel management (reuses Codex handlers via CLIProxyAPI runtime)
+	admin.GET("/channel/:id/antigravity/auth-files", h.ListCodexAuthFiles)
+	admin.POST("/channel/:id/antigravity/auth-files", h.UploadCodexAuthFile)
+	admin.PATCH("/channel/:id/antigravity/auth-files/status", h.PatchCodexAuthFileStatus)
+	admin.PATCH("/channel/:id/antigravity/auth-files/status/batch", h.PatchCodexAuthFileStatusBatch)
+	admin.DELETE("/channel/:id/antigravity/auth-files", h.DeleteCodexAuthFile)
+	admin.POST("/channel/:id/antigravity/auth-files/delete/batch", h.DeleteCodexAuthFileBatch)
+	admin.GET("/channel/:id/antigravity/models", h.GetCodexAuthFileModels)
+	admin.GET("/channel/:id/antigravity/quota", h.ListCodexQuota)
+	admin.POST("/channel/:id/antigravity/sync-keys", h.SyncCodexKeys)
+	admin.POST("/channel/:id/antigravity/oauth/start", h.StartCodexOAuth)
+	admin.GET("/channel/:id/antigravity/oauth/status", h.GetCodexOAuthStatus)
+
 	// Group routes
 	admin.GET("/group/list", h.ListGroups)
 	admin.POST("/group/create", h.CreateGroup)

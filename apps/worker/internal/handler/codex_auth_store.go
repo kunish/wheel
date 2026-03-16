@@ -277,6 +277,7 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 		}
 	}
 	h.bestEffortSyncCodexChannelModels(ctx, channelID)
+	h.bestEffortSyncCodexChannelKeys(ctx, channelID)
 	return nil
 }
 

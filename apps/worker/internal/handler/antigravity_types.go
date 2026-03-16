@@ -106,7 +106,7 @@ type V1InternalRequest struct {
 	Model       string        `json:"model"`
 	UserAgent   string        `json:"userAgent"`
 	Request     GeminiRequest `json:"request"`
-	SessionID   string        `json:"sessionId"`
+	SessionID   string        `json:"sessionId,omitempty"`
 	RequestType string        `json:"requestType,omitempty"` // "agent" or "web_search"
 }
 

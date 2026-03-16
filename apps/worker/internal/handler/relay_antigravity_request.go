@@ -69,7 +69,6 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 	}
 
 	// Build the V1Internal envelope.
-	sessionID := generateStableSessionID(messages)
 	requestType := "agent"
 	if hasWebSearch {
 		requestType = "web_search"
@@ -85,7 +84,6 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 		Model:       model,
 		UserAgent:   "antigravity",
 		Request:     geminiReq,
-		SessionID:   sessionID,
 		RequestType: requestType,
 	}
 }

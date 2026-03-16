@@ -129,11 +129,34 @@ func (h *Handler) syncCodexChannelModels(ctx context.Context, channelID int) err
 	if err != nil {
 		return err
 	}
+	// Do not overwrite existing models with an empty list; the upstream
+	// model endpoint may be temporarily unavailable (e.g. TOS violation).
+	// For Antigravity channels, use a built-in fallback list when the
+	// API cannot return models.
+	if len(models) == 0 {
+		if channel.Type == types.OutboundAntigravity {
+			models = defaultAntigravityModels()
+		} else {
+			return nil
+		}
+	}
 	if err := h.persistCodexChannelModels(ctx, channelID, models); err != nil {
 		return err
 	}
 	h.Cache.Delete("channels")
 	return nil
+}
+
+// defaultAntigravityModels returns the built-in model list for Antigravity
+// channels when the upstream model API is unavailable.
+func defaultAntigravityModels() []string {
+	return []string{
+		"gemini-2.5-pro",
+		"gemini-2.5-flash",
+		"gemini-2.5-flash-lite-preview-06-17",
+		"claude-sonnet-4-6",
+		"claude-opus-4-6",
+	}
 }
 
 func (h *Handler) bestEffortSyncCodexChannelModels(ctx context.Context, channelID int) {
