@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.31.0](https://github.com/kunish/wheel/compare/v1.30.0...v1.31.0) (2026-03-16)
+
+
+### Features
+
+* add Codex CLI (type 35) and Antigravity (type 36) channel providers ([4019caf](https://github.com/kunish/wheel/commit/4019cafda8197896ee7a269d6f934079fcc2483a))
+* upgrade Antigravity relay to match sub2api and add UI support for type 35/36 ([4be90e2](https://github.com/kunish/wheel/commit/4be90e251dbf37dddb8d2d0209835216ab57a518))
+
+
+### Bug Fixes
+
+* sync upstream bug fixes and clean up code quality ([#91](https://github.com/kunish/wheel/issues/91)) ([3931857](https://github.com/kunish/wheel/commit/3931857864367f913492d760b3f93b138e0c4926))
+
 ## [1.30.0](https://github.com/kunish/wheel/compare/v1.29.4...v1.30.0) (2026-03-10)
 
 
