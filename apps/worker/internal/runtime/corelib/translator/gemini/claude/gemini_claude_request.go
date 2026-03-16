@@ -14,8 +14,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-const geminiClaudeThoughtSignature = "skip_thought_signature_validator"
-
 // ConvertClaudeRequestToGemini parses a Claude API request and returns a complete
 // Gemini request body (as JSON bytes).
 func ConvertClaudeRequestToGemini(modelName string, inputRawJSON []byte, _ bool) []byte {
@@ -88,10 +86,3 @@ func overrideThinkingConfig(rawJSON []byte, geminiReq *protocol.GeminiRequest, m
 	}
 }
 
-func toolNameFromClaudeToolUseID(toolUseID string) string {
-	parts := strings.Split(toolUseID, "-")
-	if len(parts) <= 1 {
-		return ""
-	}
-	return strings.Join(parts[0:len(parts)-1], "-")
-}

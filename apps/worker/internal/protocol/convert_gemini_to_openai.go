@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"google.golang.org/genai"
@@ -174,18 +173,11 @@ func GeminiRequestToOpenAI(req *GeminiRequest, modelName string, stream bool) ([
 	return json.Marshal(out)
 }
 
-// OpenAI response → Gemini response conversion.
-
-func OpenAIResponseToGemini(resp *genai.GenerateContentResponse) *genai.GenerateContentResponse {
-	return resp
-}
-
 // OpenAI streaming → Gemini streaming accumulator.
 
 type OpenAIToGeminiAccum struct {
 	ToolCallsAccumulator map[int]*ToolCallAccum
 	ContentAccumulator   strings.Builder
-	IsFirstChunk         bool
 }
 
 func NewOpenAIToGeminiAccum() *OpenAIToGeminiAccum {
@@ -349,6 +341,3 @@ func ConvertOpenAIChunkToGemini(chunkJSON []byte, accum *OpenAIToGeminiAccum) []
 	return results
 }
 
-func GeminiTokenCountResponse(count int64) string {
-	return fmt.Sprintf(`{"totalTokens":%d,"promptTokensDetails":[{"modality":"TEXT","tokenCount":%d}]}`, count, count)
-}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 )
@@ -162,55 +161,6 @@ func GeminiRequestToAnthropic(req *GeminiRequest, modelName string, stream bool)
 	}
 
 	return json.Marshal(out)
-}
-
-// GeminiResponseToAnthropic converts a Gemini response to Anthropic Message format.
-func GeminiResponseToAnthropic(resp *genai.GenerateContentResponse) *anthropic.Message {
-	msg := &anthropic.Message{
-		ID:   "msg_" + randomAlphanumeric(20),
-		Role: "assistant",
-	}
-
-	if len(resp.Candidates) > 0 {
-		candidate := resp.Candidates[0]
-		if candidate.Content != nil {
-			for _, part := range candidate.Content.Parts {
-				if part.Thought && part.Text != "" {
-					msg.Content = append(msg.Content, anthropic.ContentBlockUnion{
-						Type:     "thinking",
-						Thinking: part.Text,
-					})
-				} else if part.Text != "" {
-					msg.Content = append(msg.Content, anthropic.ContentBlockUnion{
-						Type: "text",
-						Text: part.Text,
-					})
-				}
-				if part.FunctionCall != nil {
-					argsJSON, _ := json.Marshal(part.FunctionCall.Args)
-					msg.Content = append(msg.Content, anthropic.ContentBlockUnion{
-						Type:  "tool_use",
-						ID:    GenAnthropicToolUseID(),
-						Name:  part.FunctionCall.Name,
-						Input: json.RawMessage(argsJSON),
-					})
-				}
-			}
-		}
-		if candidate.FinishReason != "" {
-		reason := MapGeminiFinishReasonToAnthropic(string(candidate.FinishReason))
-		msg.StopReason = anthropic.StopReason(reason)
-		}
-	}
-
-	if resp.UsageMetadata != nil {
-		msg.Usage = anthropic.Usage{
-			InputTokens:  int64(resp.UsageMetadata.PromptTokenCount),
-			OutputTokens: int64(resp.UsageMetadata.CandidatesTokenCount),
-		}
-	}
-
-	return msg
 }
 
 func generateAnthropicUserID() string {

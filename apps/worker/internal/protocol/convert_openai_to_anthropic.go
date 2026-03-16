@@ -49,9 +49,8 @@ func ConvertOpenAIChunkToAnthropic(chunk *openai.ChatCompletionChunk, accum *Ope
 		_ = json.Unmarshal([]byte(rawJSON.Raw()), &reasoningText)
 	}
 	if reasoningText != "" {
-		if true {
-			stopAnthropicTextBlock(accum, &results)
-			if !accum.ThinkingBlockStarted {
+		stopAnthropicTextBlock(accum, &results)
+		if !accum.ThinkingBlockStarted {
 				if accum.ThinkingContentBlockIndex == -1 {
 					accum.ThinkingContentBlockIndex = accum.NextContentBlockIndex
 					accum.NextContentBlockIndex++
@@ -68,7 +67,6 @@ data: {"type":"content_block_start","index":%d,"content_block":{"type":"thinking
 				"delta": map[string]string{"type": "thinking_delta", "thinking": reasoningText},
 			})
 			results = append(results, fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", data))
-		}
 	}
 
 	// Text content

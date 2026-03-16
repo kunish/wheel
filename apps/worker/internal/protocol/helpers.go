@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-
-	"google.golang.org/genai"
 )
 
 // Finish reason mapping between providers.
@@ -39,21 +37,6 @@ func MapAnthropicStopReasonToOpenAI(reason string) string {
 		return "tool_calls"
 	default:
 		return "stop"
-	}
-}
-
-func MapOpenAIFinishReasonToGemini(reason string) genai.FinishReason {
-	switch reason {
-	case "stop":
-		return genai.FinishReasonStop
-	case "length":
-		return genai.FinishReasonMaxTokens
-	case "tool_calls":
-		return genai.FinishReasonStop
-	case "content_filter":
-		return genai.FinishReasonSafety
-	default:
-		return genai.FinishReasonStop
 	}
 }
 
@@ -98,19 +81,6 @@ func MapGeminiFinishReasonToAnthropic(reason string) string {
 	}
 }
 
-func MapAnthropicStopReasonToGemini(reason string) string {
-	switch reason {
-	case "end_turn", "stop_sequence":
-		return "STOP"
-	case "max_tokens":
-		return "MAX_TOKENS"
-	case "tool_use":
-		return "STOP"
-	default:
-		return "STOP"
-	}
-}
-
 // ID generation.
 
 func GenOpenAIToolCallID() string {
@@ -134,15 +104,6 @@ func randomAlphanumeric(n int) string {
 // Ptr returns a pointer to the given value.
 func Ptr[T any](v T) *T {
 	return &v
-}
-
-// SafeJSONString marshals any value to a JSON string. Returns "{}" on error.
-func SafeJSONString(v any) string {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(data)
 }
 
 // ParseJSONArgs safely parses a JSON arguments string into a map.

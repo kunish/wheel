@@ -279,13 +279,3 @@ func (a *OpenAIToAnthropicAccum) toolContentBlockIndex(openAIToolIndex int) int 
 	return idx
 }
 
-// Streaming SSE conversion functions - these use raw JSON since SSE events
-// are text-based and need precise formatting.
-// They are kept from the previous implementation and work with the existing
-// corelib translator response functions.
-// (The streaming conversion logic remains in the translator layer)
-
-// AnthropicTokenCountResponse generates an Anthropic-format token count response.
-func AnthropicTokenCountResponse(count int64) string {
-	return SafeJSONString(map[string]int64{"input_tokens": count})
-}

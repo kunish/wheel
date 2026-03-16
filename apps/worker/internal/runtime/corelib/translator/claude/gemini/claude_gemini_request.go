@@ -35,10 +35,10 @@ func ConvertGeminiRequestToClaude(modelName string, inputRawJSON []byte, stream 
 	util.Walk(toolsResult, "", "type", &pathsToLower)
 	for _, p := range pathsToLower {
 		fullPath := fmt.Sprintf("tools.%s", p)
-		_ = strings.ToLower(gjson.Get(out, fullPath).String())
+		out, _ = sjson.Set(out, fullPath, strings.ToLower(gjson.Get(out, fullPath).String()))
 	}
 
-	return result
+	return []byte(out)
 }
 
 func overrideClaudeThinkingConfig(rawJSON []byte, result []byte, modelName string) []byte {
