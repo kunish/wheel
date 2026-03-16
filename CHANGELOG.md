@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.1](https://github.com/kunish/wheel/compare/v1.33.0...v1.33.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* read Antigravity access token from managed auth file on disk ([a741ef6](https://github.com/kunish/wheel/commit/a741ef61b7e4e922394ac2620611b1000faba986))
+
 ## [1.33.0](https://github.com/kunish/wheel/compare/v1.32.2...v1.33.0) (2026-03-16)
 
 
