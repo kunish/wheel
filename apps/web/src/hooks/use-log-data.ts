@@ -59,11 +59,8 @@ export function useLogData(params: LogDataParams, pendingStreams: Map<string, Lo
   const totalPages = Math.ceil(total / pageSize)
 
   const stats = useMemo<LogStats>(() => {
-    // Only compute stats from non-streaming, completed logs
-    const completedLogs = logs.filter((l) => !l._streaming)
-    const count = completedLogs.length
-
-    if (count === 0) {
+    const serverStats = data?.data?.stats
+    if (!serverStats) {
       return {
         totalRequests: total,
         successRate: 0,
@@ -74,33 +71,20 @@ export function useLogData(params: LogDataParams, pendingStreams: Map<string, Lo
       }
     }
 
-    const successCount = completedLogs.filter((l) => !l.error).length
-    const successRate = (successCount / count) * 100
-
-    const totalLatency = completedLogs.reduce((sum, l) => sum + l.useTime, 0)
-    const averageLatency = totalLatency / count
-
-    const totalTokens = completedLogs.reduce((sum, l) => sum + l.inputTokens + l.outputTokens, 0)
-
-    const totalCost = completedLogs.reduce((sum, l) => sum + (l.cost ?? 0), 0)
-
-    // Token speed: average output tokens per second across logs with valid useTime
-    const speedLogs = completedLogs.filter((l) => l.useTime > 0 && l.outputTokens > 0)
-    const tokenSpeed =
-      speedLogs.length > 0
-        ? speedLogs.reduce((sum, l) => sum + l.outputTokens / (l.useTime / 1000), 0) /
-          speedLogs.length
+    const successRate =
+      serverStats.totalRequests > 0
+        ? (serverStats.successCount / serverStats.totalRequests) * 100
         : 0
 
     return {
-      totalRequests: total,
+      totalRequests: serverStats.totalRequests,
       successRate,
-      averageLatency,
-      totalTokens,
-      totalCost,
-      tokenSpeed,
+      averageLatency: serverStats.averageLatency,
+      totalTokens: serverStats.totalTokens,
+      totalCost: serverStats.totalCost,
+      tokenSpeed: serverStats.tokenSpeed,
     }
-  }, [logs, total])
+  }, [data, total])
 
   return {
     logs,

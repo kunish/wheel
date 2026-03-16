@@ -2,7 +2,7 @@ import type { LogStats } from "./types"
 import { BarChart3, CheckCircle, Clock, DollarSign, Hash, Zap } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Card } from "@/components/ui/card"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 function formatLatency(ms: number): string {
   if (ms === 0) return "—"
@@ -25,37 +25,31 @@ export function LogStatsCards({ stats }: { stats: LogStats }) {
       label: t("stats.totalRequests"),
       value: stats.totalRequests.toLocaleString(),
       icon: BarChart3,
-      pageScoped: false,
     },
     {
       label: t("stats.successRate"),
       value: stats.totalRequests > 0 ? `${stats.successRate.toFixed(1)}%` : "—",
       icon: CheckCircle,
-      pageScoped: true,
     },
     {
       label: t("stats.avgLatency"),
       value: formatLatency(stats.averageLatency),
       icon: Clock,
-      pageScoped: true,
     },
     {
       label: t("stats.pageTokens"),
       value: stats.totalTokens.toLocaleString(),
       icon: Hash,
-      pageScoped: true,
     },
     {
       label: t("stats.pageCost"),
       value: formatCost(stats.totalCost),
       icon: DollarSign,
-      pageScoped: true,
     },
     {
       label: t("stats.tokenSpeed"),
       value: stats.tokenSpeed > 0 ? `${stats.tokenSpeed.toFixed(1)} tok/s` : "—",
       icon: Zap,
-      pageScoped: true,
     },
   ]
 
@@ -66,20 +60,7 @@ export function LogStatsCards({ stats }: { stats: LogStats }) {
           <Card key={card.label} className="gap-0 px-4 py-3">
             <div className="flex items-center gap-1.5">
               <card.icon className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-              {card.pageScoped ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-muted-foreground cursor-help truncate text-xs underline decoration-dotted underline-offset-2">
-                      {card.label}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{t("stats.pageScopedHint")}</p>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <span className="text-muted-foreground truncate text-xs">{card.label}</span>
-              )}
+              <span className="text-muted-foreground truncate text-xs">{card.label}</span>
             </div>
             <span className="mt-1 truncate font-mono text-lg font-semibold tracking-tight">
               {card.value}

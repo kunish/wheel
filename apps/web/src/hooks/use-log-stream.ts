@@ -72,6 +72,8 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
             channelName: data.channelName ?? "",
             inputTokens: data.estimatedInputTokens ?? 0,
             outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
             ftut: 0,
             useTime: 0,
             cost: 0,

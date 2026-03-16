@@ -277,6 +277,8 @@ var initAlters = []string{
 	`ALTER TABLE routing_rules MODIFY COLUMN cel_expression TEXT NOT NULL`,
 	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP`,
 	`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
+	`ALTER TABLE relay_logs ADD COLUMN IF NOT EXISTS cache_read_tokens INT DEFAULT 0 NOT NULL AFTER output_tokens`,
+	`ALTER TABLE relay_logs ADD COLUMN IF NOT EXISTS cache_creation_tokens INT DEFAULT 0 NOT NULL AFTER cache_read_tokens`,
 }
 
 const relayLogsBackfillBatchSize = 1000

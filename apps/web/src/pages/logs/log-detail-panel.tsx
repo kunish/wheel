@@ -192,6 +192,8 @@ export function LogDetailSheet() {
               channelId: entry.channelId,
               inputTokens: entry.inputTokens,
               outputTokens: entry.outputTokens,
+              cacheReadTokens: entry.cacheReadTokens || 0,
+              cacheCreationTokens: entry.cacheCreationTokens || 0,
               cost: 0,
               ftut: entry.ftut,
               useTime: entry.useTime,
@@ -373,6 +375,27 @@ function DetailPanel({
                   label={t("detail.field.outputTokens")}
                   value={detail.outputTokens.toLocaleString()}
                 />
+                {(detail.cacheReadTokens > 0 || detail.cacheCreationTokens > 0) && (
+                  <DetailField
+                    label={t("detail.field.cacheTokens")}
+                    value={
+                      <span className="text-sm">
+                        {detail.cacheReadTokens > 0 && (
+                          <span>
+                            {t("detail.field.cacheRead")}: {detail.cacheReadTokens.toLocaleString()}
+                          </span>
+                        )}
+                        {detail.cacheReadTokens > 0 && detail.cacheCreationTokens > 0 && " / "}
+                        {detail.cacheCreationTokens > 0 && (
+                          <span>
+                            {t("detail.field.cacheWrite")}:{" "}
+                            {detail.cacheCreationTokens.toLocaleString()}
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
+                )}
                 <DetailField
                   label={t("detail.field.totalTokens")}
                   value={(detail.inputTokens + detail.outputTokens).toLocaleString()}

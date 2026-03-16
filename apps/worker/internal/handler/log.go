@@ -58,7 +58,7 @@ func (h *Handler) ListLogs(c *gin.Context) {
 		Keyword:   keyword,
 	}
 
-	logs, total, err := dal.ListLogs(c.Request.Context(), h.DB, opts)
+	logs, total, stats, err := dal.ListLogs(c.Request.Context(), h.DB, opts)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err.Error())
 		return
@@ -69,6 +69,7 @@ func (h *Handler) ListLogs(c *gin.Context) {
 		"total":    total,
 		"page":     page,
 		"pageSize": pageSize,
+		"stats":    stats,
 	})
 }
 

@@ -16,6 +16,8 @@ export interface LogDetail {
   channelId: number
   inputTokens: number
   outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
   cost: number
   ftut: number
   useTime: number

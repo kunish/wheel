@@ -44,7 +44,17 @@ type ListLogsOpts struct {
 	Keyword   string
 }
 
-func ListLogs(ctx context.Context, db *bun.DB, opts ListLogsOpts) ([]types.RelayLog, int, error) {
+// LogsAggregateStats holds server-side aggregated stats across all matching logs.
+type LogsAggregateStats struct {
+	TotalRequests  int     `json:"totalRequests"`
+	SuccessCount   int     `json:"successCount"`
+	AverageLatency float64 `json:"averageLatency"`
+	TotalTokens    int64   `json:"totalTokens"`
+	TotalCost      float64 `json:"totalCost"`
+	TokenSpeed     float64 `json:"tokenSpeed"`
+}
+
+func ListLogs(ctx context.Context, db *bun.DB, opts ListLogsOpts) ([]types.RelayLog, int, *LogsAggregateStats, error) {
 	page := opts.Page
 	if page < 1 {
 		page = 1
@@ -84,26 +94,50 @@ func ListLogs(ctx context.Context, db *bun.DB, opts ListLogsOpts) ([]types.Relay
 		return q
 	}
 
-	// Count total
-	var total int
-	countQ := db.NewSelect().TableExpr("relay_logs").ColumnExpr("COUNT(*)")
-	countQ = applyFilters(countQ)
-	err := countQ.Scan(ctx, &total)
+	// Aggregate stats across all matching logs (single query)
+	var aggResult struct {
+		Total        int     `bun:"total"`
+		SuccessCount int     `bun:"success_count"`
+		AvgLatency   float64 `bun:"avg_latency"`
+		TotalTokens  int64   `bun:"total_tokens"`
+		TotalCost    float64 `bun:"total_cost"`
+		AvgSpeed     float64 `bun:"avg_speed"`
+	}
+	aggQ := db.NewSelect().TableExpr("relay_logs").
+		ColumnExpr("COUNT(*) AS total").
+		ColumnExpr("SUM(CASE WHEN error = '' THEN 1 ELSE 0 END) AS success_count").
+		ColumnExpr("AVG(use_time) AS avg_latency").
+		ColumnExpr("SUM(input_tokens + output_tokens) AS total_tokens").
+		ColumnExpr("SUM(cost) AS total_cost").
+		ColumnExpr("AVG(CASE WHEN use_time > 0 AND output_tokens > 0 THEN output_tokens / (use_time / 1000.0) ELSE NULL END) AS avg_speed")
+	aggQ = applyFilters(aggQ)
+	err := aggQ.Scan(ctx, &aggResult)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
+	}
+
+	total := aggResult.Total
+	stats := &LogsAggregateStats{
+		TotalRequests:  total,
+		SuccessCount:   aggResult.SuccessCount,
+		AverageLatency: aggResult.AvgLatency,
+		TotalTokens:    aggResult.TotalTokens,
+		TotalCost:      aggResult.TotalCost,
+		TokenSpeed:     aggResult.AvgSpeed,
 	}
 
 	// Fetch page — select only summary fields
 	var logs []types.RelayLog
 	dataQ := db.NewSelect().TableExpr("relay_logs").
 		Column("id", "time", "request_model_name", "actual_model_name", "channel_id",
-			"channel_name", "input_tokens", "output_tokens", "ftut", "use_time", "cost", "error", "total_attempts", "request_content").
+			"channel_name", "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens",
+			"ftut", "use_time", "cost", "error", "total_attempts", "request_content").
 		OrderExpr("time DESC").
 		Limit(pageSize).Offset(offset)
 	dataQ = applyFilters(dataQ)
 	err = dataQ.Scan(ctx, &logs)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	if logs == nil {
 		logs = []types.RelayLog{}
@@ -112,7 +146,7 @@ func ListLogs(ctx context.Context, db *bun.DB, opts ListLogsOpts) ([]types.Relay
 		logs[i].LastMessagePreview = extractLastMessagePreview(logs[i].RequestContent)
 		logs[i].RequestContent = ""
 	}
-	return logs, total, nil
+	return logs, total, stats, nil
 }
 
 type previewMessage struct {

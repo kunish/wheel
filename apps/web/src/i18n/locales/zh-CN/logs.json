@@ -93,6 +93,9 @@
       "type": "类型",
       "inputTokens": "输入 Token",
       "outputTokens": "输出 Token",
+      "cacheTokens": "缓存 Token",
+      "cacheRead": "读取",
+      "cacheWrite": "写入",
       "totalTokens": "总 Token",
       "cost": "费用",
       "ttft": "首字时间",
@@ -199,6 +202,7 @@
     "status": "状态",
     "error": "错误",
     "ok": "正常",
+    "cached": "缓存",
     "attempts": "{{count}} 次尝试",
     "streaming": "传输中"
   }

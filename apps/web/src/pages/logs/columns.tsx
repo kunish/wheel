@@ -20,6 +20,8 @@ export interface LogEntry {
   channelName: string
   inputTokens: number
   outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
   ftut: number
   useTime: number
   error: string
@@ -214,16 +216,20 @@ export function createLogColumns(onViewDetail: (id: number) => void, t: TFunctio
     columnHelper.accessor("inputTokens", {
       header: ({ column }) => <SortableHeader column={column}>{t("columns.input")}</SortableHeader>,
       enableSorting: true,
-      cell: (info) => (
-        <span
-          className={cn(
-            "text-right font-mono text-xs",
-            info.row.original._streaming && "opacity-50",
-          )}
-        >
-          {info.getValue().toLocaleString()}
-        </span>
-      ),
+      cell: (info) => {
+        const row = info.row.original
+        const cacheRead = row.cacheReadTokens || 0
+        return (
+          <div className={cn("text-right font-mono text-xs", row._streaming && "opacity-50")}>
+            <span>{info.getValue().toLocaleString()}</span>
+            {cacheRead > 0 && (
+              <span className="text-muted-foreground ml-1 text-[10px]">
+                ({cacheRead.toLocaleString()} {t("columns.cached")})
+              </span>
+            )}
+          </div>
+        )
+      },
       meta: { className: "text-right" },
     }),
     columnHelper.accessor("outputTokens", {

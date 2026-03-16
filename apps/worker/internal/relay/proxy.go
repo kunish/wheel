@@ -317,6 +317,7 @@ func ProxyStreaming(
 	firstTokenTimeout int,
 	passthrough bool,
 	anthropicInbound bool,
+	responsesOutput bool,
 	onContent StreamContentCallback,
 ) (*StreamCompleteInfo, error) {
 	flusher, ok := w.(http.Flusher)
@@ -410,6 +411,20 @@ func ProxyStreaming(
 	if anthropicInbound && channelType != types.OutboundAnthropic && channelType != types.OutboundGemini &&
 		channelType != types.OutboundBedrock && channelType != types.OutboundVertex && channelType != types.OutboundCohere {
 		convertToAnthropic = createOpenAIToAnthropicSSEConverter()
+	}
+
+	// OpenAI SSE → Responses API SSE converter: wraps the writer so that
+	// ALL output paths (Anthropic→OpenAI, Gemini→OpenAI, Cohere→OpenAI,
+	// passthrough OpenAI) are intercepted and re-emitted as Responses API events.
+	if responsesOutput {
+		convert := createOpenAIToResponsesSSEConverter()
+		wrapper := &responsesWriterWrapper{
+			underlying: w,
+			flusher:    flusher,
+			convert:    convert,
+		}
+		w = wrapper
+		flusher = wrapper
 	}
 
 	scanner := bufio.NewScanner(resp.Body)

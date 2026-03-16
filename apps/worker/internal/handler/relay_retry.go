@@ -159,6 +159,12 @@ func (h *RelayHandler) executeWithRetry(
 			if isAnthropicInbound && !isAnthropicPassthrough {
 				attemptBody = convertAnthropicBodyToOpenAI(body)
 			}
+			// For Responses API (input-based) requests targeting providers that
+			// read body["messages"], convert to Chat Completions format so that
+			// Anthropic, Gemini, Bedrock, etc. adapters can process correctly.
+			if req.RequestType == relay.RequestTypeResponses && needsResponsesConversion(channel.Type) {
+				attemptBody = convertResponsesBodyToChatCompletions(attemptBody)
+			}
 
 			channelConfig := relay.ChannelConfig{
 				Type:          channel.Type,
@@ -222,6 +228,7 @@ func (h *RelayHandler) executeWithRetry(
 				UpstreamBodyForLog:     upstreamBodyForLog,
 				IsAnthropicPassthrough: isAnthropicPassthrough,
 				IsAnthropicInbound:     isAnthropicInbound,
+				ResponsesOutput:        req.RequestType == relay.RequestTypeResponses && needsResponsesConversion(channel.Type),
 				FirstTokenTimeout:      firstTokenTimeout,
 				ApiKeyID:               apiKeyId,
 				SessionKeepTime:        sessionKeepTime,

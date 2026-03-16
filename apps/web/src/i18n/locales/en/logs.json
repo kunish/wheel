@@ -93,6 +93,9 @@
       "type": "Type",
       "inputTokens": "Input Tokens",
       "outputTokens": "Output Tokens",
+      "cacheTokens": "Cache Tokens",
+      "cacheRead": "Read",
+      "cacheWrite": "Write",
       "totalTokens": "Total Tokens",
       "cost": "Cost",
       "ttft": "TTFT",
@@ -199,6 +202,7 @@
     "status": "Status",
     "error": "Error",
     "ok": "OK",
+    "cached": "cached",
     "attempts": "{{count}} attempts",
     "streaming": "Streaming"
   }

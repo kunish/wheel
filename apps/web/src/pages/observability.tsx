@@ -6,6 +6,7 @@ import {
   AreaChart,
   CartesianGrid,
   Cell,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -17,11 +18,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { getChannelStats, getHourlyStats, getModelStats, getTotalStats } from "@/lib/api"
 
 const COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ]
 
 function formatNumber(n: number) {
@@ -143,18 +144,25 @@ export default function ObservabilityPage() {
             <AreaChart data={requestRateData}>
               <defs>
                 <linearGradient id="reqGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="hour" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+              <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "var(--popover)",
+                  borderColor: "var(--border)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+              />
               <Area
                 type="monotone"
                 dataKey="requests"
-                stroke="hsl(var(--chart-1))"
+                stroke="var(--chart-1)"
                 fill="url(#reqGradient)"
               />
             </AreaChart>
@@ -167,15 +175,27 @@ export default function ObservabilityPage() {
             <h3 className="mb-4 text-sm font-medium">{t("latencyTrend")}</h3>
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={requestRateData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}ms`} />
-                <Tooltip formatter={(value: any) => [`${Number(value)}ms`, t("unit.avgLatency")]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="hour" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={(v) => `${v}ms`}
+                  stroke="var(--muted-foreground)"
+                />
+                <Tooltip
+                  formatter={(value: any) => [`${Number(value)}ms`, t("unit.avgLatency")]}
+                  contentStyle={{
+                    backgroundColor: "var(--popover)",
+                    borderColor: "var(--border)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
                 <Area
                   type="monotone"
                   dataKey="avgLatency"
-                  stroke="hsl(var(--chart-2))"
-                  fill="hsl(var(--chart-2))"
+                  stroke="var(--chart-2)"
+                  fill="var(--chart-2)"
                   fillOpacity={0.1}
                 />
               </AreaChart>
@@ -194,17 +214,26 @@ export default function ObservabilityPage() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={80}
-                    label={({ name, percent }: any) =>
-                      `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`
-                    }
+                    outerRadius={60}
+                    label={({ percent }: any) => `${((percent ?? 0) * 100).toFixed(0)}%`}
                     labelLine={false}
                   >
                     {modelDistribution.map((_, i) => (
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip formatter={(value: any, name: any) => [value, name]} />
+                  <Legend
+                    layout="vertical"
+                    align="right"
+                    verticalAlign="middle"
+                    iconSize={8}
+                    iconType="circle"
+                    formatter={(value: string) =>
+                      value.length > 20 ? `${value.slice(0, 20)}...` : value
+                    }
+                    wrapperStyle={{ fontSize: 11, lineHeight: "20px" }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (

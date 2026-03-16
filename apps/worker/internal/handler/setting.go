@@ -140,7 +140,7 @@ func (h *Handler) ExportData(c *gin.Context) {
 	}
 
 	if includeLogs {
-		logs, _, err := dal.ListLogs(ctx, h.DB, dal.ListLogsOpts{Page: 1, PageSize: 999999})
+		logs, _, _, err := dal.ListLogs(ctx, h.DB, dal.ListLogsOpts{Page: 1, PageSize: 999999})
 		if err != nil {
 			errorJSON(c, http.StatusInternalServerError, err.Error())
 			return

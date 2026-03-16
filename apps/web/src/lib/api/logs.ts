@@ -11,7 +11,20 @@ export function listLogs(params: Record<string, string | number | undefined>) {
   }
   return apiFetch<{
     success: boolean
-    data: { logs: unknown[]; total: number; page: number; pageSize: number }
+    data: {
+      logs: unknown[]
+      total: number
+      page: number
+      pageSize: number
+      stats: {
+        totalRequests: number
+        successCount: number
+        averageLatency: number
+        totalTokens: number
+        totalCost: number
+        tokenSpeed: number
+      }
+    }
   }>(`/api/v1/log/list?${searchParams.toString()}`)
 }
 

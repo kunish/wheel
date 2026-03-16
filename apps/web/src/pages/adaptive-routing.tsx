@@ -119,11 +119,11 @@ export default function AdaptiveRoutingPage() {
           <h3 className="mb-4 text-sm font-medium">{t("trafficDistribution")}</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={trafficData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis type="number" tick={{ fontSize: 12 }} />
               <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 12 }} />
               <Tooltip />
-              <Bar dataKey="requests" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="requests" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

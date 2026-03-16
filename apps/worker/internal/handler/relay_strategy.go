@@ -24,6 +24,7 @@ type relayAttemptParams struct {
 	UpstreamBodyForLog     *string
 	IsAnthropicPassthrough bool
 	IsAnthropicInbound     bool
+	ResponsesOutput        bool
 	FirstTokenTimeout      int
 	ApiKeyID               int
 	SessionKeepTime        int
@@ -140,6 +141,7 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 		p.FirstTokenTimeout,
 		p.IsAnthropicPassthrough,
 		p.IsAnthropicInbound,
+		p.ResponsesOutput,
 		onContent,
 	)
 
