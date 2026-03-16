@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.0](https://github.com/kunish/wheel/compare/v1.32.2...v1.33.0) (2026-03-16)
+
+
+### Features
+
+* split Antigravity routes, auto-sync keys, fix upstream request format ([71aee99](https://github.com/kunish/wheel/commit/71aee994a5ca435e1cb83537cdb12b0c0ad686ac))
+
 ## [1.32.2](https://github.com/kunish/wheel/compare/v1.32.1...v1.32.2) (2026-03-16)
 
 
