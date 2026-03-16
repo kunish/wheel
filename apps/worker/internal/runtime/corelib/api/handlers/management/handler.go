@@ -352,6 +352,23 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 		}
 		envSecret := h.envSecret
 
+		// Extract provided key early so we can use it for both auth and remote bypass
+		var provided string
+		if ah := c.GetHeader("Authorization"); ah != "" {
+			parts := strings.SplitN(ah, " ", 2)
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				provided = parts[1]
+			} else {
+				provided = ah
+			}
+		}
+		if provided == "" {
+			provided = c.GetHeader("X-Management-Key")
+		}
+
+		// For non-local clients, check if remote access is allowed.
+		// Requests with a valid management key bypass the allowRemote check
+		// since they are authenticated (e.g. internal codexManagementCall in Docker).
 		fail := func() {}
 		if !localClient {
 			h.attemptsMu.Lock()
@@ -372,8 +389,19 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			h.attemptsMu.Unlock()
 
 			if !allowRemote {
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "remote management disabled"})
-				return
+				// Allow through if a valid management key is provided
+				keyValid := false
+				if provided != "" {
+					if envSecret != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(envSecret)) == 1 {
+						keyValid = true
+					} else if secretHash != "" && bcrypt.CompareHashAndPassword([]byte(secretHash), []byte(provided)) == nil {
+						keyValid = true
+					}
+				}
+				if !keyValid {
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "remote management disabled"})
+					return
+				}
 			}
 
 			fail = func() {
@@ -395,20 +423,6 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 		if secretHash == "" && envSecret == "" {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "remote management key not set"})
 			return
-		}
-
-		// Accept either Authorization: Bearer <key> or X-Management-Key
-		var provided string
-		if ah := c.GetHeader("Authorization"); ah != "" {
-			parts := strings.SplitN(ah, " ", 2)
-			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-				provided = parts[1]
-			} else {
-				provided = ah
-			}
-		}
-		if provided == "" {
-			provided = c.GetHeader("X-Management-Key")
 		}
 
 		if provided == "" {
