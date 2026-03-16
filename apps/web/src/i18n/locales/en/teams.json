@@ -1,0 +1,23 @@
+{
+  "title": "Teams",
+  "description": "Manage teams and track budget usage across virtual keys.",
+  "addTeam": "Add Team",
+  "editTeam": "Edit Team",
+  "name": "Name",
+  "namePlaceholder": "Enter team name",
+  "descriptionLabel": "Description",
+  "descriptionPlaceholder": "Enter team description",
+  "maxBudget": "Max Budget ($)",
+  "maxBudgetPlaceholder": "0 = unlimited",
+  "spend": "Current Spend",
+  "virtualKeys": "keys",
+  "empty": "No teams yet. Create one to start tracking budgets.",
+  "createSuccess": "Team created",
+  "createError": "Failed to create team",
+  "updateSuccess": "Team updated",
+  "updateError": "Failed to update team",
+  "deleteSuccess": "Team deleted",
+  "deleteError": "Failed to delete team",
+  "deleteConfirmTitle": "Delete Team",
+  "deleteConfirmDesc": "Are you sure you want to delete team \"{{name}}\"? Virtual keys will not be deleted."
+}

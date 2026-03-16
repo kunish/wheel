@@ -22,6 +22,7 @@ import {
   Sun,
   Tags,
   Terminal,
+  Users,
   Waypoints,
 } from "lucide-react"
 import { motion } from "motion/react"
@@ -87,6 +88,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/keys", labelKey: "nav.keys", icon: Key },
       { href: "/budgets", labelKey: "nav.budgets", icon: DollarSign },
+      { href: "/teams", labelKey: "nav.teams", icon: Users },
       { href: "/model-limits", labelKey: "nav.modelLimits", icon: Gauge },
       { href: "/tags", labelKey: "nav.tags", icon: Tags },
     ],

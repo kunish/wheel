@@ -14,7 +14,8 @@
     "apiReference": "API Reference",
     "settings": "Settings",
     "adaptiveRouting": "Routing",
-    "observability": "Observability"
+    "observability": "Observability",
+    "teams": "Teams"
   },
   "navSection": {
     "gateway": "AI Gateway",

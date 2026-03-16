@@ -174,6 +174,9 @@ func (h *RelayHandler) executeWithRetry(
 				targetModel,
 				isAnthropicPassthrough,
 			)
+			// Inject W3C traceparent for distributed trace propagation
+			relay.InjectTraceparent(c.Request.Context(), upstream.Headers)
+
 			if relay.ShouldUseMultimodalExecution(req.RequestType, channel.Type) {
 				upstream = relay.BuildMultimodalUpstreamRequest(
 					channelConfig,

@@ -365,7 +365,9 @@ function SortableGroup({
                           ? "orange"
                           : group.mode === 4
                             ? "pink"
-                            : "secondary"
+                            : group.mode === 5
+                              ? "lavender"
+                              : "secondary"
                   }
                   className="rounded-full px-2 py-0 text-[10px] font-normal"
                 >

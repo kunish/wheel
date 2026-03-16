@@ -15,6 +15,7 @@ import {
   Sun,
   Tags,
   Terminal,
+  Users,
   Waypoints,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -121,6 +122,14 @@ export function CommandPalette() {
         icon: Tags,
         action: () => navigate("/tags"),
         keywords: ["tag", "label", "category", "标签"],
+        group: "Navigation",
+      },
+      {
+        id: "nav-teams",
+        label: t("nav.teams"),
+        icon: Users,
+        action: () => navigate("/teams"),
+        keywords: ["team", "budget", "organization", "团队", "组织"],
         group: "Navigation",
       },
       {
