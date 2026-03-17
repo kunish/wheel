@@ -38,8 +38,8 @@ func TestAntigravityBaseURL(t *testing.T) {
 		model string
 		want  string
 	}{
-		{"claude-opus-4-6-thinking", antigravityDailyURL},
-		{"claude-sonnet-4-6", antigravityDailyURL},
+		{"claude-opus-4-6-thinking", antigravityProdURL},
+		{"claude-sonnet-4-6", antigravityProdURL},
 		{"gemini-2.5-flash", antigravityDailyURL},
 		{"gemini-3-pro-high", antigravityDailyURL},
 		{"gemini-3-flash", antigravityDailyURL},
