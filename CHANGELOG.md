@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.33.2](https://github.com/kunish/wheel/compare/v1.33.1...v1.33.2) (2026-03-17)
+
+
+### Bug Fixes
+
+* align Antigravity relay with CLIProxyAPIPlus for Claude model support ([4bab332](https://github.com/kunish/wheel/commit/4bab3320f84fbe2c574cfb281c75e85c25f724f8))
+* align Antigravity relay with CLIProxyAPIPlus request format ([5145cab](https://github.com/kunish/wheel/commit/5145cab2a4d2efc5c15b5bc97600702a4c16a484))
+* force HTTP/1.1, use daily (non-sandbox) URL with fallback ([0d24720](https://github.com/kunish/wheel/commit/0d2472056b8d4a16813120000aefa6a79ede4e38))
+* model sync fallback and Antigravity request format issues ([a8e00d4](https://github.com/kunish/wheel/commit/a8e00d4d0ce5a3ade8e8bd997bedd7801ba8098e))
+* remove system prompt injection and clean up debug logs ([ef0965d](https://github.com/kunish/wheel/commit/ef0965d32de90352954beb96ca5f4f3593949ce7))
+* route Claude models to prod endpoint, Gemini to sandbox daily ([9b4aa02](https://github.com/kunish/wheel/commit/9b4aa02652af15206d89f20bcb048c1cac0f29a6))
+* use daily sandbox URL for all models including Claude ([3076cc5](https://github.com/kunish/wheel/commit/3076cc5aa287505432d4f87079fded5febfc63f7))
+
 ## [1.33.1](https://github.com/kunish/wheel/compare/v1.33.0...v1.33.1) (2026-03-16)
 
 
