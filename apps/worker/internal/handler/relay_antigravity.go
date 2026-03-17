@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,12 +34,18 @@ import (
 )
 
 const (
-	antigravityDailyURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
-	antigravityUA       = "antigravity/1.19.6 darwin/arm64"
+	antigravityDailyURL   = "https://daily-cloudcode-pa.googleapis.com"
+	antigravitySandboxURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
+	antigravityUA         = "antigravity/1.19.6 darwin/arm64"
 )
 
-// antigravityBaseURL returns the upstream base URL.
-// All models use the daily sandbox endpoint (matching CLIProxyAPIPlus behavior).
+// antigravityBaseURLs returns the upstream base URLs in fallback order.
+// Matches CLIProxyAPIPlus: daily first, sandbox as fallback.
+func antigravityBaseURLs() []string {
+	return []string{antigravityDailyURL, antigravitySandboxURL}
+}
+
+// antigravityBaseURL returns the primary upstream base URL.
 func antigravityBaseURL(model string) string {
 	return antigravityDailyURL
 }
@@ -50,6 +57,23 @@ type AntigravityRelay struct {
 	db      *bun.DB
 	tokenMu sync.RWMutex
 }
+
+// antigravityHTTPClient returns an HTTP client that forces HTTP/1.1
+// (matching CLIProxyAPIPlus behavior) with Connection: close.
+var antigravityHTTPClient = sync.OnceValue(func() *http.Client {
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		base = &http.Transport{}
+	}
+	transport := base.Clone()
+	transport.ForceAttemptHTTP2 = false
+	transport.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) http.RoundTripper)
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	return &http.Client{Transport: transport, Timeout: 300 * time.Second}
+})
 
 // NewAntigravityRelay creates a new AntigravityRelay with the given DB for auth file lookup.
 func NewAntigravityRelay(db *bun.DB) *AntigravityRelay {
@@ -248,7 +272,7 @@ func (r *AntigravityRelay) ProxyNonStreaming(
 	}
 	applyAntigravityHeaders(req, accessToken, baseURL)
 
-	resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(req)
+	resp, err := antigravityHTTPClient().Do(req)
 	if err != nil {
 		return nil, &relay.ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: http.StatusBadGateway}
 	}
@@ -303,7 +327,7 @@ func (r *AntigravityRelay) ProxyStreaming(
 	}
 	applyAntigravityHeaders(req, accessToken, baseURL)
 
-	resp, err := (&http.Client{}).Do(req)
+	resp, err := antigravityHTTPClient().Do(req)
 	if err != nil {
 		return nil, &relay.ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: http.StatusBadGateway}
 	}
@@ -384,7 +408,7 @@ func applyAntigravityHeaders(r *http.Request, accessToken, baseURL string) {
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+accessToken)
 	r.Header.Set("User-Agent", antigravityUA)
-	r.Header.Set("Accept-Encoding", "gzip")
+	r.Close = true // Connection: close, matching CLIProxyAPIPlus
 
 	// Extract host from baseURL.
 	host := strings.TrimPrefix(baseURL, "https://")
