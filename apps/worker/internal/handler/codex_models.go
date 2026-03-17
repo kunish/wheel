@@ -127,7 +127,9 @@ func (h *Handler) syncCodexChannelModels(ctx context.Context, channelID int) err
 	}
 	models, err := h.collectCodexChannelModels(ctx, channelID, channel.Type, files)
 	if err != nil {
-		return err
+		// If model collection fails (e.g. 403 TOS violation), treat as empty
+		// so the fallback logic below can provide default models.
+		models = nil
 	}
 	// Do not overwrite existing models with an empty list; the upstream
 	// model endpoint may be temporarily unavailable (e.g. TOS violation).

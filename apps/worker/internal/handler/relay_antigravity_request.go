@@ -84,7 +84,12 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 
 	// Place sessionId inside the request object (not at envelope level).
 	sessionID := generateStableSessionID(messages)
-	geminiReq.SessionID = "-" + sessionID
+	geminiReq.SessionID = sessionID
+
+	// Claude models: remove maxOutputTokens (CLIProxyAPIPlus behavior).
+	if strings.Contains(model, "claude") && genConfig != nil {
+		genConfig.MaxOutputTokens = 0
+	}
 
 	return V1InternalRequest{
 		Project:     projectID,
@@ -382,6 +387,10 @@ func contentToBlocks(content any) []ClaudeContentItem {
 // and optional MCP XML protocol injection.
 func buildSystemInstruction(rawSystemText string, hasMCPTools bool) *GeminiContent {
 	sysText := filterOpenCodePrompt(rawSystemText)
+	// Filter out literal "null" strings from system text.
+	if strings.TrimSpace(sysText) == "null" {
+		sysText = ""
+	}
 	sysText = filterSystemPrefixes(sysText)
 	sysText = injectIdentityPatch(sysText)
 	if hasMCPTools {
