@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,15 +26,22 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/codexruntime"
 	"github.com/kunish/wheel/apps/worker/internal/db/dal"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
+	antigravityConst "github.com/kunish/wheel/apps/worker/internal/runtime/corelib/auth/antigravity"
 	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
+	"github.com/kunish/wheel/apps/worker/internal/types"
 	"github.com/uptrace/bun"
 )
 
 const (
-	antigravityDailyURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
-	antigravityProdURL  = "https://cloudcode-pa.googleapis.com"
-	antigravityUA       = "antigravity/1.15.8 windows/amd64"
+	antigravityDailyURL   = "https://daily-cloudcode-pa.sandbox.googleapis.com"
+	antigravitySandboxURL = "https://daily-cloudcode-pa.googleapis.com"
+	antigravityUA         = "antigravity/1.19.6 darwin/arm64"
 )
+
+// antigravityBaseURL returns the upstream base URL.
+func antigravityBaseURL(model string) string {
+	return antigravityDailyURL
+}
 
 // AntigravityRelay handles Antigravity (Google Cloud Code) channel requests
 // by converting Anthropic Messages API requests into Gemini internal format
@@ -72,15 +80,30 @@ func (r *AntigravityRelay) ResolveAccessToken(ctx context.Context, channelID int
 
 		// Try reading the managed file from disk first — the runtime's
 		// token refresh mechanism keeps this file up to date.
-		if token, projID, diskErr := r.readManagedAuthFile(managedName); diskErr == nil && token != "" {
+		managedPath := filepath.Join(codexruntime.ManagedAuthDir(), managedName)
+		if token, projID, diskErr := r.readAndRefreshAuthFile(managedPath); diskErr == nil && token != "" {
 			return token, projID, nil
 		}
 
-		// Fallback: read from database (token may be stale).
+		// Fallback: read from database, materialize to disk, then refresh.
 		var raw map[string]any
 		if err := json.Unmarshal([]byte(item.Content), &raw); err != nil {
 			return "", "", fmt.Errorf("parse antigravity auth file content: %w", err)
 		}
+
+		// Materialize the file to disk for future reads and refresh.
+		_ = codexruntime.MaterializeOneAuthFile(&types.CodexAuthFile{
+			ChannelID: item.ChannelID,
+			Name:      item.Name,
+			Content:   item.Content,
+		})
+
+		// Now try refresh from the newly materialized file.
+		if token, projID, diskErr := r.readAndRefreshAuthFile(managedPath); diskErr == nil && token != "" {
+			return token, projID, nil
+		}
+
+		// Last resort: return database token as-is.
 		token, _ := raw["access_token"].(string)
 		if token == "" {
 			return "", "", fmt.Errorf("antigravity auth file %q has no access_token", item.Name)
@@ -92,9 +115,9 @@ func (r *AntigravityRelay) ResolveAccessToken(ctx context.Context, channelID int
 	return "", "", fmt.Errorf("no antigravity auth file matches channel key %q", channelKey)
 }
 
-// readManagedAuthFile reads the token from the managed auth file on disk.
-func (r *AntigravityRelay) readManagedAuthFile(managedName string) (string, string, error) {
-	filePath := filepath.Join(codexruntime.ManagedAuthDir(), managedName)
+// readAndRefreshAuthFile reads the token from an auth file on disk.
+// If the access_token is expired, it refreshes using refresh_token.
+func (r *AntigravityRelay) readAndRefreshAuthFile(filePath string) (string, string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", "", err
@@ -103,18 +126,102 @@ func (r *AntigravityRelay) readManagedAuthFile(managedName string) (string, stri
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return "", "", err
 	}
+
 	token, _ := raw["access_token"].(string)
 	projID, _ := raw["project_id"].(string)
-	return token, projID, nil
+
+	// Check if token needs refresh.
+	if token != "" && !r.tokenNeedsRefresh(raw) {
+		return token, projID, nil
+	}
+
+	// Try to refresh using refresh_token.
+	refreshToken, _ := raw["refresh_token"].(string)
+	if refreshToken == "" {
+		return token, projID, nil // No refresh token, return what we have.
+	}
+
+	r.tokenMu.Lock()
+	defer r.tokenMu.Unlock()
+
+	// Re-read file in case another goroutine already refreshed.
+	data, err = os.ReadFile(filePath)
+	if err != nil {
+		return "", "", err
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return "", "", err
+	}
+	token, _ = raw["access_token"].(string)
+	if token != "" && !r.tokenNeedsRefresh(raw) {
+		projID, _ = raw["project_id"].(string)
+		return token, projID, nil
+	}
+
+	// Perform the refresh.
+	newToken, expiresIn, err := r.refreshAccessToken(refreshToken)
+	if err != nil {
+		return token, projID, nil // Return old token on refresh failure.
+	}
+
+	// Update the file on disk.
+	raw["access_token"] = newToken
+	raw["timestamp"] = float64(time.Now().Unix())
+	raw["expires_in"] = float64(expiresIn)
+	if updated, err := json.Marshal(raw); err == nil {
+		_ = os.WriteFile(filePath, updated, 0o600)
+	}
+
+	return newToken, projID, nil
 }
 
-// antigravityBaseURL selects the upstream base URL. For Claude models, prefer
-// the production endpoint; for Gemini models, use the daily endpoint.
-func antigravityBaseURL(model string) string {
-	if strings.Contains(model, "claude") {
-		return antigravityProdURL
+// tokenNeedsRefresh checks if the token is expired or about to expire.
+func (r *AntigravityRelay) tokenNeedsRefresh(raw map[string]any) bool {
+	// Check the "expired" field first (ISO 8601 timestamp).
+	if expiredStr, ok := raw["expired"].(string); ok && expiredStr != "" {
+		if t, err := time.Parse(time.RFC3339, expiredStr); err == nil {
+			return time.Now().After(t.Add(-60 * time.Second))
+		}
 	}
-	return antigravityDailyURL
+
+	timestamp, _ := toFloat64(raw["timestamp"])
+	expiresIn, _ := toFloat64(raw["expires_in"])
+	if timestamp == 0 || expiresIn == 0 {
+		return true // No expiry info, assume needs refresh.
+	}
+	// Detect millisecond timestamps (> 1e12) and convert to seconds.
+	if timestamp > 1e12 {
+		timestamp = timestamp / 1000
+	}
+	expiresAt := time.Unix(int64(timestamp), 0).Add(time.Duration(expiresIn) * time.Second)
+	return time.Now().After(expiresAt.Add(-60 * time.Second)) // Refresh 60s before expiry.
+}
+
+// refreshAccessToken exchanges a refresh_token for a new access_token.
+func (r *AntigravityRelay) refreshAccessToken(refreshToken string) (string, int, error) {
+	form := url.Values{
+		"client_id":     {antigravityConst.ClientID},
+		"client_secret": {antigravityConst.ClientSecret},
+		"refresh_token": {refreshToken},
+		"grant_type":    {"refresh_token"},
+	}
+	resp, err := http.PostForm(antigravityConst.TokenEndpoint, form)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", 0, err
+	}
+	if result.AccessToken == "" {
+		return "", 0, fmt.Errorf("refresh returned empty access_token")
+	}
+	return result.AccessToken, result.ExpiresIn, nil
 }
 
 // ProxyNonStreaming executes a non-streaming Antigravity API request.

@@ -38,8 +38,8 @@ func TestAntigravityBaseURL(t *testing.T) {
 		model string
 		want  string
 	}{
-		{"claude-opus-4-6-thinking", antigravityProdURL},
-		{"claude-sonnet-4-6", antigravityProdURL},
+		{"claude-opus-4-6-thinking", antigravityDailyURL},
+		{"claude-sonnet-4-6", antigravityDailyURL},
 		{"gemini-2.5-flash", antigravityDailyURL},
 		{"gemini-3-pro-high", antigravityDailyURL},
 		{"gemini-3-flash", antigravityDailyURL},
@@ -103,8 +103,8 @@ func TestTransformClaudeToGemini_DefaultProjectID(t *testing.T) {
 		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
 	envelope := transformClaudeToGemini(body, "gemini-3-flash", "")
-	if envelope.Project != "ag-default" {
-		t.Errorf("project = %v, want ag-default when projectID is empty", envelope.Project)
+	if envelope.Project == "" {
+		t.Error("project should not be empty when projectID is empty (should generate random)")
 	}
 }
 
@@ -811,21 +811,18 @@ func TestDetectMCPTools(t *testing.T) {
 	}
 }
 
-func TestDefaultSafetySettings(t *testing.T) {
+func TestDefaultSafetySettings_Omitted(t *testing.T) {
 	t.Parallel()
-
 	body := map[string]any{
+		"model":    "gemini-2.5-flash",
 		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
 	}
 	envelope := transformClaudeToGemini(body, "gemini-2.5-flash", "test")
 
-	if len(envelope.Request.SafetySettings) != 5 {
-		t.Errorf("expected 5 safety settings, got %d", len(envelope.Request.SafetySettings))
-	}
-	for _, ss := range envelope.Request.SafetySettings {
-		if ss.Threshold != "OFF" {
-			t.Errorf("safety threshold = %v, want OFF for %v", ss.Threshold, ss.Category)
-		}
+	// safetySettings should be omitted from the request (not sent to upstream).
+	raw, _ := json.Marshal(envelope.Request)
+	if strings.Contains(string(raw), "safetySettings") {
+		t.Error("safetySettings should not be present in request")
 	}
 }
 

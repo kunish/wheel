@@ -7,6 +7,7 @@ package handler
 // detection, schema cleaning, safety settings, and generation config defaults.
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,10 @@ import (
 // It takes the raw request body (map[string]any) and returns a V1InternalRequest envelope
 // ready to send to the Antigravity upstream API.
 func transformClaudeToGemini(body map[string]any, model string, projectID string) V1InternalRequest {
+	// Strip "-thinking" suffix — Antigravity controls thinking via thinkingConfig,
+	// and the upstream API does not recognize model names with this suffix.
+	model = strings.TrimSuffix(model, "-thinking")
+
 	// Parse the body into structured types for safer manipulation.
 	messages := extractMessages(body)
 	systemText := extractSystemText(body["system"])
@@ -52,11 +57,10 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 	// Build tool config.
 	toolConfig := buildToolConfig(body["tool_choice"])
 
-	// Build the Gemini request.
+	// Build the Gemini request (safetySettings omitted per upstream protocol).
 	geminiReq := GeminiRequest{
 		Contents:         contents,
 		GenerationConfig: genConfig,
-		SafetySettings:   DefaultSafetySettings,
 	}
 	if sysInstruction != nil {
 		geminiReq.SystemInstruction = sysInstruction
@@ -75,12 +79,16 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 	}
 
 	if projectID == "" {
-		projectID = "ag-default"
+		projectID = generateRandomProjectID()
 	}
+
+	// Place sessionId inside the request object (not at envelope level).
+	sessionID := generateStableSessionID(messages)
+	geminiReq.SessionID = "-" + sessionID
 
 	return V1InternalRequest{
 		Project:     projectID,
-		RequestID:   uuid.New().String(),
+		RequestID:   "agent-" + uuid.New().String(),
 		Model:       model,
 		UserAgent:   "antigravity",
 		Request:     geminiReq,
@@ -738,6 +746,19 @@ func generateStableSessionID(messages []ClaudeMessage) string {
 	}
 	// Fallback to UUID if no user message found.
 	return uuid.New().String()
+}
+
+// generateRandomProjectID generates a random project ID in the format used
+// by CLIProxyAPIPlus (e.g. "swift-wave-a3b2c") when no real project ID is available.
+func generateRandomProjectID() string {
+	adjectives := []string{"useful", "bright", "swift", "calm", "bold", "keen", "warm", "cool", "fair", "deep"}
+	nouns := []string{"fuze", "wave", "spark", "flow", "core", "beam", "glow", "node", "link", "edge"}
+	buf := make([]byte, 3)
+	_, _ = rand.Read(buf)
+	adj := adjectives[int(buf[0])%len(adjectives)]
+	noun := nouns[int(buf[1])%len(nouns)]
+	suffix := fmt.Sprintf("%x", buf)
+	return adj + "-" + noun + "-" + suffix
 }
 
 // getStr safely extracts a string from a map.

@@ -106,18 +106,17 @@ type V1InternalRequest struct {
 	Model       string        `json:"model"`
 	UserAgent   string        `json:"userAgent"`
 	Request     GeminiRequest `json:"request"`
-	SessionID   string        `json:"sessionId,omitempty"`
 	RequestType string        `json:"requestType,omitempty"` // "agent" or "web_search"
 }
 
 // GeminiRequest represents the core Gemini generateContent request body.
 type GeminiRequest struct {
+	SessionID         string                  `json:"sessionId,omitempty"`
 	Contents          []GeminiContent         `json:"contents"`
 	SystemInstruction *GeminiContent          `json:"systemInstruction,omitempty"`
 	GenerationConfig  *GeminiGenerationConfig `json:"generationConfig,omitempty"`
 	Tools             []GeminiToolDeclaration `json:"tools,omitempty"`
 	ToolConfig        *GeminiToolConfig       `json:"toolConfig,omitempty"`
-	SafetySettings    []GeminiSafetySetting   `json:"safetySettings,omitempty"`
 }
 
 // GeminiContent represents a content block with role and parts.
