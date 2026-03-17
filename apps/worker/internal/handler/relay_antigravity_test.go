@@ -153,7 +153,7 @@ func TestTransformClaudeToGemini_BasicMessages(t *testing.T) {
 func TestTransformClaudeToGemini_SystemInstruction(t *testing.T) {
 	t.Parallel()
 
-	t.Run("string system with identity patch", func(t *testing.T) {
+	t.Run("string system passthrough", func(t *testing.T) {
 		t.Parallel()
 		body := map[string]any{
 			"system":   "You are a helpful assistant.",
@@ -168,12 +168,12 @@ func TestTransformClaudeToGemini_SystemInstruction(t *testing.T) {
 			t.Fatalf("expected 1 system part, got %d", len(sysInst.Parts))
 		}
 		sysText := sysInst.Parts[0].Text
-		// Should contain the identity patch AND the original system text.
-		if !strings.Contains(sysText, identityPatchText) {
-			t.Error("system text should contain identity patch")
-		}
+		// Should contain the original system text, no identity patch.
 		if !strings.Contains(sysText, "You are a helpful assistant.") {
 			t.Error("system text should contain original system instruction")
+		}
+		if strings.Contains(sysText, identityPatchText) {
+			t.Error("system text should NOT contain identity patch")
 		}
 	})
 

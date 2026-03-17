@@ -21,11 +21,11 @@ import (
 // It takes the raw request body (map[string]any) and returns a V1InternalRequest envelope
 // ready to send to the Antigravity upstream API.
 func transformClaudeToGemini(body map[string]any, model string, projectID string) V1InternalRequest {
-	// Antigravity upstream registers Claude models with the "-thinking" suffix.
-	// The bare name (e.g. "claude-opus-4-6") returns 404, while the suffixed
-	// name (e.g. "claude-opus-4-6-thinking") is recognized. Ensure the suffix
-	// is always present for Claude models.
-	if strings.Contains(model, "claude") && !strings.HasSuffix(model, "-thinking") {
+	// The upstream Antigravity API registers Claude models with the "-thinking"
+	// suffix (confirmed by Sync Keys). Strip any existing suffix first, then
+	// ensure Claude models always have it.
+	model = strings.TrimSuffix(model, "-thinking")
+	if strings.Contains(model, "claude") {
 		model = model + "-thinking"
 	}
 
@@ -49,7 +49,8 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 	// Convert messages to Gemini contents.
 	contents := convertMessagesToContents(messages, model, toolIDToName)
 
-	// Build system instruction with patches.
+	// Build system instruction — pass through user's system prompt only,
+	// no identity patch or other injections.
 	sysInstruction := buildSystemInstruction(systemText, hasMCPTools)
 
 	// Build generation config.
@@ -399,21 +400,15 @@ func contentToBlocks(content any) []ClaudeContentItem {
 // System instruction building
 // ──────────────────────────────────────────────────────────────
 
-// buildSystemInstruction constructs the system instruction with identity patch
-// and optional MCP XML protocol injection.
+// buildSystemInstruction constructs the system instruction from the user's
+// raw system prompt. No identity patches or other injections are added.
 func buildSystemInstruction(rawSystemText string, hasMCPTools bool) *GeminiContent {
-	sysText := filterOpenCodePrompt(rawSystemText)
-	// Filter out literal "null" strings from system text.
-	if strings.TrimSpace(sysText) == "null" {
-		sysText = ""
+	sysText := strings.TrimSpace(rawSystemText)
+	if sysText == "" || sysText == "null" {
+		return nil
 	}
-	sysText = filterSystemPrefixes(sysText)
-	sysText = injectIdentityPatch(sysText)
 	if hasMCPTools {
 		sysText += mcpXMLProtocol
-	}
-	if sysText == "" {
-		return nil
 	}
 	return &GeminiContent{
 		Parts: []GeminiPart{{Text: sysText}},
