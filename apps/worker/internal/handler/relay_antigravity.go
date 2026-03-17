@@ -34,17 +34,12 @@ import (
 
 const (
 	antigravityDailyURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
-	antigravityProdURL  = "https://cloudcode-pa.googleapis.com"
 	antigravityUA       = "antigravity/1.19.6 darwin/arm64"
 )
 
 // antigravityBaseURL returns the upstream base URL.
-// Claude models are only available on the production endpoint;
-// Gemini models use the daily sandbox endpoint.
+// All models use the daily sandbox endpoint (matching CLIProxyAPIPlus behavior).
 func antigravityBaseURL(model string) string {
-	if strings.Contains(model, "claude") {
-		return antigravityProdURL
-	}
 	return antigravityDailyURL
 }
 
