@@ -21,9 +21,13 @@ import (
 // It takes the raw request body (map[string]any) and returns a V1InternalRequest envelope
 // ready to send to the Antigravity upstream API.
 func transformClaudeToGemini(body map[string]any, model string, projectID string) V1InternalRequest {
-	// Strip "-thinking" suffix — Antigravity controls thinking via thinkingConfig,
-	// and the upstream API does not recognize model names with this suffix.
-	model = strings.TrimSuffix(model, "-thinking")
+	// Antigravity upstream registers Claude models with the "-thinking" suffix.
+	// The bare name (e.g. "claude-opus-4-6") returns 404, while the suffixed
+	// name (e.g. "claude-opus-4-6-thinking") is recognized. Ensure the suffix
+	// is always present for Claude models.
+	if strings.Contains(model, "claude") && !strings.HasSuffix(model, "-thinking") {
+		model = model + "-thinking"
+	}
 
 	// Parse the body into structured types for safer manipulation.
 	messages := extractMessages(body)
@@ -67,9 +71,19 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 	}
 	if len(geminiTools) > 0 {
 		geminiReq.Tools = geminiTools
+		if toolConfig != nil {
+			geminiReq.ToolConfig = toolConfig
+		}
 	}
-	if toolConfig != nil {
-		geminiReq.ToolConfig = toolConfig
+
+	// CLIProxyAPIPlus behavior: Claude models on Antigravity MUST have
+	// toolConfig.functionCallingConfig.mode = "VALIDATED", even when no
+	// tools are declared. This is set in buildRequest() unconditionally
+	// for Claude models.
+	if strings.Contains(model, "claude") {
+		geminiReq.ToolConfig = &GeminiToolConfig{
+			FunctionCallingConfig: GeminiFunctionCallingConfig{Mode: "VALIDATED"},
+		}
 	}
 
 	// Build the V1Internal envelope.
@@ -86,8 +100,10 @@ func transformClaudeToGemini(body map[string]any, model string, projectID string
 	sessionID := generateStableSessionID(messages)
 	geminiReq.SessionID = sessionID
 
-	// Claude models: remove maxOutputTokens (CLIProxyAPIPlus behavior).
-	if strings.Contains(model, "claude") && genConfig != nil {
+	// Remove maxOutputTokens for all models — the Antigravity upstream
+	// infers appropriate limits. Sending a value that exceeds the upstream
+	// limit (e.g. 128000 for Claude) causes INVALID_ARGUMENT.
+	if genConfig != nil {
 		genConfig.MaxOutputTokens = 0
 	}
 
@@ -464,7 +480,13 @@ func filterSystemPrefixes(sysText string) string {
 func buildGenerationConfig(body map[string]any, model string) *GeminiGenerationConfig {
 	gc := &GeminiGenerationConfig{
 		MaxOutputTokens: DefaultMaxOutputTokens,
-		StopSequences:   DefaultStopSequences,
+	}
+
+	// Default stop sequences only for non-Claude models.
+	// CLIProxyAPIPlus does not inject stopSequences for Claude models;
+	// the upstream may reject them as invalid arguments.
+	if !strings.Contains(model, "claude") {
+		gc.StopSequences = DefaultStopSequences
 	}
 
 	// Model-specific max output tokens.
@@ -524,14 +546,9 @@ func buildGenerationConfig(body map[string]any, model string) *GeminiGenerationC
 				}
 			}
 		}
-	} else if strings.Contains(model, "opus-4") {
-		// Adaptive thinking for Opus 4.x: enable with default budget.
-		gc.ThinkingConfig = &GeminiThinkingConfig{
-			ThinkingBudget:  DefaultThinkingBudgetOpus46,
-			IncludeThoughts: true,
-		}
-		gc = ensureMaxTokensGreaterThanBudget(gc, DefaultThinkingBudgetOpus46)
 	}
+	// CLIProxyAPIPlus behavior: do NOT force thinkingConfig when the client
+	// did not request it. The upstream will reject unexpected thinkingConfig.
 
 	return gc
 }

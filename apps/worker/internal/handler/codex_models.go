@@ -156,8 +156,8 @@ func defaultAntigravityModels() []string {
 		"gemini-2.5-pro",
 		"gemini-2.5-flash",
 		"gemini-2.5-flash-lite-preview-06-17",
-		"claude-sonnet-4-6",
-		"claude-opus-4-6",
+		"claude-sonnet-4-6-thinking",
+		"claude-opus-4-6-thinking",
 	}
 }
 

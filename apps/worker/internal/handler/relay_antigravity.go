@@ -248,9 +248,28 @@ func (r *AntigravityRelay) refreshAccessToken(refreshToken string) (string, int,
 	return result.AccessToken, result.ExpiresIn, nil
 }
 
+// isAntigravityRetryable reports whether an upstream error should trigger a
+// fallback to the next base URL. Matches CLIProxyAPIPlus behavior: retry on
+// transport errors, 404 (entity not found), 429 (rate limit), and 503 with
+// "no capacity available".
+func isAntigravityRetryable(statusCode int, body string) bool {
+	if statusCode == http.StatusNotFound {
+		return true
+	}
+	if statusCode == http.StatusTooManyRequests {
+		return true
+	}
+	if statusCode == http.StatusServiceUnavailable && strings.Contains(body, "no capacity available") {
+		return true
+	}
+	return false
+}
+
 // ProxyNonStreaming executes a non-streaming Antigravity API request.
 // It converts the Anthropic-format request body to Gemini envelope format,
 // sends it upstream, and converts the response back to Anthropic format.
+// It tries each base URL in antigravityBaseURLs() in order, falling back to
+// the next URL on transport errors, 404, 429, or 503 "no capacity".
 func (r *AntigravityRelay) ProxyNonStreaming(
 	ctx context.Context,
 	accessToken string,
@@ -264,47 +283,68 @@ func (r *AntigravityRelay) ProxyNonStreaming(
 	effectiveModel := envelope.Model
 	bodyJSON, _ := json.Marshal(envelope)
 
-	baseURL := antigravityBaseURL(effectiveModel)
-	url := baseURL + "/v1internal:generateContent"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyJSON))
-	if err != nil {
-		return nil, &relay.ProxyError{Message: fmt.Sprintf("create request: %v", err), StatusCode: http.StatusBadGateway}
-	}
-	applyAntigravityHeaders(req, accessToken, baseURL)
+	baseURLs := antigravityBaseURLs()
+	var lastErr error
 
-	resp, err := antigravityHTTPClient().Do(req)
-	if err != nil {
-		return nil, &relay.ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: http.StatusBadGateway}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBytes, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024))
-	if err != nil {
-		return nil, &relay.ProxyError{Message: fmt.Sprintf("read response: %v", err), StatusCode: http.StatusBadGateway}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &relay.ProxyError{
-			Message:    fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, string(respBytes)),
-			StatusCode: resp.StatusCode,
-			Headers:    resp.Header.Clone(),
+	for _, baseURL := range baseURLs {
+		reqURL := baseURL + "/v1internal:generateContent"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyJSON))
+		if err != nil {
+			return nil, &relay.ProxyError{Message: fmt.Sprintf("create request: %v", err), StatusCode: http.StatusBadGateway}
 		}
+		applyAntigravityHeaders(req, accessToken, baseURL)
+
+		resp, err := antigravityHTTPClient().Do(req)
+		if err != nil {
+			// Transport error → try next base URL.
+			lastErr = &relay.ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: http.StatusBadGateway}
+			continue
+		}
+
+		respBytes, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024))
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, &relay.ProxyError{Message: fmt.Sprintf("read response: %v", err), StatusCode: http.StatusBadGateway}
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			respBody := string(respBytes)
+			proxyErr := &relay.ProxyError{
+				Message:    fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, respBody),
+				StatusCode: resp.StatusCode,
+				Headers:    resp.Header.Clone(),
+			}
+			if isAntigravityRetryable(resp.StatusCode, respBody) {
+				lastErr = proxyErr
+				continue // Try next base URL.
+			}
+			return nil, proxyErr
+		}
+
+		// Use the new typed response transformer.
+		anthropicResp, inputTokens, outputTokens := transformGeminiToClaudeResponse(respBytes, effectiveModel)
+
+		return &relay.ProxyResult{
+			Response:        anthropicResp,
+			InputTokens:     inputTokens,
+			OutputTokens:    outputTokens,
+			StatusCode:      resp.StatusCode,
+			UpstreamHeaders: resp.Header.Clone(),
+		}, nil
 	}
 
-	// Use the new typed response transformer.
-	anthropicResp, inputTokens, outputTokens := transformGeminiToClaudeResponse(respBytes, effectiveModel)
-
-	return &relay.ProxyResult{
-		Response:        anthropicResp,
-		InputTokens:     inputTokens,
-		OutputTokens:    outputTokens,
-		StatusCode:      resp.StatusCode,
-		UpstreamHeaders: resp.Header.Clone(),
-	}, nil
+	// All base URLs exhausted.
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, &relay.ProxyError{Message: "all antigravity base URLs exhausted", StatusCode: http.StatusBadGateway}
 }
 
 // ProxyStreaming executes a streaming Antigravity API request.
 // Converts Anthropic request to Gemini format, streams the response,
 // and converts each SSE event back to Anthropic format using StreamingProcessor.
+// It tries each base URL in antigravityBaseURLs() in order, falling back to
+// the next URL on transport errors, 404, 429, or 503 "no capacity".
 func (r *AntigravityRelay) ProxyStreaming(
 	w http.ResponseWriter,
 	ctx context.Context,
@@ -319,79 +359,97 @@ func (r *AntigravityRelay) ProxyStreaming(
 	effectiveModel := envelope.Model
 	bodyJSON, _ := json.Marshal(envelope)
 
-	baseURL := antigravityBaseURL(effectiveModel)
-	url := baseURL + "/v1internal:streamGenerateContent?alt=sse"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyJSON))
-	if err != nil {
-		return nil, &relay.ProxyError{Message: fmt.Sprintf("create request: %v", err), StatusCode: http.StatusBadGateway}
-	}
-	applyAntigravityHeaders(req, accessToken, baseURL)
+	baseURLs := antigravityBaseURLs()
+	var lastErr error
 
-	resp, err := antigravityHTTPClient().Do(req)
-	if err != nil {
-		return nil, &relay.ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: http.StatusBadGateway}
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer func() { _ = resp.Body.Close() }()
-		respBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
-		return nil, &relay.ProxyError{
-			Message:    fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, string(respBytes)),
-			StatusCode: resp.StatusCode,
-			Headers:    resp.Header.Clone(),
+	for _, baseURL := range baseURLs {
+		reqURL := baseURL + "/v1internal:streamGenerateContent?alt=sse"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyJSON))
+		if err != nil {
+			return nil, &relay.ProxyError{Message: fmt.Sprintf("create request: %v", err), StatusCode: http.StatusBadGateway}
 		}
-	}
+		applyAntigravityHeaders(req, accessToken, baseURL)
 
-	// Write Anthropic SSE headers.
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-
-	// Use the new StreamingProcessor state machine.
-	sp := NewStreamingProcessor(w, effectiveModel)
-
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 256*1024), 1024*1024)
-
-	var firstTokenTime int
-	started := time.Now()
-	firstTokenSent := false
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		if !bytes.HasPrefix(line, []byte("data: ")) {
+		resp, err := antigravityHTTPClient().Do(req)
+		if err != nil {
+			// Transport error → try next base URL.
+			lastErr = &relay.ProxyError{Message: fmt.Sprintf("upstream request failed: %v", err), StatusCode: http.StatusBadGateway}
 			continue
 		}
-		chunk := line[6:]
 
-		// Track first token time.
-		if !firstTokenSent {
-			firstTokenTime = int(time.Since(started).Milliseconds())
-			firstTokenSent = true
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			respBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+			_ = resp.Body.Close()
+			respBody := string(respBytes)
+			proxyErr := &relay.ProxyError{
+				Message:    fmt.Sprintf("Upstream error %d: %s", resp.StatusCode, respBody),
+				StatusCode: resp.StatusCode,
+				Headers:    resp.Header.Clone(),
+			}
+			if isAntigravityRetryable(resp.StatusCode, respBody) {
+				lastErr = proxyErr
+				continue // Try next base URL.
+			}
+			return nil, proxyErr
 		}
 
-		// Delegate to the StreamingProcessor.
-		sp.ProcessChunk(chunk)
+		// Success — write SSE headers and stream.
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+
+		// Use the new StreamingProcessor state machine.
+		sp := NewStreamingProcessor(w, effectiveModel)
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 256*1024), 1024*1024)
+
+		var firstTokenTime int
+		started := time.Now()
+		firstTokenSent := false
+
+		for scanner.Scan() {
+			line := scanner.Bytes()
+
+			if !bytes.HasPrefix(line, []byte("data: ")) {
+				continue
+			}
+			chunk := line[6:]
+
+			// Track first token time.
+			if !firstTokenSent {
+				firstTokenTime = int(time.Since(started).Milliseconds())
+				firstTokenSent = true
+			}
+
+			// Delegate to the StreamingProcessor.
+			sp.ProcessChunk(chunk)
+		}
+		_ = resp.Body.Close()
+
+		// Finalize the stream.
+		inputTokens, outputTokens := sp.Finish()
+
+		if onContent != nil {
+			onContent(sp.AccThinking(), sp.AccText())
+		}
+
+		return &relay.StreamCompleteInfo{
+			InputTokens:     inputTokens,
+			OutputTokens:    outputTokens,
+			FirstTokenTime:  firstTokenTime,
+			ResponseContent: sp.AccText(),
+			ThinkingContent: sp.AccThinking(),
+			UpstreamHeaders: resp.Header.Clone(),
+		}, nil
 	}
-	_ = resp.Body.Close()
 
-	// Finalize the stream.
-	inputTokens, outputTokens := sp.Finish()
-
-	if onContent != nil {
-		onContent(sp.AccThinking(), sp.AccText())
+	// All base URLs exhausted.
+	if lastErr != nil {
+		return nil, lastErr
 	}
-
-	return &relay.StreamCompleteInfo{
-		InputTokens:     inputTokens,
-		OutputTokens:    outputTokens,
-		FirstTokenTime:  firstTokenTime,
-		ResponseContent: sp.AccText(),
-		ThinkingContent: sp.AccThinking(),
-		UpstreamHeaders: resp.Header.Clone(),
-	}, nil
+	return nil, &relay.ProxyError{Message: "all antigravity base URLs exhausted", StatusCode: http.StatusBadGateway}
 }
 
 // writeAnthropicSSE writes a single SSE event in Anthropic format.

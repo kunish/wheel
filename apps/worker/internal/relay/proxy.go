@@ -29,17 +29,23 @@ func (e *ProxyError) Error() string {
 }
 
 // IsRetryableStatusCode reports whether a proxy status should be retried.
+// Aligned with CLIProxyAPIPlus: only 400 (invalid_request_error) and 422
+// are considered non-retryable. All other errors (including 401, 403, 404,
+// 429, 5xx) are retryable so the gateway can try the next channel/credential.
 func IsRetryableStatusCode(statusCode int) bool {
 	if statusCode <= 0 {
 		return true
 	}
-	if statusCode == 429 || statusCode == 408 || statusCode == 409 {
-		return true
+	// 422 Unprocessable Entity is a request-shape error, never retry.
+	if statusCode == 422 {
+		return false
 	}
-	if statusCode >= 500 {
-		return true
+	// 2xx are successful, not errors to retry.
+	if statusCode >= 200 && statusCode < 300 {
+		return false
 	}
-	return false
+	// All other non-success status codes are retryable (try next channel).
+	return true
 }
 
 // isRetryableProxyError reports whether a proxy error should be retried.

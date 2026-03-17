@@ -81,7 +81,7 @@ func TestExecuteFeatureWithRetry_Proxy429WithNilDBDoesNotPanic(t *testing.T) {
 	}
 }
 
-func TestExecuteFeatureWithRetry_Proxy4xxStopsImmediately(t *testing.T) {
+func TestExecuteFeatureWithRetry_Proxy422StopsImmediately(t *testing.T) {
 	model := "test-model"
 	h := newTestRelayHandler(t, model,
 		[]types.Channel{
@@ -97,18 +97,43 @@ func TestExecuteFeatureWithRetry_Proxy4xxStopsImmediately(t *testing.T) {
 	calls := 0
 	err := h.executeFeatureWithRetry(context.Background(), model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
 		calls++
-		return &relay.ProxyError{Message: "unauthorized", StatusCode: 401}
+		return &relay.ProxyError{Message: "unprocessable entity", StatusCode: 422}
 	})
 
 	if err == nil {
 		t.Fatal("expected proxy error to bubble up")
 	}
 	if calls != 1 {
-		t.Fatalf("expected non-retryable 4xx to stop immediately, calls=%d", calls)
+		t.Fatalf("expected non-retryable 422 to stop immediately, calls=%d", calls)
 	}
 }
 
-func TestExecuteFeatureWithRetry_ClientDisconnectStopsImmediately(t *testing.T) {
+func TestExecuteFeatureWithRetry_Proxy4xxRetries(t *testing.T) {
+	model := "test-model"
+	h := newTestRelayHandler(t, model,
+		[]types.Channel{
+			makeChannel(1, "https://example.com", 903, "k1"),
+		},
+		[]types.GroupItem{
+			{GroupID: 1, ChannelID: 1, ModelName: model, Priority: 1, Enabled: true},
+		},
+	)
+
+	calls := 0
+	err := h.executeFeatureWithRetry(context.Background(), model, 1, func(channel *types.Channel, selectedKey *types.ChannelKey, targetModel string) error {
+		calls++
+		return &relay.ProxyError{Message: "unauthorized", StatusCode: 401}
+	})
+
+	if err == nil {
+		t.Fatal("expected proxy error to bubble up after retries")
+	}
+	if calls != maxRetryRounds {
+		t.Fatalf("expected %d retries for retryable 4xx, got %d", maxRetryRounds, calls)
+	}
+}
+
+func TestExecuteFeatureWithRetry_ClientDisconnectRetries(t *testing.T) {
 	model := "test-model"
 	h := newTestRelayHandler(t, model,
 		[]types.Channel{
@@ -130,7 +155,8 @@ func TestExecuteFeatureWithRetry_ClientDisconnectStopsImmediately(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected proxy error to bubble up")
 	}
-	if calls != 1 {
-		t.Fatalf("expected client disconnect error to stop immediately, calls=%d", calls)
+	// 499 is now retryable (tries next channel), so all channels/rounds are attempted
+	if calls != maxRetryRounds*2 {
+		t.Fatalf("expected %d attempts for retryable 499 with 2 channels, got %d", maxRetryRounds*2, calls)
 	}
 }

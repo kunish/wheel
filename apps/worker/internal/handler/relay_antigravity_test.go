@@ -144,8 +144,9 @@ func TestTransformClaudeToGemini_BasicMessages(t *testing.T) {
 	if envelope.Request.GenerationConfig == nil {
 		t.Fatal("generationConfig should not be nil")
 	}
-	if envelope.Request.GenerationConfig.MaxOutputTokens != 1024 {
-		t.Errorf("maxOutputTokens = %v, want 1024", envelope.Request.GenerationConfig.MaxOutputTokens)
+	// Gemini models: maxOutputTokens is removed (set to 0) per CLIProxyAPIPlus behavior.
+	if envelope.Request.GenerationConfig.MaxOutputTokens != 0 {
+		t.Errorf("maxOutputTokens = %v, want 0 (removed for Gemini models)", envelope.Request.GenerationConfig.MaxOutputTokens)
 	}
 }
 
@@ -214,8 +215,8 @@ func TestTransformClaudeToGemini_GenerationConfig(t *testing.T) {
 	if gc.TopP == nil || *gc.TopP != 0.95 {
 		t.Errorf("topP = %v, want 0.95", gc.TopP)
 	}
-	if gc.MaxOutputTokens != 2048 {
-		t.Errorf("maxOutputTokens = %v, want 2048", gc.MaxOutputTokens)
+	if gc.MaxOutputTokens != 0 {
+		t.Errorf("maxOutputTokens = %v, want 0 (removed for Gemini models)", gc.MaxOutputTokens)
 	}
 }
 
