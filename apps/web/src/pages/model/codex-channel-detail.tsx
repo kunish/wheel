@@ -1,18 +1,7 @@
 import type { CodexAuthFile, CodexQuotaItem } from "@/lib/api"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  Eye,
-  Loader2,
-  LogIn,
-  RefreshCw,
-  Trash2,
-  Upload,
-  XCircle,
-} from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Eye, Loader2, LogIn, RefreshCw, Trash2, Upload } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -34,13 +23,11 @@ import {
   deleteCodexAuthFileBatch,
   getCodexAuthFileModels,
   getCodexAuthUploadToastState,
-  getCodexOAuthStatus,
   listCodexAuthFiles,
   listCodexQuota,
   patchCodexAuthFileStatus,
   patchCodexAuthFileStatusBatch,
   runtimeProviderFilter,
-  startCodexOAuth,
   syncCodexKeys,
   uploadCodexAuthFile,
 } from "@/lib/api"
@@ -51,6 +38,7 @@ import {
   codexQuotaQueryKey,
   codexUploadRefreshQueryKeys,
 } from "./codex-query-keys"
+import { OAuthFlowDialog } from "./oauth-flow-dialog"
 import {
   buildAuthFileBatchScope,
   clearRuntimeAuthSelection,
@@ -63,6 +51,7 @@ import {
   setCurrentPageSelection,
   toggleAuthFileSelection,
 } from "./runtime-auth-selection"
+import { useRuntimeOAuthSession } from "./use-runtime-oauth-session"
 
 const AUTH_FILES_PAGE_SIZE = 8
 const AUTH_PAGE_SIZE_OPTIONS = [8, 20, 50, 100]
@@ -89,6 +78,12 @@ export function CodexChannelDetail({
   const providerKey = getRuntimeProviderKey(channelType)
   const providerLabel = providerKey ? t(`typeLabels.${channelType}`) : t("typeLabels.33")
   const providerFilter = runtimeProviderFilter(channelType)
+
+  const invalidateRuntimeAuthQueries = useCallback(() => {
+    for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
+      void queryClient.invalidateQueries({ queryKey })
+    }
+  }, [channelId, queryClient])
 
   const quotaStatusFilter =
     statusFilter === "error" || statusFilter === "exhausted" ? statusFilter : undefined
@@ -119,6 +114,7 @@ export function CodexChannelDetail({
     queryKey: codexQuotaQueryKey(channelId, {
       page: authPage,
       pageSize: authPageSize,
+      search: authSearch,
       channelType,
     }),
     queryFn: () =>
@@ -142,9 +138,7 @@ export function CodexChannelDetail({
     mutationFn: (input: { name: string; disabled: boolean }) =>
       patchCodexAuthFileStatus(channelId, input, channelType),
     onSuccess: () => {
-      for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-        void queryClient.invalidateQueries({ queryKey })
-      }
+      invalidateRuntimeAuthQueries()
       toast.success(t("codex.statusUpdated"))
     },
     onError: (err: Error) => toast.error(err.message),
@@ -153,9 +147,7 @@ export function CodexChannelDetail({
   const deleteMut = useMutation({
     mutationFn: (name: string) => deleteCodexAuthFile(channelId, { name }, channelType),
     onSuccess: () => {
-      for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-        void queryClient.invalidateQueries({ queryKey })
-      }
+      invalidateRuntimeAuthQueries()
       toast.success(t("codex.authDeleted"))
     },
     onError: (err: Error) => toast.error(err.message),
@@ -176,9 +168,7 @@ export function CodexChannelDetail({
       ),
     onSuccess: (res) => {
       setSelection(clearRuntimeAuthSelection())
-      for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-        void queryClient.invalidateQueries({ queryKey })
-      }
+      invalidateRuntimeAuthQueries()
       if (res.data.successCount > 0 && res.data.failedCount === 0) {
         toast.success(t("runtime.batchStatusUpdated", { count: res.data.successCount }))
         return
@@ -211,9 +201,7 @@ export function CodexChannelDetail({
       ),
     onSuccess: (res) => {
       setSelection(clearRuntimeAuthSelection())
-      for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-        void queryClient.invalidateQueries({ queryKey })
-      }
+      invalidateRuntimeAuthQueries()
       if (res.data.successCount > 0 && res.data.failedCount === 0) {
         toast.success(t("runtime.batchDeleted", { count: res.data.successCount }))
         return
@@ -235,9 +223,7 @@ export function CodexChannelDetail({
   const syncMut = useMutation({
     mutationFn: () => syncCodexKeys(channelId, channelType),
     onSuccess: (res) => {
-      for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-        void queryClient.invalidateQueries({ queryKey })
-      }
+      invalidateRuntimeAuthQueries()
       toast.success(t("codex.syncSuccess", { count: res.data.synced }))
     },
     onError: (err: Error) => toast.error(err.message),
@@ -247,9 +233,7 @@ export function CodexChannelDetail({
     mutationFn: (files: File[]) => uploadCodexAuthFile(channelId, files, channelType),
     onSuccess: (res) => {
       if (res.data.successCount > 0) {
-        for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-          void queryClient.invalidateQueries({ queryKey })
-        }
+        invalidateRuntimeAuthQueries()
       }
 
       const toastState = getCodexAuthUploadToastState(res.data)
@@ -259,91 +243,149 @@ export function CodexChannelDetail({
   })
 
   const [oauthPanelOpen, setOauthPanelOpen] = useState(false)
-  const [oauthUrl, setOauthUrl] = useState("")
-  const [_oauthState, setOauthState] = useState("")
-  const [oauthUserCode, setOauthUserCode] = useState("")
-  const [oauthStatus, setOauthStatus] = useState<
-    "idle" | "starting" | "waiting" | "success" | "error"
-  >("idle")
-  const [oauthError, setOauthError] = useState("")
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [oauthLaunching, setOauthLaunching] = useState(false)
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
+  const autoOpenedRestoredOAuthStateRef = useRef<string | null>(null)
+  const oauthSession = useRuntimeOAuthSession({
+    channelId,
+    channelType,
+    providerLabel,
+    onCompleted: () => {
+      invalidateRuntimeAuthQueries()
+      setOauthPanelOpen(false)
+      toast.success(t("runtime.oauth.terminal.completed"))
+    },
+  })
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
+  const oauthWarningMessage = useMemo(() => {
+    if (!oauthSession.warningCode) {
+      return undefined
     }
-  }, [])
+    return t(`runtime.oauth.warnings.${oauthSession.warningCode}`, {
+      defaultValue: oauthSession.warningMessage,
+    })
+  }, [oauthSession.warningCode, oauthSession.warningMessage, t])
 
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => stopPolling()
-  }, [stopPolling])
+  const oauthTerminalMessage = useMemo(() => {
+    if (oauthSession.errorCode) {
+      return t(`runtime.oauth.terminalCodes.${oauthSession.errorCode}`, {
+        defaultValue: oauthSession.error,
+      })
+    }
+    return oauthSession.error
+  }, [oauthSession.error, oauthSession.errorCode, t])
+
+  const oauthDialogDescription = useMemo(() => {
+    if (oauthSession.status === "expired") {
+      return t("runtime.oauth.status.expired", {
+        message: oauthTerminalMessage || t("runtime.oauth.restartHint"),
+      })
+    }
+
+    if (oauthSession.status === "error") {
+      return t("runtime.oauth.status.error", {
+        message: oauthTerminalMessage || t("runtime.oauth.restartHint"),
+      })
+    }
+
+    if (
+      oauthSession.phase === "callback_received" ||
+      oauthSession.phase === "importing_auth_file"
+    ) {
+      return t("runtime.oauth.phase.importing_auth_file")
+    }
+
+    if (oauthSession.phase === "awaiting_browser") {
+      return t("runtime.oauth.phase.awaiting_browser", { provider: providerLabel })
+    }
+
+    if (oauthSession.status === "waiting") {
+      return t("runtime.oauth.resumableHint", { provider: providerLabel })
+    }
+
+    return t("runtime.oauthHint", { provider: providerLabel })
+  }, [oauthSession.phase, oauthSession.status, oauthTerminalMessage, providerLabel, t])
 
   const handleStartOAuth = useCallback(async () => {
-    setOauthStatus("starting")
-    setOauthError("")
-    setOauthUrl("")
-    setOauthState("")
-    setOauthUserCode("")
-    try {
-      const res = await startCodexOAuth(channelId, channelType)
-      const { url, state, user_code } = res.data
-      setOauthUrl(url)
-      setOauthState(state)
-      if (user_code) setOauthUserCode(user_code)
-      setOauthStatus("waiting")
-
-      // Start polling for status
-      const startTime = Date.now()
-      pollRef.current = setInterval(async () => {
-        // Timeout after 5 minutes
-        if (Date.now() - startTime > 5 * 60 * 1000) {
-          stopPolling()
-          setOauthStatus("error")
-          setOauthError(t("codex.oauthTimeout"))
-          return
-        }
-        try {
-          const statusRes = await getCodexOAuthStatus(channelId, state, channelType)
-          const { status, error } = statusRes.data
-          if (status === "ok") {
-            stopPolling()
-            setOauthStatus("success")
-            for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
-              void queryClient.invalidateQueries({ queryKey })
-            }
-          } else if (status === "error") {
-            stopPolling()
-            setOauthStatus("error")
-            setOauthError(error || "Unknown error")
-          }
-          // status === "wait" → keep polling
-        } catch {
-          // Network error during poll — keep trying
-        }
-      }, 3000)
-    } catch (err) {
-      setOauthStatus("error")
-      setOauthError(err instanceof Error ? err.message : "Failed to start OAuth")
+    setOauthPanelOpen(true)
+    if (oauthSession.status === "waiting" && oauthSession.flowType) {
+      return
     }
-  }, [channelId, channelType, queryClient, stopPolling, t])
 
-  const handleOauthDialogChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        stopPolling()
-        setOauthStatus("idle")
-        setOauthUrl("")
-        setOauthState("")
-        setOauthUserCode("")
-        setOauthError("")
+    setOauthLaunching(true)
+    try {
+      if (oauthSession.status === "idle") {
+        await oauthSession.start()
+      } else {
+        await oauthSession.restart()
       }
-      setOauthPanelOpen(open)
+    } catch (err) {
+      setOauthPanelOpen(false)
+      toast.error(err instanceof Error ? err.message : t("runtime.oauth.startFailed"))
+    } finally {
+      setOauthLaunching(false)
+    }
+  }, [oauthSession, t])
+
+  const handleCopyAuthLink = useCallback(
+    async (value: string) => {
+      try {
+        await navigator.clipboard.writeText(value)
+        toast.success(t("codex.oauthLinkCopied"))
+      } catch {
+        toast.error(t("actions.copyFailed", { ns: "common" }))
+      }
     },
-    [stopPolling],
+    [t],
   )
+
+  const handleCopyUserCode = useCallback(async () => {
+    try {
+      await oauthSession.copyUserCode()
+      toast.success(t("codex.oauthCodeCopied"))
+    } catch {
+      toast.error(t("actions.copyFailed", { ns: "common" }))
+    }
+  }, [oauthSession, t])
+
+  const handlePasteCallback = useCallback(async () => {
+    await oauthSession.pasteCallbackFromClipboard()
+  }, [oauthSession])
+
+  useEffect(() => {
+    if (oauthSession.status !== "error" && oauthSession.status !== "expired") {
+      return
+    }
+
+    if (oauthTerminalMessage) {
+      toast.error(oauthTerminalMessage)
+    }
+  }, [oauthSession.status, oauthTerminalMessage])
+
+  useEffect(() => {
+    if (
+      !oauthSession.restoredFromStorage ||
+      oauthSession.status !== "waiting" ||
+      !oauthSession.flowType
+    ) {
+      return
+    }
+    if (!oauthSession.oauthUrl || !oauthSession.callbackValidation) {
+      return
+    }
+    if (autoOpenedRestoredOAuthStateRef.current === oauthSession.oauthUrl) {
+      return
+    }
+
+    autoOpenedRestoredOAuthStateRef.current = oauthSession.oauthUrl
+    setOauthPanelOpen(true)
+  }, [
+    oauthSession.callbackValidation,
+    oauthSession.flowType,
+    oauthSession.oauthUrl,
+    oauthSession.restoredFromStorage,
+    oauthSession.status,
+  ])
 
   const authFiles = authQuery.data?.data.files ?? []
   const inlineQuotaItems = authQuery.data?.data.quotaItems
@@ -469,12 +511,14 @@ export function CodexChannelDetail({
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => {
-                  setOauthPanelOpen(true)
-                  void handleStartOAuth()
-                }}
+                onClick={() => void handleStartOAuth()}
+                disabled={oauthLaunching}
               >
-                <LogIn className="mr-1 h-3 w-3" />
+                {oauthLaunching ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <LogIn className="mr-1 h-3 w-3" />
+                )}
                 {t("codex.importOAuth")}
               </Button>
             )}
@@ -744,106 +788,37 @@ export function CodexChannelDetail({
       </Dialog>
 
       {/* OAuth Flow Dialog */}
-      <Dialog open={oauthPanelOpen} onOpenChange={handleOauthDialogChange}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("codex.importOAuth")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-muted-foreground text-xs">{t("codex.oauthHint")}</p>
-
-            {oauthStatus === "starting" && (
-              <div className="flex items-center gap-2 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>{t("codex.oauthStarting")}</span>
-              </div>
-            )}
-
-            {oauthStatus === "waiting" && oauthUrl && (
-              <div className="space-y-3">
-                {oauthUserCode && (
-                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
-                    <p className="mb-1 text-xs text-muted-foreground">{t("codex.oauthDeviceCode")}</p>
-                    <div className="flex items-center gap-2">
-                      <code className="rounded bg-background px-2 py-1 text-lg font-bold tracking-widest">
-                        {oauthUserCode}
-                      </code>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        aria-label={t("codex.oauthCopyCode")}
-                        title={t("codex.oauthCopyCode")}
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(oauthUserCode)
-                            toast.success(t("codex.oauthCodeCopied"))
-                          } catch {
-                            toast.error(t("actions.copyFailed", { ns: "common" }))
-                          }
-                        }}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                <div className="rounded-md border p-3">
-                  <p className="mb-2 text-xs font-medium break-all">{oauthUrl}</p>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(oauthUrl)
-                          toast.success(t("codex.oauthLinkCopied"))
-                        } catch {
-                          toast.error(t("actions.copyFailed", { ns: "common" }))
-                        }
-                      }}
-                    >
-                      <Copy className="mr-1 h-3 w-3" />
-                      {t("codex.oauthCopyLink")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => window.open(oauthUrl, "_blank")}
-                    >
-                      <ExternalLink className="mr-1 h-3 w-3" />
-                      {t("codex.oauthOpenLink")}
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>{t("codex.oauthWaiting")}</span>
-                </div>
-              </div>
-            )}
-
-            {oauthStatus === "success" && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <Check className="h-4 w-4" />
-                <span>{t("codex.oauthSuccess")}</span>
-              </div>
-            )}
-
-            {oauthStatus === "error" && (
-              <div className="flex items-center gap-2 text-sm text-red-600">
-                <XCircle className="h-4 w-4" />
-                <span>{t("codex.oauthError", { error: oauthError })}</span>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {oauthPanelOpen && oauthSession.flowType ? (
+        <OAuthFlowDialog
+          open={oauthPanelOpen}
+          onOpenChange={setOauthPanelOpen}
+          title={t("runtime.importOAuth", { provider: providerLabel })}
+          description={oauthDialogDescription}
+          flowType={oauthSession.flowType}
+          oauthUrl={
+            oauthSession.flowType === "device_code"
+              ? oauthSession.verificationUri || oauthSession.oauthUrl
+              : oauthSession.oauthUrl
+          }
+          userCode={oauthSession.userCode}
+          verificationUri={oauthSession.verificationUri}
+          callbackInput={oauthSession.callbackInput}
+          callbackValidation={oauthSession.callbackValidation}
+          warningCode={oauthSession.warningCode}
+          warningMessage={oauthWarningMessage}
+          canRetry={oauthSession.canRetry}
+          isSubmittingCallback={oauthSession.isSubmittingCallback}
+          onOpenAuthPage={oauthSession.openAuthPage}
+          onCopyAuthLink={handleCopyAuthLink}
+          onCopyUserCode={handleCopyUserCode}
+          onPasteCallback={handlePasteCallback}
+          onCallbackInputChange={oauthSession.setCallbackInput}
+          onSubmitCallback={() => {
+            void oauthSession.submitCallback()
+          }}
+          onRetry={oauthSession.openAuthPage}
+        />
+      ) : null}
     </div>
   )
 }

@@ -72,9 +72,22 @@ type quotaSnapshot struct {
 }
 
 type codexOAuthSession struct {
-	ChannelID int
-	Existing  map[string]struct{}
-	createdAt time.Time
+	ChannelID       int
+	Provider        string
+	ImportProvider  string
+	FlowType        string
+	URL             string
+	UserCode        string
+	VerificationURI string
+	SupportsManual  bool
+	State           string
+	ExpiresAt       time.Time
+	LastStatus      string
+	LastPhase       string
+	LastCode        string
+	LastError       string
+	Existing        map[string]struct{}
+	createdAt       time.Time
 }
 
 const codexOAuthSessionTTL = 15 * time.Minute
@@ -115,10 +128,17 @@ type codexAuthBatchScope struct {
 }
 
 var codexOAuthSessions sync.Map
+var codexOAuthStartMu sync.Mutex
 
 // storeOAuthSession stores a session with a creation timestamp and sweeps expired entries.
 func storeOAuthSession(state string, session codexOAuthSession) {
 	session.createdAt = time.Now()
+	if session.State == "" {
+		session.State = state
+	}
+	if session.ExpiresAt.IsZero() {
+		session.ExpiresAt = session.createdAt.Add(codexOAuthSessionTTL)
+	}
 	codexOAuthSessions.Store(state, session)
 
 	// Best-effort sweep: delete any expired sessions.
@@ -132,6 +152,19 @@ func storeOAuthSession(state string, session codexOAuthSession) {
 	})
 }
 
+func loadOAuthSession(state string) (codexOAuthSession, bool) {
+	v, ok := codexOAuthSessions.Load(state)
+	if !ok {
+		return codexOAuthSession{}, false
+	}
+	session, ok := v.(codexOAuthSession)
+	if !ok || time.Since(session.createdAt) > codexOAuthSessionTTL || time.Now().After(session.ExpiresAt) {
+		codexOAuthSessions.Delete(state)
+		return codexOAuthSession{}, false
+	}
+	return session, true
+}
+
 // loadAndDeleteOAuthSession retrieves and deletes a session, returning false if missing or expired.
 func loadAndDeleteOAuthSession(state string) (codexOAuthSession, bool) {
 	v, ok := codexOAuthSessions.LoadAndDelete(state)
@@ -139,10 +172,137 @@ func loadAndDeleteOAuthSession(state string) (codexOAuthSession, bool) {
 		return codexOAuthSession{}, false
 	}
 	session, ok := v.(codexOAuthSession)
-	if !ok || time.Since(session.createdAt) > codexOAuthSessionTTL {
+	if !ok || time.Since(session.createdAt) > codexOAuthSessionTTL || time.Now().After(session.ExpiresAt) {
 		return codexOAuthSession{}, false
 	}
 	return session, true
+}
+
+func findActiveOAuthSession(channelID int, provider string) (codexOAuthSession, bool) {
+	var latest codexOAuthSession
+	var found bool
+	codexOAuthSessions.Range(func(key, value any) bool {
+		state, _ := key.(string)
+		session, ok := value.(codexOAuthSession)
+		if !ok {
+			codexOAuthSessions.Delete(key)
+			return true
+		}
+		if time.Since(session.createdAt) > codexOAuthSessionTTL || time.Now().After(session.ExpiresAt) {
+			codexOAuthSessions.Delete(state)
+			return true
+		}
+		if session.ChannelID != channelID || session.Provider != provider {
+			return true
+		}
+		if codexOAuthPhaseTerminal(session.LastPhase) {
+			return true
+		}
+		if !found || session.createdAt.After(latest.createdAt) {
+			latest = session
+			found = true
+		}
+		return true
+	})
+	return latest, found
+}
+
+func findLatestActiveOAuthSession() (codexOAuthSession, bool) {
+	var latest codexOAuthSession
+	var found bool
+	codexOAuthSessions.Range(func(key, value any) bool {
+		state, _ := key.(string)
+		session, ok := value.(codexOAuthSession)
+		if !ok {
+			codexOAuthSessions.Delete(key)
+			return true
+		}
+		if time.Since(session.createdAt) > codexOAuthSessionTTL || time.Now().After(session.ExpiresAt) {
+			codexOAuthSessions.Delete(state)
+			return true
+		}
+		if codexOAuthPhaseTerminal(session.LastPhase) {
+			return true
+		}
+		if !found || session.createdAt.After(latest.createdAt) {
+			latest = session
+			found = true
+		}
+		return true
+	})
+	return latest, found
+}
+
+func findConflictingActiveOAuthSession(channelID int, provider string) (codexOAuthSession, bool) {
+	return findConflictingActiveOAuthSessionForImportScope(channelID, provider, provider)
+}
+
+func codexOAuthImportScope(session codexOAuthSession) string {
+	if scope := canonicalRuntimeProvider(session.ImportProvider); scope != "" {
+		return scope
+	}
+	return canonicalRuntimeProvider(session.Provider)
+}
+
+func findConflictingActiveOAuthSessionForImportScope(channelID int, provider string, importProvider string) (codexOAuthSession, bool) {
+	var latest codexOAuthSession
+	var found bool
+	importScope := canonicalRuntimeProvider(importProvider)
+	codexOAuthSessions.Range(func(key, value any) bool {
+		state, _ := key.(string)
+		session, ok := value.(codexOAuthSession)
+		if !ok {
+			codexOAuthSessions.Delete(key)
+			return true
+		}
+		if time.Since(session.createdAt) > codexOAuthSessionTTL || time.Now().After(session.ExpiresAt) {
+			codexOAuthSessions.Delete(state)
+			return true
+		}
+		if codexOAuthPhaseTerminal(session.LastPhase) {
+			return true
+		}
+		if session.ChannelID == channelID && session.Provider == provider {
+			return true
+		}
+		if codexOAuthImportScope(session) != importScope {
+			return true
+		}
+		if !found || session.createdAt.After(latest.createdAt) {
+			latest = session
+			found = true
+		}
+		return true
+	})
+	return latest, found
+}
+
+func supersedeOAuthSessions(channelID int, provider string, keepState string) {
+	codexOAuthSessions.Range(func(key, value any) bool {
+		state, _ := key.(string)
+		session, ok := value.(codexOAuthSession)
+		if !ok {
+			codexOAuthSessions.Delete(key)
+			return true
+		}
+		if session.ChannelID == channelID && session.Provider == provider && state != keepState {
+			session.LastStatus = "expired"
+			session.LastPhase = "expired"
+			session.LastCode = "session_superseded"
+			session.LastError = "OAuth session expired because a newer sign-in attempt replaced it"
+			codexOAuthSessions.Store(state, session)
+		}
+		return true
+	})
+}
+
+func codexOAuthPhaseTerminal(phase string) bool {
+	switch phase {
+	case "completed", "expired", "failed":
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *Handler) codexCapabilities() codexCapabilities {

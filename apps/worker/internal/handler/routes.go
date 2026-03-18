@@ -65,6 +65,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/channel/:id/codex/sync-keys", h.SyncCodexKeys)
 	admin.POST("/channel/:id/codex/oauth/start", h.StartCodexOAuth)
 	admin.GET("/channel/:id/codex/oauth/status", h.GetCodexOAuthStatus)
+	admin.POST("/channel/:id/codex/oauth/callback", h.SubmitCodexOAuthCallback)
 
 	// Copilot channel management (reuses Codex handlers via CLIProxyAPI runtime)
 	admin.GET("/channel/:id/copilot/auth-files", h.ListCodexAuthFiles)
@@ -78,6 +79,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/channel/:id/copilot/sync-keys", h.SyncCodexKeys)
 	admin.POST("/channel/:id/copilot/oauth/start", h.StartCodexOAuth)
 	admin.GET("/channel/:id/copilot/oauth/status", h.GetCodexOAuthStatus)
+	admin.POST("/channel/:id/copilot/oauth/callback", h.SubmitCodexOAuthCallback)
 
 	// Antigravity channel management (reuses Codex handlers via CLIProxyAPI runtime)
 	admin.GET("/channel/:id/antigravity/auth-files", h.ListCodexAuthFiles)
@@ -91,6 +93,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.POST("/channel/:id/antigravity/sync-keys", h.SyncCodexKeys)
 	admin.POST("/channel/:id/antigravity/oauth/start", h.StartCodexOAuth)
 	admin.GET("/channel/:id/antigravity/oauth/status", h.GetCodexOAuthStatus)
+	admin.POST("/channel/:id/antigravity/oauth/callback", h.SubmitCodexOAuthCallback)
 
 	// Group routes
 	admin.GET("/group/list", h.ListGroups)
