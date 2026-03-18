@@ -108,6 +108,34 @@ func TestTransformClaudeToGemini_DefaultProjectID(t *testing.T) {
 	}
 }
 
+func TestTransformClaudeToGemini_ClientFacingClaudeAliasResolvesToThinkingModel(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	}
+
+	envelope := transformClaudeToGemini(body, "claude-opus-4-6", "project-123")
+
+	if envelope.Model != "claude-opus-4-6-thinking" {
+		t.Errorf("model = %v, want claude-opus-4-6-thinking", envelope.Model)
+	}
+}
+
+func TestTransformClaudeToGemini_UpstreamThinkingModelRemainsStable(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	}
+
+	envelope := transformClaudeToGemini(body, "claude-opus-4-6-thinking", "project-123")
+
+	if envelope.Model != "claude-opus-4-6-thinking" {
+		t.Errorf("model = %v, want claude-opus-4-6-thinking", envelope.Model)
+	}
+}
+
 // ──────────────────────────────────────────────────────────────
 // Anthropic → Gemini conversion tests
 // ──────────────────────────────────────────────────────────────

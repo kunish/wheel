@@ -145,6 +145,48 @@ func TestSanitizeOAuthModelAlias_InjectsDefaultGitHubCopilotAliases(t *testing.T
 	}
 }
 
+func TestSanitizeOAuthModelAlias_InjectsDefaultAntigravityAliases(t *testing.T) {
+	cfg := &Config{
+		OAuthModelAlias: map[string][]OAuthModelAlias{
+			"codex": {
+				{Name: "gpt-5", Alias: "g5"},
+			},
+		},
+	}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	antigravityAliases := cfg.OAuthModelAlias["antigravity"]
+	if len(antigravityAliases) == 0 {
+		t.Fatal("expected default antigravity aliases to be injected")
+	}
+
+	aliasSet := make(map[string]string, len(antigravityAliases))
+	for _, a := range antigravityAliases {
+		aliasSet[a.Alias] = a.Name
+		if !a.Fork {
+			t.Fatalf("expected all default antigravity aliases to have fork=true, got fork=false for %q", a.Alias)
+		}
+	}
+	expectedAliases := map[string]string{
+		"claude-opus-4-6":   "claude-opus-4-6-thinking",
+		"claude-sonnet-4-6": "claude-sonnet-4-6-thinking",
+	}
+	if len(antigravityAliases) != len(expectedAliases) {
+		t.Fatalf("expected %d default antigravity aliases, got %d", len(expectedAliases), len(antigravityAliases))
+	}
+	for alias, name := range expectedAliases {
+		if got, ok := aliasSet[alias]; !ok {
+			t.Fatalf("expected default antigravity alias %q to be present", alias)
+		} else if got != name {
+			t.Fatalf("expected antigravity alias %q to map to %q, got %q", alias, name, got)
+		}
+	}
+	if len(cfg.OAuthModelAlias["codex"]) != 1 {
+		t.Fatal("expected codex aliases to be preserved")
+	}
+}
+
 func TestSanitizeOAuthModelAlias_DoesNotOverrideUserKiroAliases(t *testing.T) {
 	// When user has configured kiro aliases, defaults should NOT be injected
 	cfg := &Config{
@@ -183,6 +225,26 @@ func TestSanitizeOAuthModelAlias_DoesNotOverrideUserGitHubCopilotAliases(t *test
 	}
 	if copilotAliases[0].Alias != "my-opus" {
 		t.Fatalf("expected user alias to be preserved, got %q", copilotAliases[0].Alias)
+	}
+}
+
+func TestSanitizeOAuthModelAlias_DoesNotOverrideUserAntigravityAliases(t *testing.T) {
+	cfg := &Config{
+		OAuthModelAlias: map[string][]OAuthModelAlias{
+			"antigravity": {
+				{Name: "claude-opus-4-6-thinking", Alias: "my-opus", Fork: true},
+			},
+		},
+	}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	antigravityAliases := cfg.OAuthModelAlias["antigravity"]
+	if len(antigravityAliases) != 1 {
+		t.Fatalf("expected 1 user-configured antigravity alias, got %d", len(antigravityAliases))
+	}
+	if antigravityAliases[0].Alias != "my-opus" {
+		t.Fatalf("expected user alias to be preserved, got %q", antigravityAliases[0].Alias)
 	}
 }
 
@@ -227,6 +289,30 @@ func TestSanitizeOAuthModelAlias_GitHubCopilotDoesNotReinjectAfterExplicitDeleti
 	}
 	if _, exists := cfg.OAuthModelAlias["github-copilot"]; !exists {
 		t.Fatal("expected github-copilot key to be preserved as nil marker after sanitization")
+	}
+}
+
+func TestSanitizeOAuthModelAlias_AntigravityDoesNotReinjectAfterExplicitDeletion(t *testing.T) {
+	cfg := &Config{
+		OAuthModelAlias: map[string][]OAuthModelAlias{
+			"antigravity": nil,
+			"codex": {
+				{Name: "gpt-5", Alias: "g5"},
+			},
+		},
+	}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	antigravityAliases := cfg.OAuthModelAlias["antigravity"]
+	if len(antigravityAliases) != 0 {
+		t.Fatalf("expected antigravity aliases to remain empty after explicit deletion, got %d aliases", len(antigravityAliases))
+	}
+	if _, exists := cfg.OAuthModelAlias["antigravity"]; !exists {
+		t.Fatal("expected antigravity key to be preserved as nil marker after sanitization")
+	}
+	if len(cfg.OAuthModelAlias["codex"]) != 1 {
+		t.Fatal("expected codex aliases to be preserved")
 	}
 }
 

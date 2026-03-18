@@ -800,6 +800,9 @@ func (cfg *Config) SanitizeOAuthModelAlias() {
 	if !hasChannel("github-copilot") {
 		cfg.OAuthModelAlias["github-copilot"] = defaultGitHubCopilotAliases()
 	}
+	if !hasChannel("antigravity") {
+		cfg.OAuthModelAlias["antigravity"] = defaultAntigravityAliases()
+	}
 
 	if len(cfg.OAuthModelAlias) == 0 {
 		return
