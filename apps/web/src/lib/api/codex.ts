@@ -1,16 +1,21 @@
 import { ApiError, apiFetch, apiRawFetch } from "./client"
 
+const CHANNEL_TYPE_COPILOT = 34
+const CHANNEL_TYPE_CODEX = 35
+const CHANNEL_TYPE_ANTIGRAVITY = 36
+
 /**
  * Returns the API URL prefix for runtime-managed channels.
- * Copilot channels (type 34) use `/copilot/` routes, everything else uses `/codex/`.
+ * Copilot channels use `/copilot/`, Antigravity channels use `/antigravity/`,
+ * and Codex plus unknown runtime-managed channels use `/codex/`.
  */
 function runtimePrefix(channelType?: number): string {
   switch (channelType) {
-    case 34:
+    case CHANNEL_TYPE_COPILOT:
       return "copilot"
-    case 36:
+    case CHANNEL_TYPE_ANTIGRAVITY:
       return "antigravity"
-    case 35:
+    case CHANNEL_TYPE_CODEX:
     default:
       return "codex"
   }
@@ -21,11 +26,11 @@ function runtimePrefix(channelType?: number): string {
  */
 export function runtimeProviderFilter(channelType?: number): string {
   switch (channelType) {
-    case 34:
+    case CHANNEL_TYPE_COPILOT:
       return "copilot"
-    case 35:
+    case CHANNEL_TYPE_CODEX:
       return "codex-cli"
-    case 36:
+    case CHANNEL_TYPE_ANTIGRAVITY:
       return "antigravity"
     default:
       return "codex"
@@ -106,6 +111,91 @@ interface CodexAuthBatchScope {
   search?: string
   provider?: string
   excludeNames?: string[]
+}
+
+export type RuntimeOAuthFlowType = "redirect" | "device_code"
+
+export type RuntimeOAuthStatusCode =
+  | "access_denied"
+  | "auth_import_failed"
+  | "device_code_expired"
+  | "device_code_rejected"
+  | "invalid_callback_url"
+  | "missing_code"
+  | "missing_state"
+  | "provider_error"
+  | "provider_mismatch"
+  | "runtime_callback_rejected"
+  | "session_expired"
+  | "session_missing"
+  | "session_superseded"
+  | "state_mismatch"
+
+export type RuntimeOAuthPhase =
+  | "initializing"
+  | "starting"
+  | "awaiting_browser"
+  | "awaiting_callback"
+  | "callback_received"
+  | "awaiting_result"
+  | "importing_auth_file"
+  | "completed"
+  | "failed"
+  | "expired"
+
+export interface RuntimeOAuthStartOptions {
+  forceRestart?: boolean
+}
+
+export interface RuntimeOAuthStartResponse {
+  url: string
+  state: string
+  flowType: RuntimeOAuthFlowType
+  supportsManualCallbackImport: boolean
+  expiresAt: string
+  user_code?: string
+  verification_uri?: string
+}
+
+export interface RuntimeOAuthStatusResponse {
+  status: "waiting" | "ok" | "error" | "expired"
+  phase: RuntimeOAuthPhase
+  code?: RuntimeOAuthStatusCode
+  error?: string
+  expiresAt: string
+  canRetry: boolean
+  supportsManualCallbackImport: boolean
+}
+
+export type RuntimeOAuthCallbackResponse =
+  | {
+      status: "accepted"
+      phase: RuntimeOAuthPhase
+      shouldContinuePolling: boolean
+      code?: undefined
+      error?: undefined
+    }
+  | {
+      status: "duplicate"
+      phase: RuntimeOAuthPhase
+      shouldContinuePolling: boolean
+      code: "duplicate_callback"
+      error?: undefined
+    }
+  | {
+      status: "error"
+      phase: RuntimeOAuthPhase
+      shouldContinuePolling: boolean
+      code?: RuntimeOAuthStatusCode
+      error?: string
+    }
+
+interface RuntimeOAuthStartRequest {
+  force_restart: true
+}
+
+interface RuntimeOAuthCallbackRequest {
+  callback_url: string
 }
 
 export function buildCodexAuthUploadFormData(files: File[]) {
@@ -280,18 +370,42 @@ export function syncCodexKeys(channelId: number, channelType?: number) {
   )
 }
 
-export function startCodexOAuth(channelId: number, channelType?: number) {
+export function startCodexOAuth(
+  channelId: number,
+  channelType?: number,
+  options?: RuntimeOAuthStartOptions,
+) {
   const prefix = runtimePrefix(channelType)
-  return apiFetch<{
-    success: boolean
-    data: { url: string; state: string; user_code?: string; verification_uri?: string }
-  }>(`/api/v1/channel/${channelId}/${prefix}/oauth/start`, { method: "POST" })
+  return apiFetch<{ success: boolean; data: RuntimeOAuthStartResponse }>(
+    `/api/v1/channel/${channelId}/${prefix}/oauth/start`,
+    {
+      method: "POST",
+      ...(options?.forceRestart
+        ? { body: { force_restart: true } satisfies RuntimeOAuthStartRequest }
+        : {}),
+    },
+  )
 }
 
 export function getCodexOAuthStatus(channelId: number, state: string, channelType?: number) {
   const prefix = runtimePrefix(channelType)
   const query = new URLSearchParams({ state })
-  return apiFetch<{ success: boolean; data: { status: string; error?: string } }>(
+  return apiFetch<{ success: boolean; data: RuntimeOAuthStatusResponse }>(
     `/api/v1/channel/${channelId}/${prefix}/oauth/status?${query.toString()}`,
+  )
+}
+
+export function submitCodexOAuthCallback(
+  channelId: number,
+  callbackUrl: string,
+  channelType?: number,
+) {
+  const prefix = runtimePrefix(channelType)
+  return apiFetch<{ success: boolean; data: RuntimeOAuthCallbackResponse }>(
+    `/api/v1/channel/${channelId}/${prefix}/oauth/callback`,
+    {
+      method: "POST",
+      body: { callback_url: callbackUrl } satisfies RuntimeOAuthCallbackRequest,
+    },
   )
 }

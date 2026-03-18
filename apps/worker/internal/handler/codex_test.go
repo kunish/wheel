@@ -1265,6 +1265,7 @@ func TestUploadCodexAuthFileBatch_MaterializeFailurePreservesPerFileResults(t *t
 
 func newCodexUploadTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	t.Helper()
+	resetCodexOAuthSessionsForTest()
 
 	sqldb, mock, err := sqlmock.New()
 	if err != nil {

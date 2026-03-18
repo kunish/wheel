@@ -230,11 +230,12 @@ func uniqueCodexAuthFileName(ctx context.Context, db *bun.DB, channelID int, bas
 	return "", fmt.Errorf("failed to allocate unique auth file name")
 }
 
-func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, snapshot map[string]struct{}) error {
+func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, snapshot map[string]struct{}, importProvider string) error {
 	authDir, err := h.resolveCodexLocalAuthDir()
 	if err != nil {
 		return err
 	}
+	importScope := canonicalRuntimeProvider(importProvider)
 	files, err := h.listLocalAuthFiles(authDir)
 	if err != nil {
 		return err
@@ -244,6 +245,9 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 			continue
 		}
 		if strings.HasPrefix(file.Name, "channel-") {
+			continue
+		}
+		if importScope != "" && canonicalRuntimeProvider(file.Provider) != importScope {
 			continue
 		}
 		content, err := os.ReadFile(file.Path)

@@ -235,6 +235,11 @@
     "oauthOpenLink": "Open Login Page",
     "oauthLinkCopied": "Link copied to clipboard",
     "oauthTimeout": "OAuth login timed out. Please try again.",
+    "oauthCallbackHint": "If the server is deployed remotely and the callback redirects to localhost, paste the full callback URL here to complete the flow manually.",
+    "oauthCallbackPlaceholder": "Paste callback URL here...",
+    "oauthCallbackSubmit": "Submit",
+    "oauthCallbackSubmitted": "Callback submitted successfully. Waiting for auth file import...",
+    "oauthCallbackFailed": "Failed to submit callback URL",
     "importFile": "Upload Auth File",
     "uploadingFile": "Uploading auth file...",
     "uploadSummarySuccess": "Uploaded {{successCount}} auth file(s) successfully",
@@ -285,6 +290,62 @@
     "quotaUnavailable": "Quota details are currently unavailable.",
     "unlimited": "Unlimited",
     "resetAt": "Resets at {{resetAt}}",
+    "oauth": {
+      "dialog": {
+        "deviceCodeTitle": "Enter the verification code",
+        "deviceCodeDescription": "Open the verification page, paste this code, and finish sign-in in your browser.",
+        "redirectTitle": "Continue in your browser",
+        "redirectDescription": "Open the OAuth page, finish sign-in, then paste the callback URL here.",
+        "redirectHelp": "If the browser does not complete the flow, retry the login attempt and start from a fresh link.",
+        "callbackTitle": "Import callback URL",
+        "callbackDescription": "Copy the full localhost callback address from the browser and import it here.",
+        "pasteFromClipboard": "Paste from clipboard",
+        "importing": "Importing...",
+        "popupBlockedTitle": "Browser guidance",
+        "retry": "Try again"
+      },
+      "resumableHint": "A previous {{provider}} OAuth session is still active. Reopen the browser flow or finish importing the callback URL to continue.",
+      "restartHint": "Restart the OAuth flow from a fresh link if you want to try again.",
+      "startFailed": "Failed to start the OAuth flow.",
+      "stepLabels": {
+        "browser": "Browser sign-in",
+        "callback": "Callback import",
+        "import": "Auth file import"
+      },
+      "phase": {
+        "awaiting_browser": "Open the {{provider}} sign-in page in your browser and finish the verification steps there.",
+        "importing_auth_file": "OAuth finished. Waiting for the runtime worker to import the auth file."
+      },
+      "status": {
+        "error": "{{message}}",
+        "expired": "{{message}}"
+      },
+      "warnings": {
+        "poll_retrying": "Connection looks unstable. The dialog will keep retrying OAuth status checks.",
+        "import_stalled": "OAuth finished, but auth file import is taking longer than expected.",
+        "clipboard_read_failed": "Clipboard access failed. Paste the callback URL manually instead.",
+        "popup_blocked": "The auth page could not open automatically. Use the copied link or allow popups and try again."
+      },
+      "terminal": {
+        "completed": "OAuth login completed and the auth file refresh has started."
+      },
+      "terminalCodes": {
+        "access_denied": "Login was canceled or permission was denied.",
+        "auth_import_failed": "OAuth succeeded, but importing the auth file failed.",
+        "device_code_expired": "The verification code expired.",
+        "device_code_rejected": "The verification code was rejected.",
+        "invalid_callback_url": "The pasted callback URL is invalid.",
+        "missing_code": "The callback URL is missing the required code parameter.",
+        "missing_state": "The callback URL is missing the required state parameter.",
+        "provider_error": "The upstream provider returned an OAuth error.",
+        "provider_mismatch": "This callback belongs to a different provider.",
+        "runtime_callback_rejected": "The runtime worker rejected the callback URL.",
+        "session_expired": "This OAuth session expired.",
+        "session_missing": "This OAuth session is no longer available.",
+        "session_superseded": "A newer OAuth session replaced this one.",
+        "state_mismatch": "This callback belongs to a different login attempt."
+      }
+    },
     "providerDescription": {
       "codex": "Create a runtime-managed Codex channel that pulls credentials from imported auth files or OAuth instead of a pasted API key.",
       "copilot": "Create a runtime-managed GitHub Copilot channel that uses imported runtime credentials and quota-aware auth-file management.",

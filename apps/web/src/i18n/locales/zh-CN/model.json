@@ -235,6 +235,11 @@
     "oauthOpenLink": "打开登录页面",
     "oauthLinkCopied": "链接已复制到剪贴板",
     "oauthTimeout": "OAuth 登录超时，请重试。",
+    "oauthCallbackHint": "如果服务部署在远端，回调地址指向了 localhost 无法访问，请将浏览器地址栏中的完整回调 URL 粘贴到此处手动完成认证。",
+    "oauthCallbackPlaceholder": "粘贴回调 URL...",
+    "oauthCallbackSubmit": "提交",
+    "oauthCallbackSubmitted": "回调已提交，正在等待认证文件导入...",
+    "oauthCallbackFailed": "提交回调 URL 失败",
     "importFile": "上传认证文件",
     "uploadingFile": "正在上传认证文件...",
     "uploadSummarySuccess": "已成功上传 {{successCount}} 个认证文件",
@@ -285,6 +290,62 @@
     "quotaUnavailable": "暂时无法获取配额详情。",
     "unlimited": "无限制",
     "resetAt": "重置时间 {{resetAt}}",
+    "oauth": {
+      "dialog": {
+        "deviceCodeTitle": "输入验证码",
+        "deviceCodeDescription": "打开验证码页面，粘贴此代码，并在浏览器中完成登录。",
+        "redirectTitle": "继续在浏览器中操作",
+        "redirectDescription": "打开 OAuth 页面，完成登录后，再将回调 URL 粘贴到这里。",
+        "redirectHelp": "如果浏览器没有完成流程，请重试本次登录，并从新的链接重新开始。",
+        "callbackTitle": "导入回调 URL",
+        "callbackDescription": "从浏览器复制完整的 localhost 回调地址并在这里导入。",
+        "pasteFromClipboard": "从剪贴板粘贴",
+        "importing": "导入中...",
+        "popupBlockedTitle": "浏览器指引",
+        "retry": "重试"
+      },
+      "resumableHint": "检测到之前的 {{provider}} OAuth 会话仍在进行中。你可以重新打开浏览器授权，或继续导入回调 URL 来完成流程。",
+      "restartHint": "如果要重试，请使用新的授权链接重新开始 OAuth 流程。",
+      "startFailed": "启动 OAuth 流程失败。",
+      "stepLabels": {
+        "browser": "浏览器登录",
+        "callback": "回调导入",
+        "import": "认证文件导入"
+      },
+      "phase": {
+        "awaiting_browser": "请在浏览器中打开 {{provider}} 登录页，并在页面中完成授权步骤。",
+        "importing_auth_file": "OAuth 已完成，正在等待 Runtime Worker 导入认证文件。"
+      },
+      "status": {
+        "error": "{{message}}",
+        "expired": "{{message}}"
+      },
+      "warnings": {
+        "poll_retrying": "当前连接不太稳定，对话框会继续重试 OAuth 状态检查。",
+        "import_stalled": "OAuth 已完成，但认证文件导入所花时间超过预期。",
+        "clipboard_read_failed": "读取剪贴板失败，请改为手动粘贴回调 URL。",
+        "popup_blocked": "授权页面未能自动打开。请使用复制的链接，或允许弹窗后重试。"
+      },
+      "terminal": {
+        "completed": "OAuth 登录已完成，认证文件刷新已开始。"
+      },
+      "terminalCodes": {
+        "access_denied": "登录已取消，或授权被拒绝。",
+        "auth_import_failed": "OAuth 已成功完成，但认证文件导入失败。",
+        "device_code_expired": "验证码已过期。",
+        "device_code_rejected": "验证码被拒绝。",
+        "invalid_callback_url": "粘贴的回调 URL 无效。",
+        "missing_code": "回调 URL 缺少必要的 code 参数。",
+        "missing_state": "回调 URL 缺少必要的 state 参数。",
+        "provider_error": "上游提供方返回了 OAuth 错误。",
+        "provider_mismatch": "这个回调链接属于其他提供方。",
+        "runtime_callback_rejected": "Runtime Worker 拒绝了该回调 URL。",
+        "session_expired": "这个 OAuth 会话已过期。",
+        "session_missing": "这个 OAuth 会话已不存在。",
+        "session_superseded": "这个 OAuth 会话已被更新的会话替代。",
+        "state_mismatch": "这个回调链接属于另一轮登录尝试。"
+      }
+    },
     "providerDescription": {
       "codex": "创建一个由 Runtime 管理的 Codex 渠道，凭证来自 OAuth 或导入的认证文件，而不是手动输入的 API Key。",
       "copilot": "创建一个由 Runtime 管理的 GitHub Copilot 渠道，使用导入凭证与配额感知的认证文件管理流程。",
