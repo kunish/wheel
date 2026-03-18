@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0](https://github.com/kunish/wheel/compare/v1.33.2...v1.34.0) (2026-03-18)
+
+
+### Features
+
+* optimize runtime oauth flow ([65d3e94](https://github.com/kunish/wheel/commit/65d3e947cb58ea00e45eebb7521348c242d5a0ee))
+
 ## [1.33.2](https://github.com/kunish/wheel/compare/v1.33.1...v1.33.2) (2026-03-17)
 
 
