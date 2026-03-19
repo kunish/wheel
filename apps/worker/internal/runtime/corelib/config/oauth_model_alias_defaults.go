@@ -38,6 +38,15 @@ func defaultGitHubCopilotAliases() []OAuthModelAlias {
 	}
 }
 
+// defaultAntigravityAliases returns the minimal built-in aliases needed for
+// Antigravity Claude 4.6 models.
+func defaultAntigravityAliases() []OAuthModelAlias {
+	return []OAuthModelAlias{
+		{Name: "claude-opus-4-6-thinking", Alias: "claude-opus-4-6", Fork: true},
+		{Name: "claude-sonnet-4-6-thinking", Alias: "claude-sonnet-4-6", Fork: true},
+	}
+}
+
 // GitHubCopilotAliasesFromModels generates oauth-model-alias entries from a dynamic
 // list of model IDs fetched from the Copilot API. It auto-creates aliases for
 // models whose ID contains a dot (e.g. "claude-opus-4.6" → "claude-opus-4-6"),

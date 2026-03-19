@@ -1,6 +1,107 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func assertRuntimeOAuthAliasDirection(t *testing.T, channel string, aliases []OAuthModelAlias) {
+	t.Helper()
+	if len(aliases) == 0 {
+		t.Fatalf("expected %s aliases to be present", channel)
+	}
+	for _, alias := range aliases {
+		if alias.Name == "" || alias.Alias == "" {
+			t.Fatalf("expected %s alias entries to stay non-empty, got %+v", channel, alias)
+		}
+		if strings.EqualFold(alias.Name, alias.Alias) {
+			t.Fatalf("expected %s alias direction to stay name->alias, got %+v", channel, alias)
+		}
+		switch channel {
+		case "kiro":
+			if !strings.HasPrefix(alias.Name, "kiro-") {
+				t.Fatalf("expected kiro upstream name to stay server-facing, got %+v", alias)
+			}
+			if strings.HasPrefix(alias.Alias, "kiro-") {
+				t.Fatalf("expected kiro alias to stay client-facing, got %+v", alias)
+			}
+		case "github-copilot":
+			if !strings.Contains(alias.Name, ".") {
+				t.Fatalf("expected github-copilot upstream name to stay dotted, got %+v", alias)
+			}
+			if strings.Contains(alias.Alias, ".") {
+				t.Fatalf("expected github-copilot alias to stay hyphenated, got %+v", alias)
+			}
+		case "antigravity":
+			if !strings.HasSuffix(alias.Name, "-thinking") {
+				t.Fatalf("expected antigravity upstream name to stay thinking model, got %+v", alias)
+			}
+			if strings.HasSuffix(alias.Alias, "-thinking") {
+				t.Fatalf("expected antigravity alias to stay client-facing non-thinking model, got %+v", alias)
+			}
+		}
+	}
+}
+
+func TestSanitizeOAuthModelAlias_RuntimeOAuthDefaultsStayAligned(t *testing.T) {
+	cfg := &Config{}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	for _, channel := range []string{"kiro", "github-copilot", "antigravity"} {
+		aliases, ok := cfg.OAuthModelAlias[channel]
+		if !ok {
+			t.Fatalf("expected %s defaults to be injected", channel)
+		}
+		assertRuntimeOAuthAliasDirection(t, channel, aliases)
+	}
+}
+
+func TestSanitizeOAuthModelAlias_RuntimeOAuthExplicitDeletionStaysDeleted(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		channel  string
+		aliases  []OAuthModelAlias
+		wantKiro bool
+	}{
+		{name: "kiro nil", channel: "kiro", aliases: nil},
+		{name: "kiro empty", channel: "kiro", aliases: []OAuthModelAlias{}},
+		{name: "github-copilot nil", channel: "github-copilot", aliases: nil, wantKiro: true},
+		{name: "github-copilot empty", channel: "github-copilot", aliases: []OAuthModelAlias{}, wantKiro: true},
+		{name: "antigravity nil", channel: "antigravity", aliases: nil, wantKiro: true},
+		{name: "antigravity empty", channel: "antigravity", aliases: []OAuthModelAlias{}, wantKiro: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{OAuthModelAlias: map[string][]OAuthModelAlias{tc.channel: tc.aliases}}
+
+			cfg.SanitizeOAuthModelAlias()
+
+			aliases, ok := cfg.OAuthModelAlias[tc.channel]
+			if !ok {
+				t.Fatalf("expected %s explicit deletion marker to be preserved", tc.channel)
+			}
+			if len(aliases) != 0 {
+				t.Fatalf("expected %s aliases to stay deleted, got %d entries", tc.channel, len(aliases))
+			}
+			if tc.wantKiro {
+				assertRuntimeOAuthAliasDirection(t, "kiro", cfg.OAuthModelAlias["kiro"])
+			}
+		})
+	}
+}
+
+func TestSanitizeOAuthModelAlias_RuntimeOAuthInvalidChannelVariantFallsBackToDefaults(t *testing.T) {
+	cfg := &Config{OAuthModelAlias: map[string][]OAuthModelAlias{
+		"  antigravity  ": {
+			{Name: "", Alias: ""},
+		},
+	}}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	aliases := cfg.OAuthModelAlias["antigravity"]
+	assertRuntimeOAuthAliasDirection(t, "antigravity", aliases)
+}
 
 func TestSanitizeOAuthModelAlias_PreservesForkFlag(t *testing.T) {
 	cfg := &Config{
@@ -145,6 +246,48 @@ func TestSanitizeOAuthModelAlias_InjectsDefaultGitHubCopilotAliases(t *testing.T
 	}
 }
 
+func TestSanitizeOAuthModelAlias_InjectsDefaultAntigravityAliases(t *testing.T) {
+	cfg := &Config{
+		OAuthModelAlias: map[string][]OAuthModelAlias{
+			"codex": {
+				{Name: "gpt-5", Alias: "g5"},
+			},
+		},
+	}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	antigravityAliases := cfg.OAuthModelAlias["antigravity"]
+	if len(antigravityAliases) == 0 {
+		t.Fatal("expected default antigravity aliases to be injected")
+	}
+
+	aliasSet := make(map[string]string, len(antigravityAliases))
+	for _, a := range antigravityAliases {
+		aliasSet[a.Alias] = a.Name
+		if !a.Fork {
+			t.Fatalf("expected all default antigravity aliases to have fork=true, got fork=false for %q", a.Alias)
+		}
+	}
+	expectedAliases := map[string]string{
+		"claude-opus-4-6":   "claude-opus-4-6-thinking",
+		"claude-sonnet-4-6": "claude-sonnet-4-6-thinking",
+	}
+	if len(antigravityAliases) != len(expectedAliases) {
+		t.Fatalf("expected %d default antigravity aliases, got %d", len(expectedAliases), len(antigravityAliases))
+	}
+	for alias, name := range expectedAliases {
+		if got, ok := aliasSet[alias]; !ok {
+			t.Fatalf("expected default antigravity alias %q to be present", alias)
+		} else if got != name {
+			t.Fatalf("expected antigravity alias %q to map to %q, got %q", alias, name, got)
+		}
+	}
+	if len(cfg.OAuthModelAlias["codex"]) != 1 {
+		t.Fatal("expected codex aliases to be preserved")
+	}
+}
+
 func TestSanitizeOAuthModelAlias_DoesNotOverrideUserKiroAliases(t *testing.T) {
 	// When user has configured kiro aliases, defaults should NOT be injected
 	cfg := &Config{
@@ -183,6 +326,26 @@ func TestSanitizeOAuthModelAlias_DoesNotOverrideUserGitHubCopilotAliases(t *test
 	}
 	if copilotAliases[0].Alias != "my-opus" {
 		t.Fatalf("expected user alias to be preserved, got %q", copilotAliases[0].Alias)
+	}
+}
+
+func TestSanitizeOAuthModelAlias_DoesNotOverrideUserAntigravityAliases(t *testing.T) {
+	cfg := &Config{
+		OAuthModelAlias: map[string][]OAuthModelAlias{
+			"antigravity": {
+				{Name: "claude-opus-4-6-thinking", Alias: "my-opus", Fork: true},
+			},
+		},
+	}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	antigravityAliases := cfg.OAuthModelAlias["antigravity"]
+	if len(antigravityAliases) != 1 {
+		t.Fatalf("expected 1 user-configured antigravity alias, got %d", len(antigravityAliases))
+	}
+	if antigravityAliases[0].Alias != "my-opus" {
+		t.Fatalf("expected user alias to be preserved, got %q", antigravityAliases[0].Alias)
 	}
 }
 
@@ -227,6 +390,30 @@ func TestSanitizeOAuthModelAlias_GitHubCopilotDoesNotReinjectAfterExplicitDeleti
 	}
 	if _, exists := cfg.OAuthModelAlias["github-copilot"]; !exists {
 		t.Fatal("expected github-copilot key to be preserved as nil marker after sanitization")
+	}
+}
+
+func TestSanitizeOAuthModelAlias_AntigravityDoesNotReinjectAfterExplicitDeletion(t *testing.T) {
+	cfg := &Config{
+		OAuthModelAlias: map[string][]OAuthModelAlias{
+			"antigravity": nil,
+			"codex": {
+				{Name: "gpt-5", Alias: "g5"},
+			},
+		},
+	}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	antigravityAliases := cfg.OAuthModelAlias["antigravity"]
+	if len(antigravityAliases) != 0 {
+		t.Fatalf("expected antigravity aliases to remain empty after explicit deletion, got %d aliases", len(antigravityAliases))
+	}
+	if _, exists := cfg.OAuthModelAlias["antigravity"]; !exists {
+		t.Fatal("expected antigravity key to be preserved as nil marker after sanitization")
+	}
+	if len(cfg.OAuthModelAlias["codex"]) != 1 {
+		t.Fatal("expected codex aliases to be preserved")
 	}
 }
 

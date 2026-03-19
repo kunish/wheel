@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -222,7 +223,7 @@ func TestStartCodexOAuth_RejectsForceRestartAcrossChannels(t *testing.T) {
 
 	h.StartCodexOAuth(c)
 
-	decodeCodexOAuthError(t, rec, http.StatusConflict, "another runtime OAuth session is already active on this worker; wait for it to finish or expire before starting a new one")
+	decodeCodexOAuthError(t, rec, http.StatusConflict, "runtime_session_conflict")
 	if managementCalls != 0 {
 		t.Fatalf("managementCalls = %d, want 0", managementCalls)
 	}
@@ -273,7 +274,7 @@ func TestStartCodexOAuth_RejectsConcurrentSessionAcrossChannels(t *testing.T) {
 
 	h.StartCodexOAuth(c)
 
-	decodeCodexOAuthError(t, rec, http.StatusConflict, "another runtime OAuth session is already active on this worker; wait for it to finish or expire before starting a new one")
+	decodeCodexOAuthError(t, rec, http.StatusConflict, "runtime_session_conflict")
 	if managementCalls != 0 {
 		t.Fatalf("managementCalls = %d, want 0", managementCalls)
 	}
@@ -448,6 +449,362 @@ func TestStartCodexOAuth_ReturnsDeviceCodeMetadata(t *testing.T) {
 	}
 }
 
+func TestStartCodexOAuth_ReturnsNormativePayloadByChannel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	tests := []struct {
+		name         string
+		channelID    int
+		channelType  types.OutboundType
+		path         string
+		responseBody string
+		flowType     string
+		manual       bool
+		userCode     string
+		verifyURI    string
+	}{
+		{
+			name:         "codex",
+			channelID:    217,
+			channelType:  types.OutboundCodex,
+			path:         "/api/v1/channel/217/codex/oauth/start",
+			responseBody: `{"url":"https://auth.openai.com/authorize?state=codex-state","state":"codex-state"}`,
+			flowType:     "redirect",
+			manual:       true,
+		},
+		{
+			name:         "copilot",
+			channelID:    218,
+			channelType:  types.OutboundCopilot,
+			path:         "/api/v1/channel/218/copilot/oauth/start",
+			responseBody: `{"url":"https://github.com/login/device","state":"copilot-state","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device"}`,
+			flowType:     "device_code",
+			manual:       false,
+			userCode:     "ABCD-EFGH",
+			verifyURI:    "https://github.com/login/device",
+		},
+		{
+			name:         "codex-cli",
+			channelID:    219,
+			channelType:  types.OutboundCodexCLI,
+			path:         "/api/v1/channel/219/codex/oauth/start",
+			responseBody: `{"url":"https://auth.openai.com/authorize?state=codex-cli-state","state":"codex-cli-state"}`,
+			flowType:     "redirect",
+			manual:       true,
+		},
+		{
+			name:         "antigravity",
+			channelID:    220,
+			channelType:  types.OutboundAntigravity,
+			path:         "/api/v1/channel/220/antigravity/oauth/start",
+			responseBody: `{"url":"https://accounts.google.com/o/oauth2/v2/auth?state=antigravity-state","state":"antigravity-state"}`,
+			flowType:     "redirect",
+			manual:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			h, mock := newCodexUploadTestHandler(t)
+			h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+			expectCodexChannelTypeLookup(mock, tt.channelID, tt.channelType)
+
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader([]byte(`{}`)))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(tt.channelID)}}
+
+			h.StartCodexOAuth(c)
+
+			resp := decodeStartCodexOAuthResponse(t, rec)
+			if resp.Data.FlowType != tt.flowType {
+				t.Fatalf("flowType = %q, want %q", resp.Data.FlowType, tt.flowType)
+			}
+			if resp.Data.SupportsManualCallback != tt.manual {
+				t.Fatalf("supportsManualCallbackImport = %v, want %v", resp.Data.SupportsManualCallback, tt.manual)
+			}
+			if resp.Data.UserCode != tt.userCode {
+				t.Fatalf("user_code = %q, want %q", resp.Data.UserCode, tt.userCode)
+			}
+			if resp.Data.VerificationURI != tt.verifyURI {
+				t.Fatalf("verification_uri = %q, want %q", resp.Data.VerificationURI, tt.verifyURI)
+			}
+			if resp.Data.ExpiresAt == "" {
+				t.Fatal("expiresAt = empty, want RFC3339 timestamp")
+			}
+			if _, err := time.Parse(time.RFC3339, resp.Data.ExpiresAt); err != nil {
+				t.Fatalf("expiresAt parse error = %v", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("sql expectations: %v", err)
+			}
+		})
+	}
+}
+
+func TestStartCodexOAuth_RejectsMalformedOrUnexpectedFlowPayloads(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	t.Run("copilot missing verification_uri is rejected", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"url":"https://github.com/login/device","state":"copilot-state","user_code":"ABCD-EFGH"}`))
+		}))
+		defer server.Close()
+
+		h, mock := newCodexUploadTestHandler(t)
+		h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+		expectCodexChannelTypeLookup(mock, 233, types.OutboundCopilot)
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/233/copilot/oauth/start", bytes.NewReader([]byte(`{}`)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "id", Value: "233"}}
+
+		h.StartCodexOAuth(c)
+		decodeCodexOAuthError(t, rec, http.StatusBadGateway, "provider_unavailable")
+	})
+
+	t.Run("antigravity ignores unexpected device fields", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"url":"https://accounts.google.com/o/oauth2/v2/auth?state=antigravity-state","state":"antigravity-state","user_code":"SHOULD-NOT-BE-USED","verification_uri":"https://example.com/device"}`))
+		}))
+		defer server.Close()
+
+		h, mock := newCodexUploadTestHandler(t)
+		h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+		expectCodexChannelTypeLookup(mock, 234, types.OutboundAntigravity)
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/234/antigravity/oauth/start", bytes.NewReader([]byte(`{}`)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "id", Value: "234"}}
+
+		h.StartCodexOAuth(c)
+
+		resp := decodeStartCodexOAuthResponse(t, rec)
+		if resp.Data.FlowType != "redirect" {
+			t.Fatalf("flowType = %q, want redirect", resp.Data.FlowType)
+		}
+		if resp.Data.UserCode != "" {
+			t.Fatalf("user_code = %q, want empty", resp.Data.UserCode)
+		}
+		if resp.Data.VerificationURI != "" {
+			t.Fatalf("verification_uri = %q, want empty", resp.Data.VerificationURI)
+		}
+	})
+}
+
+func TestStartCodexOAuth_UsesStartErrorContract(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	t.Run("runtime_not_configured", func(t *testing.T) {
+		h, mock := newCodexUploadTestHandler(t)
+		h.Config = &config.Config{}
+		expectCodexChannelTypeLookup(mock, 221, types.OutboundCodex)
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/221/codex/oauth/start", bytes.NewReader([]byte(`{}`)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "id", Value: "221"}}
+
+		h.StartCodexOAuth(c)
+		decodeCodexOAuthError(t, rec, http.StatusBadRequest, "runtime_not_configured")
+	})
+
+	t.Run("unsupported_runtime_channel", func(t *testing.T) {
+		h, mock := newCodexUploadTestHandler(t)
+		h.Config = &config.Config{CodexRuntimeManagementURL: "http://127.0.0.1:1", CodexRuntimeManagementKey: "secret"}
+		expectCodexChannelTypeLookup(mock, 222, types.OutboundOpenAI)
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/222/codex/oauth/start", bytes.NewReader([]byte(`{}`)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "id", Value: "222"}}
+
+		h.StartCodexOAuth(c)
+		decodeCodexOAuthError(t, rec, http.StatusBadRequest, "unsupported_runtime_channel")
+	})
+
+	t.Run("provider_unavailable", func(t *testing.T) {
+		h, mock := newCodexUploadTestHandler(t)
+		h.Config = &config.Config{CodexRuntimeManagementURL: "http://127.0.0.1:1", CodexRuntimeManagementKey: "secret"}
+		expectCodexChannelTypeLookup(mock, 223, types.OutboundCodex)
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/223/codex/oauth/start", bytes.NewReader([]byte(`{}`)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "id", Value: "223"}}
+
+		h.StartCodexOAuth(c)
+		decodeCodexOAuthError(t, rec, http.StatusBadGateway, "provider_unavailable")
+	})
+
+	t.Run("runtime_session_conflict", func(t *testing.T) {
+		managementCalls := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			managementCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"url":"https://auth.openai.com/authorize?state=new-state","state":"new-state"}`))
+		}))
+		defer server.Close()
+
+		h, mock := newCodexUploadTestHandler(t)
+		h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+		expectCodexChannelTypeLookup(mock, 224, types.OutboundCodex)
+		storeOAuthSession("channel-999-state", codexOAuthSession{ChannelID: 999, Provider: "codex", FlowType: "redirect", SupportsManual: true, State: "channel-999-state", ExpiresAt: time.Now().Add(10 * time.Minute), LastPhase: "awaiting_callback"})
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/224/codex/oauth/start", bytes.NewReader([]byte(`{}`)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "id", Value: "224"}}
+
+		h.StartCodexOAuth(c)
+		decodeCodexOAuthError(t, rec, http.StatusConflict, "runtime_session_conflict")
+		if managementCalls != 0 {
+			t.Fatalf("managementCalls = %d, want 0", managementCalls)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("sql expectations: %v", err)
+		}
+	})
+}
+
+func TestGetCodexOAuthStatus_SetsCanRetryByTerminalState(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"waiting"}`))
+	}))
+	defer server.Close()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+
+	tests := []struct {
+		name      string
+		channelID int
+		status    string
+		phase     string
+		code      string
+		errorMsg  string
+		manual    bool
+		wantRetry bool
+	}{
+		{name: "waiting", channelID: 225, status: "waiting", phase: "awaiting_callback", manual: true, wantRetry: false},
+		{name: "completed", channelID: 226, status: "ok", phase: "completed", manual: true, wantRetry: false},
+		{name: "failed", channelID: 227, status: "error", phase: "failed", code: "auth_import_failed", errorMsg: "boom", manual: true, wantRetry: true},
+		{name: "expired", channelID: 228, status: "expired", phase: "expired", code: "session_expired", errorMsg: "expired", manual: true, wantRetry: true},
+	}
+
+	for _, tt := range tests {
+		expectCodexChannelTypeLookup(mock, tt.channelID, types.OutboundCodex)
+		storeOAuthSession(strconv.Itoa(tt.channelID)+"-state", codexOAuthSession{ChannelID: tt.channelID, Provider: "codex", FlowType: "redirect", SupportsManual: tt.manual, State: strconv.Itoa(tt.channelID) + "-state", ExpiresAt: time.Now().Add(10 * time.Minute), LastStatus: tt.status, LastPhase: tt.phase, LastCode: tt.code, LastError: tt.errorMsg})
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/"+strconv.Itoa(tt.channelID)+"/codex/oauth/status?state="+strconv.Itoa(tt.channelID)+"-state", nil)
+		c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(tt.channelID)}}
+
+		h.GetCodexOAuthStatus(c)
+
+		resp := decodeCodexOAuthTransportResponse(t, rec, http.StatusOK)
+		if resp.Data.CanRetry != tt.wantRetry {
+			t.Fatalf("%s canRetry = %v, want %v", tt.name, resp.Data.CanRetry, tt.wantRetry)
+		}
+		if tt.status == "ok" {
+			if resp.Data.Code != "" {
+				t.Fatalf("completed code = %q, want empty", resp.Data.Code)
+			}
+			if resp.Data.Error != "" {
+				t.Fatalf("completed error = %q, want empty", resp.Data.Error)
+			}
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestGetCodexOAuthStatus_MapsCopilotDeviceCodeTerminalCodes(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	tests := []struct {
+		name       string
+		channelID  int
+		runtimeErr string
+		wantCode   string
+	}{
+		{name: "access denied", channelID: 229, runtimeErr: "access_denied", wantCode: "access_denied"},
+		{name: "expired", channelID: 230, runtimeErr: "expired_token", wantCode: "device_code_expired"},
+		{name: "rejected", channelID: 231, runtimeErr: "invalid_grant", wantCode: "device_code_rejected"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"error","error":"` + tt.runtimeErr + `"}`))
+			}))
+			defer server.Close()
+
+			h, mock := newCodexUploadTestHandler(t)
+			h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+			expectCodexChannelTypeLookup(mock, tt.channelID, types.OutboundCopilot)
+			storeOAuthSession(strconv.Itoa(tt.channelID)+"-device-state", codexOAuthSession{ChannelID: tt.channelID, Provider: "github", FlowType: "device_code", SupportsManual: false, State: strconv.Itoa(tt.channelID) + "-device-state", ExpiresAt: time.Now().Add(10 * time.Minute), LastStatus: "waiting", LastPhase: "awaiting_browser"})
+
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/"+strconv.Itoa(tt.channelID)+"/copilot/oauth/status?state="+strconv.Itoa(tt.channelID)+"-device-state", nil)
+			c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(tt.channelID)}}
+
+			h.GetCodexOAuthStatus(c)
+
+			resp := decodeCodexOAuthTransportResponse(t, rec, http.StatusOK)
+			if resp.Data.Status != "error" {
+				t.Fatalf("status = %q, want error", resp.Data.Status)
+			}
+			if resp.Data.Phase != "failed" {
+				t.Fatalf("phase = %q, want failed", resp.Data.Phase)
+			}
+			if resp.Data.Code != tt.wantCode {
+				t.Fatalf("code = %q, want %q", resp.Data.Code, tt.wantCode)
+			}
+			if !resp.Data.CanRetry {
+				t.Fatal("canRetry = false, want true")
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("sql expectations: %v", err)
+			}
+		})
+	}
+}
+
 func TestGetCodexOAuthStatus_ReturnsExpiredForMissingSession(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	gin.SetMode(gin.TestMode)
@@ -509,7 +866,7 @@ func TestGetCodexOAuthStatus_ReturnsExpiredForSupersededSession(t *testing.T) {
 		ExpiresAt:      time.Now().Add(10 * time.Minute),
 		LastPhase:      "awaiting_callback",
 	})
-	supersedeOAuthSessions(202, "codex", "next-state")
+	supersedeOAuthSessions(202, "codex", "codex", "next-state")
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -527,6 +884,88 @@ func TestGetCodexOAuthStatus_ReturnsExpiredForSupersededSession(t *testing.T) {
 	}
 	if resp.Data.Phase != "expired" {
 		t.Fatalf("phase = %q, want expired", resp.Data.Phase)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestGetCodexOAuthStatus_ReturnsExpiredForTTLExpiredSession(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{CodexRuntimeManagementURL: "http://127.0.0.1:1", CodexRuntimeManagementKey: "secret"}
+	expectCodexChannelTypeLookup(mock, 233, types.OutboundCodex)
+	storeOAuthSession("ttl-expired-state", codexOAuthSession{
+		ChannelID:      233,
+		Provider:       "codex",
+		FlowType:       "redirect",
+		SupportsManual: true,
+		State:          "ttl-expired-state",
+		ExpiresAt:      time.Now().Add(-time.Minute),
+		LastPhase:      "awaiting_callback",
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/233/codex/oauth/status?state=ttl-expired-state", nil)
+	c.Params = gin.Params{{Key: "id", Value: "233"}}
+
+	h.GetCodexOAuthStatus(c)
+
+	resp := decodeCodexOAuthTransportResponse(t, rec, http.StatusOK)
+	if resp.Data.Status != "expired" {
+		t.Fatalf("status = %q, want expired", resp.Data.Status)
+	}
+	if resp.Data.Phase != "expired" {
+		t.Fatalf("phase = %q, want expired", resp.Data.Phase)
+	}
+	if resp.Data.Code != "session_expired" {
+		t.Fatalf("code = %q, want session_expired", resp.Data.Code)
+	}
+	if !resp.Data.CanRetry {
+		t.Fatal("canRetry = false, want true")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestGetCodexOAuthStatus_RejectsStaleSessionWhenChannelProviderChanged(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{CodexRuntimeManagementURL: "http://127.0.0.1:1", CodexRuntimeManagementKey: "secret"}
+	expectCodexChannelTypeLookup(mock, 238, types.OutboundAntigravity)
+	storeOAuthSession("stale-provider-state", codexOAuthSession{
+		ChannelID:      238,
+		Provider:       "codex",
+		ImportProvider: "codex",
+		FlowType:       "redirect",
+		SupportsManual: true,
+		State:          "stale-provider-state",
+		ExpiresAt:      time.Now().Add(10 * time.Minute),
+		LastStatus:     "waiting",
+		LastPhase:      "awaiting_callback",
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/238/antigravity/oauth/status?state=stale-provider-state", nil)
+	c.Params = gin.Params{{Key: "id", Value: "238"}}
+
+	h.GetCodexOAuthStatus(c)
+
+	resp := decodeCodexOAuthTransportResponse(t, rec, http.StatusOK)
+	if resp.Data.Status != "expired" {
+		t.Fatalf("status = %q, want expired", resp.Data.Status)
+	}
+	if resp.Data.Code != "session_missing" {
+		t.Fatalf("code = %q, want session_missing", resp.Data.Code)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)
@@ -845,6 +1284,48 @@ func TestSubmitCodexOAuthCallback_AcceptsDuplicateReplay(t *testing.T) {
 	}
 }
 
+func TestSubmitCodexOAuthCallback_DuplicateCompletedDoesNotContinuePolling(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{CodexRuntimeManagementURL: "http://127.0.0.1:1", CodexRuntimeManagementKey: "secret"}
+	expectCodexChannelTypeLookup(mock, 235, types.OutboundCodex)
+	storeOAuthSession("completed-callback-state", codexOAuthSession{
+		ChannelID:      235,
+		Provider:       "codex",
+		FlowType:       "redirect",
+		SupportsManual: true,
+		State:          "completed-callback-state",
+		ExpiresAt:      time.Now().Add(10 * time.Minute),
+		LastStatus:     "ok",
+		LastPhase:      "completed",
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/235/codex/oauth/callback", bytes.NewReader([]byte(`{"callback_url":"http://localhost:1455/callback?code=abc123&state=completed-callback-state"}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "235"}}
+
+	h.SubmitCodexOAuthCallback(c)
+
+	resp := decodeCodexOAuthCallbackResponse(t, rec, http.StatusOK)
+	if resp.Data.Status != "duplicate" {
+		t.Fatalf("status = %q, want duplicate", resp.Data.Status)
+	}
+	if resp.Data.Phase != "completed" {
+		t.Fatalf("phase = %q, want completed", resp.Data.Phase)
+	}
+	if resp.Data.ShouldContinuePolling {
+		t.Fatal("shouldContinuePolling = true, want false")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestSubmitCodexOAuthCallback_RejectsStateMismatch(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	gin.SetMode(gin.TestMode)
@@ -962,6 +1443,141 @@ func TestSubmitCodexOAuthCallback_ReturnsStructuredMissingState(t *testing.T) {
 	}
 	if resp.Data.Phase != "awaiting_callback" {
 		t.Fatalf("phase = %q, want awaiting_callback", resp.Data.Phase)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestSubmitCodexOAuthCallback_RejectsManualCallbackForDeviceCodeFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{
+		CodexRuntimeManagementURL: "http://127.0.0.1:1",
+		CodexRuntimeManagementKey: "secret",
+	}
+	expectCodexChannelTypeLookup(mock, 232, types.OutboundCopilot)
+	storeOAuthSession("device-callback-state", codexOAuthSession{
+		ChannelID:      232,
+		Provider:       "github",
+		FlowType:       "device_code",
+		SupportsManual: false,
+		State:          "device-callback-state",
+		ExpiresAt:      time.Now().Add(10 * time.Minute),
+		LastPhase:      "awaiting_browser",
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/232/copilot/oauth/callback", bytes.NewReader([]byte(`{"callback_url":"http://localhost:1455/callback?code=abc123&state=device-callback-state"}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "232"}}
+
+	h.SubmitCodexOAuthCallback(c)
+
+	resp := decodeCodexOAuthCallbackResponse(t, rec, http.StatusOK)
+	if resp.Data.Status != "error" {
+		t.Fatalf("status = %q, want error", resp.Data.Status)
+	}
+	if resp.Data.Phase != "awaiting_browser" {
+		t.Fatalf("phase = %q, want awaiting_browser", resp.Data.Phase)
+	}
+	if resp.Data.Code != "manual_callback_not_supported" {
+		t.Fatalf("code = %q, want manual_callback_not_supported", resp.Data.Code)
+	}
+	if resp.Data.ShouldContinuePolling {
+		t.Fatal("shouldContinuePolling = true, want false")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestSubmitCodexOAuthCallback_RejectsNonLoopbackCallbackURL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{
+		CodexRuntimeManagementURL: "http://127.0.0.1:1",
+		CodexRuntimeManagementKey: "secret",
+	}
+	expectCodexChannelTypeLookup(mock, 237, types.OutboundCodex)
+	storeOAuthSession("non-loopback-state", codexOAuthSession{
+		ChannelID:      237,
+		Provider:       "codex",
+		FlowType:       "redirect",
+		SupportsManual: true,
+		State:          "non-loopback-state",
+		ExpiresAt:      time.Now().Add(10 * time.Minute),
+		LastPhase:      "awaiting_callback",
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/237/codex/oauth/callback", bytes.NewReader([]byte(`{"callback_url":"https://example.com/callback?code=abc123&state=non-loopback-state"}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "237"}}
+
+	h.SubmitCodexOAuthCallback(c)
+
+	resp := decodeCodexOAuthCallbackResponse(t, rec, http.StatusOK)
+	if resp.Data.Status != "error" {
+		t.Fatalf("status = %q, want error", resp.Data.Status)
+	}
+	if resp.Data.Code != "invalid_callback_url" {
+		t.Fatalf("code = %q, want invalid_callback_url", resp.Data.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestSubmitCodexOAuthCallback_MapsCallbackErrorToTerminalFailure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{
+		CodexRuntimeManagementURL: "http://127.0.0.1:1",
+		CodexRuntimeManagementKey: "secret",
+	}
+	expectCodexChannelTypeLookup(mock, 239, types.OutboundCodex)
+	storeOAuthSession("callback-error-state", codexOAuthSession{
+		ChannelID:      239,
+		Provider:       "codex",
+		FlowType:       "redirect",
+		SupportsManual: true,
+		State:          "callback-error-state",
+		ExpiresAt:      time.Now().Add(10 * time.Minute),
+		LastPhase:      "awaiting_callback",
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/channel/239/codex/oauth/callback", bytes.NewReader([]byte(`{"callback_url":"http://localhost:1455/callback?error=access_denied&state=callback-error-state"}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "239"}}
+
+	h.SubmitCodexOAuthCallback(c)
+
+	resp := decodeCodexOAuthCallbackResponse(t, rec, http.StatusOK)
+	if resp.Data.Status != "error" {
+		t.Fatalf("status = %q, want error", resp.Data.Status)
+	}
+	if resp.Data.Phase != "failed" {
+		t.Fatalf("phase = %q, want failed", resp.Data.Phase)
+	}
+	if resp.Data.Code != "access_denied" {
+		t.Fatalf("code = %q, want access_denied", resp.Data.Code)
+	}
+	if resp.Data.ShouldContinuePolling {
+		t.Fatal("shouldContinuePolling = true, want false")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)
@@ -1135,6 +1751,69 @@ func TestGetCodexOAuthStatus_ImportsOnlyMatchingProviderScope(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(authDir, "copilot.json")); err != nil {
 		t.Fatalf("copilot.json missing after scoped import, err = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestGetCodexOAuthStatus_WrongProviderImportsAreRejected(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	resetCodexOAuthSessionsForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer server.Close()
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+	expectCodexChannelTypeLookup(mock, 236, types.OutboundCodex)
+	authDir, err := h.resolveCodexLocalAuthDir()
+	if err != nil {
+		t.Fatalf("resolveCodexLocalAuthDir() error = %v", err)
+	}
+	if err := os.MkdirAll(authDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", authDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(authDir, "copilot.json"), []byte(`{"type":"github-copilot","email":"copilot@example.com","access_token":"copilot-token"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile(copilot.json) error = %v", err)
+	}
+	storeOAuthSession("wrong-provider-state", codexOAuthSession{
+		ChannelID:      236,
+		Provider:       "codex",
+		FlowType:       "redirect",
+		SupportsManual: true,
+		State:          "wrong-provider-state",
+		ExpiresAt:      time.Now().Add(10 * time.Minute),
+		LastPhase:      "callback_received",
+		Existing:       map[string]struct{}{},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/236/codex/oauth/status?state=wrong-provider-state", nil)
+	c.Params = gin.Params{{Key: "id", Value: "236"}}
+
+	h.GetCodexOAuthStatus(c)
+
+	resp := decodeCodexOAuthTransportResponse(t, rec, http.StatusOK)
+	if resp.Data.Status != "error" {
+		t.Fatalf("status = %q, want error", resp.Data.Status)
+	}
+	if resp.Data.Phase != "failed" {
+		t.Fatalf("phase = %q, want failed", resp.Data.Phase)
+	}
+	if resp.Data.Code != "auth_import_failed" {
+		t.Fatalf("code = %q, want auth_import_failed", resp.Data.Code)
+	}
+	if !resp.Data.CanRetry {
+		t.Fatal("canRetry = false, want true")
+	}
+	if _, err := os.Stat(filepath.Join(authDir, "copilot.json")); err != nil {
+		t.Fatalf("copilot.json missing after rejection, err = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)
@@ -1359,8 +2038,13 @@ func decodeCodexOAuthError(t *testing.T, rec *httptest.ResponseRecorder, wantSta
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, wantStatus, rec.Body.String())
 	}
 	var resp struct {
-		Success bool   `json:"success"`
-		Error   string `json:"error"`
+		Success bool `json:"success"`
+		Data    struct {
+			Status string `json:"status"`
+			Phase  string `json:"phase"`
+			Code   string `json:"code"`
+			Error  string `json:"error"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal error response: %v", err)
@@ -1368,8 +2052,17 @@ func decodeCodexOAuthError(t *testing.T, rec *httptest.ResponseRecorder, wantSta
 	if resp.Success {
 		t.Fatalf("success = true, body = %s", rec.Body.String())
 	}
-	if resp.Error != wantError {
-		t.Fatalf("error = %q, want %q", resp.Error, wantError)
+	if resp.Data.Status != "error" {
+		t.Fatalf("status payload = %q, want error", resp.Data.Status)
+	}
+	if resp.Data.Phase != "failed" {
+		t.Fatalf("phase payload = %q, want failed", resp.Data.Phase)
+	}
+	if resp.Data.Code != wantError {
+		t.Fatalf("code = %q, want %q", resp.Data.Code, wantError)
+	}
+	if resp.Data.Error != wantError {
+		t.Fatalf("error = %q, want %q", resp.Data.Error, wantError)
 	}
 }
 

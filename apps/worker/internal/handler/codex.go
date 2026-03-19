@@ -128,11 +128,14 @@ type codexAuthBatchScope struct {
 }
 
 var codexOAuthSessions sync.Map
+var codexOAuthStateLocks sync.Map
 var codexOAuthStartMu sync.Mutex
 
 // storeOAuthSession stores a session with a creation timestamp and sweeps expired entries.
 func storeOAuthSession(state string, session codexOAuthSession) {
-	session.createdAt = time.Now()
+	if session.createdAt.IsZero() {
+		session.createdAt = time.Now()
+	}
 	if session.State == "" {
 		session.State = state
 	}
@@ -153,16 +156,30 @@ func storeOAuthSession(state string, session codexOAuthSession) {
 }
 
 func loadOAuthSession(state string) (codexOAuthSession, bool) {
+	session, status := loadOAuthSessionState(state)
+	return session, status == "active"
+}
+
+func loadOAuthSessionState(state string) (codexOAuthSession, string) {
 	v, ok := codexOAuthSessions.Load(state)
 	if !ok {
-		return codexOAuthSession{}, false
+		return codexOAuthSession{}, "missing"
 	}
 	session, ok := v.(codexOAuthSession)
-	if !ok || time.Since(session.createdAt) > codexOAuthSessionTTL || time.Now().After(session.ExpiresAt) {
+	if !ok {
 		codexOAuthSessions.Delete(state)
-		return codexOAuthSession{}, false
+		return codexOAuthSession{}, "missing"
 	}
-	return session, true
+	if time.Since(session.createdAt) > codexOAuthSessionTTL || time.Now().After(session.ExpiresAt) {
+		expired := session
+		expired.LastStatus = "expired"
+		expired.LastPhase = "expired"
+		expired.LastCode = "session_expired"
+		expired.LastError = "OAuth session expired"
+		codexOAuthSessions.Store(state, expired)
+		return expired, "expired"
+	}
+	return session, "active"
 }
 
 // loadAndDeleteOAuthSession retrieves and deletes a session, returning false if missing or expired.
@@ -178,9 +195,29 @@ func loadAndDeleteOAuthSession(state string) (codexOAuthSession, bool) {
 	return session, true
 }
 
+func withCodexOAuthStateLock(state string, fn func()) {
+	muAny, _ := codexOAuthStateLocks.LoadOrStore(state, &sync.Mutex{})
+	mu := muAny.(*sync.Mutex)
+	mu.Lock()
+	defer func() {
+		mu.Unlock()
+		session, status := loadOAuthSessionState(state)
+		if status == "missing" || codexOAuthPhaseTerminal(session.LastPhase) {
+			codexOAuthStateLocks.Delete(state)
+		}
+	}()
+	fn()
+}
+
 func findActiveOAuthSession(channelID int, provider string) (codexOAuthSession, bool) {
+	return findActiveOAuthSessionForImportScope(channelID, provider, provider)
+}
+
+func findActiveOAuthSessionForImportScope(channelID int, provider string, importProvider string) (codexOAuthSession, bool) {
 	var latest codexOAuthSession
 	var found bool
+	importScope := canonicalRuntimeProvider(importProvider)
+	importFamily := codexOAuthUnderlyingImportFamily(importScope)
 	codexOAuthSessions.Range(func(key, value any) bool {
 		state, _ := key.(string)
 		session, ok := value.(codexOAuthSession)
@@ -193,6 +230,9 @@ func findActiveOAuthSession(channelID int, provider string) (codexOAuthSession, 
 			return true
 		}
 		if session.ChannelID != channelID || session.Provider != provider {
+			return true
+		}
+		if codexOAuthUnderlyingImportFamily(codexOAuthImportScope(session)) != importFamily {
 			return true
 		}
 		if codexOAuthPhaseTerminal(session.LastPhase) {
@@ -244,10 +284,19 @@ func codexOAuthImportScope(session codexOAuthSession) string {
 	return canonicalRuntimeProvider(session.Provider)
 }
 
+func codexOAuthUnderlyingImportFamily(scope string) string {
+	scope = canonicalRuntimeProvider(scope)
+	if scope == "codex-cli" {
+		return "codex"
+	}
+	return scope
+}
+
 func findConflictingActiveOAuthSessionForImportScope(channelID int, provider string, importProvider string) (codexOAuthSession, bool) {
 	var latest codexOAuthSession
 	var found bool
 	importScope := canonicalRuntimeProvider(importProvider)
+	importFamily := codexOAuthUnderlyingImportFamily(importScope)
 	codexOAuthSessions.Range(func(key, value any) bool {
 		state, _ := key.(string)
 		session, ok := value.(codexOAuthSession)
@@ -265,7 +314,7 @@ func findConflictingActiveOAuthSessionForImportScope(channelID int, provider str
 		if session.ChannelID == channelID && session.Provider == provider {
 			return true
 		}
-		if codexOAuthImportScope(session) != importScope {
+		if codexOAuthUnderlyingImportFamily(codexOAuthImportScope(session)) != importFamily {
 			return true
 		}
 		if !found || session.createdAt.After(latest.createdAt) {
@@ -277,7 +326,9 @@ func findConflictingActiveOAuthSessionForImportScope(channelID int, provider str
 	return latest, found
 }
 
-func supersedeOAuthSessions(channelID int, provider string, keepState string) {
+func supersedeOAuthSessions(channelID int, provider string, importProvider string, keepState string) {
+	importScope := canonicalRuntimeProvider(importProvider)
+	importFamily := codexOAuthUnderlyingImportFamily(importScope)
 	codexOAuthSessions.Range(func(key, value any) bool {
 		state, _ := key.(string)
 		session, ok := value.(codexOAuthSession)
@@ -285,12 +336,18 @@ func supersedeOAuthSessions(channelID int, provider string, keepState string) {
 			codexOAuthSessions.Delete(key)
 			return true
 		}
-		if session.ChannelID == channelID && session.Provider == provider && state != keepState {
-			session.LastStatus = "expired"
-			session.LastPhase = "expired"
-			session.LastCode = "session_superseded"
-			session.LastError = "OAuth session expired because a newer sign-in attempt replaced it"
-			codexOAuthSessions.Store(state, session)
+		if session.ChannelID == channelID && session.Provider == provider && state != keepState && codexOAuthUnderlyingImportFamily(codexOAuthImportScope(session)) == importFamily {
+			withCodexOAuthStateLock(state, func() {
+				current, ok := loadOAuthSession(state)
+				if !ok || current.ChannelID != channelID || current.Provider != provider || current.State == keepState || codexOAuthUnderlyingImportFamily(codexOAuthImportScope(current)) != importFamily {
+					return
+				}
+				current.LastStatus = "expired"
+				current.LastPhase = "expired"
+				current.LastCode = "session_superseded"
+				current.LastError = "OAuth session expired because a newer sign-in attempt replaced it"
+				codexOAuthSessions.Store(state, current)
+			})
 		}
 		return true
 	})
@@ -322,18 +379,55 @@ func isRuntimeChannel(t types.OutboundType) bool {
 		t == types.OutboundCodexCLI || t == types.OutboundAntigravity
 }
 
-// runtimeProviderFilter returns the auth file provider filter for the given runtime channel type.
-func runtimeProviderFilter(t types.OutboundType) string {
+type runtimeOAuthChannelContractMapping struct {
+	managementAuthEndpoint       string
+	oauthProvider                string
+	runtimeProviderFilter        string
+	supportsManualCallbackImport bool
+}
+
+func runtimeOAuthChannelContract(t types.OutboundType) (runtimeOAuthChannelContractMapping, bool) {
 	switch t {
 	case types.OutboundCopilot:
-		return "copilot"
+		return runtimeOAuthChannelContractMapping{
+			managementAuthEndpoint:       "/github-auth-url",
+			oauthProvider:                "github",
+			runtimeProviderFilter:        "copilot",
+			supportsManualCallbackImport: false,
+		}, true
 	case types.OutboundCodexCLI:
-		return "codex-cli"
+		return runtimeOAuthChannelContractMapping{
+			managementAuthEndpoint:       "/codex-auth-url",
+			oauthProvider:                "codex",
+			runtimeProviderFilter:        "codex-cli",
+			supportsManualCallbackImport: true,
+		}, true
 	case types.OutboundAntigravity:
-		return "antigravity"
+		return runtimeOAuthChannelContractMapping{
+			managementAuthEndpoint:       "/antigravity-auth-url",
+			oauthProvider:                "antigravity",
+			runtimeProviderFilter:        "antigravity",
+			supportsManualCallbackImport: true,
+		}, true
+	case types.OutboundCodex:
+		return runtimeOAuthChannelContractMapping{
+			managementAuthEndpoint:       "/codex-auth-url",
+			oauthProvider:                "codex",
+			runtimeProviderFilter:        "codex",
+			supportsManualCallbackImport: true,
+		}, true
 	default:
-		return "codex"
+		return runtimeOAuthChannelContractMapping{}, false
 	}
+}
+
+// runtimeProviderFilter returns the auth file provider filter for the given runtime channel type.
+func runtimeProviderFilter(t types.OutboundType) string {
+	contract, ok := runtimeOAuthChannelContract(t)
+	if !ok {
+		return ""
+	}
+	return contract.runtimeProviderFilter
 }
 
 func canonicalRuntimeProvider(provider string) string {
@@ -351,10 +445,23 @@ func canonicalRuntimeProvider(provider string) string {
 }
 
 func runtimeProviderMatches(channelType types.OutboundType, provider string) bool {
-	return canonicalRuntimeProvider(provider) == runtimeProviderFilter(channelType)
+	filter := runtimeProviderFilter(channelType)
+	if filter == "" {
+		return false
+	}
+	return canonicalRuntimeProvider(provider) == filter
 }
 
-// validateCodexChannel verifies the channel exists and is a runtime-managed type (Codex or Copilot).
+func isSupportedRuntimeProvider(provider string) bool {
+	switch canonicalRuntimeProvider(provider) {
+	case "codex", "copilot", "codex-cli", "antigravity":
+		return true
+	default:
+		return false
+	}
+}
+
+// validateCodexChannel verifies the channel exists and is a runtime-managed channel.
 // On failure it writes an error response and returns nil.
 func (h *Handler) validateCodexChannel(c *gin.Context) (*types.Channel, error) {
 	idStr := c.Param("id")
@@ -373,7 +480,7 @@ func (h *Handler) validateCodexChannel(c *gin.Context) (*types.Channel, error) {
 		return nil, fmt.Errorf("channel not found")
 	}
 	if !isRuntimeChannel(channel.Type) {
-		errorJSON(c, 400, "channel is not a Codex/Copilot channel")
+		errorJSON(c, 400, "unsupported_runtime_channel")
 		return nil, fmt.Errorf("not a runtime channel")
 	}
 	return channel, nil

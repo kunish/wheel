@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
 func parseAuthFiles(files []map[string]any) []codexAuthFile {
@@ -91,6 +93,16 @@ func filterCodexAuthFiles(files []codexAuthFile, provider string, search string,
 		filtered = append(filtered, file)
 	}
 	return filtered
+}
+
+func filterRuntimeOwnedCodexAuthFiles(files []codexAuthFile, channelType types.OutboundType) []codexAuthFile {
+	owned := make([]codexAuthFile, 0, len(files))
+	for _, file := range files {
+		if runtimeProviderMatches(channelType, file.Provider) {
+			owned = append(owned, file)
+		}
+	}
+	return owned
 }
 
 // filterByQuotaStatus keeps only auth files whose quota matches the given status.

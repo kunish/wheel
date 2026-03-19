@@ -538,6 +538,206 @@ func TestCollectCodexChannelModels_RetriesEmptyModelsUntilRuntimeCatchesUp(t *te
 	}
 }
 
+func TestCollectCodexChannelModels_RespectsCanonicalProviderOwnership(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v0/management/auth-files/models" {
+			t.Fatalf("path = %s, want /v0/management/auth-files/models", r.URL.Path)
+		}
+		if name := r.URL.Query().Get("name"); name != "channel-7--cli.json" {
+			t.Fatalf("unexpected auth file query name: %s", name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"id":"gpt-5.4-cli"}]}`))
+	}))
+	defer server.Close()
+
+	h := &Handler{Config: &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}}
+	models, err := h.collectCodexChannelModels(t.Context(), 7, types.OutboundCodexCLI, []codexAuthFile{
+		{Name: "codex.json", Provider: "codex"},
+		{Name: "cli.json", Provider: "openai-codex-cli"},
+	})
+	if err != nil {
+		t.Fatalf("collectCodexChannelModels() error = %v", err)
+	}
+	if got, want := strings.Join(models, ","), "gpt-5.4-cli"; got != want {
+		t.Fatalf("models = %q, want %q", got, want)
+	}
+}
+
+func TestCollectCodexChannelModels_HidesUnrequestableFallbacks(t *testing.T) {
+	models, err := (&Handler{Config: &config.Config{CodexRuntimeManagementURL: "http://127.0.0.1:1", CodexRuntimeManagementKey: "secret"}}).collectCodexChannelModels(t.Context(), 9, types.OutboundCodexCLI, []codexAuthFile{{Name: "codex.json", Provider: "codex"}})
+	if err != nil {
+		t.Fatalf("collectCodexChannelModels() error = %v, want nil", err)
+	}
+	if len(models) != 0 {
+		t.Fatalf("models = %v, want empty when no requestable models match the runtime scope", models)
+	}
+}
+
+func TestSyncCodexChannelModels_DoesNotPersistPartialModelSetOnMixedFailure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	h, mock := newCodexUploadTestHandler(t)
+	h.Cache = cache.New()
+	t.Cleanup(h.Cache.Close)
+	expectCodexChannelTypeLookup(mock, 58, types.OutboundCodex)
+	expectCodexAuthFileListForSync(mock, 58, []string{"first.json", "second.json"})
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE `channels` SET ") + ".*" + regexp.QuoteMeta("WHERE (id = 58)")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("name") {
+		case "channel-58--first.json":
+			_, _ = w.Write([]byte(`{"models":[{"id":"gpt-5"}]}`))
+		case "channel-58--second.json":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`forbidden`))
+		default:
+			t.Fatalf("unexpected auth file query name: %s", r.URL.Query().Get("name"))
+		}
+	}))
+	defer server.Close()
+	h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+
+	if err := h.syncCodexChannelModels(t.Context(), 58); err != nil {
+		t.Fatalf("syncCodexChannelModels() error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestSyncCodexChannelModels_FallbacksRemainRequestableByChannel(t *testing.T) {
+	t.Run("codex has no fallback write on empty models", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		h, mock := newCodexUploadTestHandler(t)
+		h.Cache = cache.New()
+		t.Cleanup(h.Cache.Close)
+		expectCodexChannelTypeLookup(mock, 56, types.OutboundCodex)
+		expectCodexAuthFileListForSync(mock, 56, []string{"latest.json"})
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[]}`))
+		}))
+		defer server.Close()
+		h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+
+		if err := h.syncCodexChannelModels(t.Context(), 56); err != nil {
+			t.Fatalf("syncCodexChannelModels() error = %v", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("sql expectations: %v", err)
+		}
+	})
+
+	t.Run("antigravity persists requestable fallback models", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		h, mock := newCodexUploadTestHandler(t)
+		h.Cache = cache.New()
+		t.Cleanup(h.Cache.Close)
+		expectCodexChannelTypeLookup(mock, 57, types.OutboundAntigravity)
+		rows := sqlmock.NewRows([]string{"id", "channel_id", "name", "provider", "email", "disabled", "content", "created_at", "updated_at"}).
+			AddRow(1, 57, "ag.json", "antigravity", "ag@example.com", false, `{"type":"antigravity","access_token":"token"}`, "2026-03-06 00:00:00", "2026-03-06 00:00:00")
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT `codex_auth_file`.`id`, `codex_auth_file`.`channel_id`, `codex_auth_file`.`name`, `codex_auth_file`.`provider`, `codex_auth_file`.`email`, `codex_auth_file`.`disabled`, `codex_auth_file`.`content`, `codex_auth_file`.`created_at`, `codex_auth_file`.`updated_at` FROM `codex_auth_files` AS `codex_auth_file` WHERE (channel_id = ") + "[0-9]+" + regexp.QuoteMeta(") ORDER BY name ASC")).
+			WillReturnRows(rows)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE `channels` SET ") + ".*" + regexp.QuoteMeta("WHERE (id = 57)")).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[]}`))
+		}))
+		defer server.Close()
+		h.Config = &config.Config{CodexRuntimeManagementURL: server.URL, CodexRuntimeManagementKey: "secret"}
+
+		if err := h.syncCodexChannelModels(t.Context(), 57); err != nil {
+			t.Fatalf("syncCodexChannelModels() error = %v", err)
+		}
+		fallbacks := defaultAntigravityModels()
+		if slices.Contains(fallbacks, "gemini-2.5-flash-lite-preview-06-17") {
+			t.Fatal("unrequestable preview fallback model is still exposed")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("sql expectations: %v", err)
+		}
+	})
+}
+
+func TestListManagedCodexAuthFiles_LegacyAmbiguousProviderIsNonSelectable(t *testing.T) {
+	h, mock := newCodexUploadTestHandler(t)
+	rows := sqlmock.NewRows([]string{"id", "channel_id", "name", "provider", "email", "disabled", "content", "created_at", "updated_at"}).
+		AddRow(1, 77, "legacy.json", "", "legacy@example.com", false, `{"email":"legacy@example.com"}`, "2026-03-06 00:00:00", "2026-03-06 00:00:00")
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT `codex_auth_file`.`id`, `codex_auth_file`.`channel_id`, `codex_auth_file`.`name`, `codex_auth_file`.`provider`, `codex_auth_file`.`email`, `codex_auth_file`.`disabled`, `codex_auth_file`.`content`, `codex_auth_file`.`created_at`, `codex_auth_file`.`updated_at` FROM `codex_auth_files` AS `codex_auth_file` WHERE (channel_id = ") + "[0-9]+" + regexp.QuoteMeta(") ORDER BY name ASC")).
+		WillReturnRows(rows)
+
+	files, err := h.listManagedCodexAuthFiles(t.Context(), 77)
+	if err != nil {
+		t.Fatalf("listManagedCodexAuthFiles() error = %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("len(files) = %d, want 1", len(files))
+	}
+	if files[0].Provider != "" {
+		t.Fatalf("provider = %q, want empty for ambiguous legacy auth", files[0].Provider)
+	}
+	if got, total := filterAndPaginateAuthFiles(files, "codex", "", "", 1, 20); total != 0 || len(got) != 0 {
+		t.Fatalf("legacy ambiguous auth unexpectedly selectable: total=%d items=%v", total, got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestListCodexQuota_UsesCanonicalRuntimeProviderByChannel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	gin.SetMode(gin.TestMode)
+
+	h, mock := newCodexUploadTestHandler(t)
+	h.Config = &config.Config{CodexRuntimeManagementURL: "http://127.0.0.1:1", CodexRuntimeManagementKey: "secret"}
+	expectCodexChannelTypeLookup(mock, 240, types.OutboundCodexCLI)
+	expectCodexAuthFileListForQuota(mock, 240, []types.CodexAuthFile{
+		{ChannelID: 240, Name: "codex.json", Provider: "codex", Email: "codex@example.com", Content: `{"type":"codex","access_token":"token-codex","account_id":"acct-codex"}`},
+		{ChannelID: 240, Name: "cli.json", Provider: "openai-codex-cli", Email: "cli@example.com", Content: `{"type":"openai-codex-cli","access_token":"token-cli","account_id":"acct-cli"}`},
+	})
+	h.codexQuotaDo = func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("Authorization"); got != "Bearer token-cli" {
+			t.Fatalf("authorization = %q, want Bearer token-cli", got)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false,"secondary_window":{"used_percent":25,"limit_window_seconds":604800}},"additional_rate_limits":[]}`))}, nil
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channel/240/codex/quota", nil)
+	c.Params = gin.Params{{Key: "id", Value: "240"}}
+
+	h.ListCodexQuota(c)
+
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items []codexQuotaItem `json:"items"`
+			Total int              `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("success = false, body = %s", rec.Body.String())
+	}
+	if resp.Data.Total != 1 || len(resp.Data.Items) != 1 {
+		t.Fatalf("unexpected items payload: %+v", resp.Data)
+	}
+	if resp.Data.Items[0].Name != "cli.json" {
+		t.Fatalf("item name = %q, want cli.json", resp.Data.Items[0].Name)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestCollectCodexQuotaItems_PreservesInputOrderWhenFetchCompletesOutOfOrder(t *testing.T) {
 	files := []codexAuthFile{
 		{
@@ -1356,6 +1556,121 @@ func TestManagementAuthEndpoint(t *testing.T) {
 				t.Fatalf("managementAuthEndpoint(%d) = %q, want %q", tt.channelType, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRuntimeOAuthChannelContractMappings(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelType types.OutboundType
+		endpoint    string
+		oauth       string
+		provider    string
+		manual      bool
+	}{
+		{name: "codex", channelType: types.OutboundCodex, endpoint: "/codex-auth-url", oauth: "codex", provider: "codex", manual: true},
+		{name: "copilot", channelType: types.OutboundCopilot, endpoint: "/github-auth-url", oauth: "github", provider: "copilot", manual: false},
+		{name: "codex-cli", channelType: types.OutboundCodexCLI, endpoint: "/codex-auth-url", oauth: "codex", provider: "codex-cli", manual: true},
+		{name: "antigravity", channelType: types.OutboundAntigravity, endpoint: "/antigravity-auth-url", oauth: "antigravity", provider: "antigravity", manual: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			contract, ok := runtimeOAuthChannelContract(tt.channelType)
+			if !ok {
+				t.Fatalf("runtimeOAuthChannelContract(%d) unexpectedly missing", tt.channelType)
+			}
+			if contract.managementAuthEndpoint != tt.endpoint {
+				t.Fatalf("managementAuthEndpoint = %q, want %q", contract.managementAuthEndpoint, tt.endpoint)
+			}
+			if contract.oauthProvider != tt.oauth {
+				t.Fatalf("oauthProvider = %q, want %q", contract.oauthProvider, tt.oauth)
+			}
+			if contract.runtimeProviderFilter != tt.provider {
+				t.Fatalf("runtimeProviderFilter = %q, want %q", contract.runtimeProviderFilter, tt.provider)
+			}
+			if contract.supportsManualCallbackImport != tt.manual {
+				t.Fatalf("supportsManualCallbackImport = %v, want %v", contract.supportsManualCallbackImport, tt.manual)
+			}
+			if got := managementAuthEndpoint(tt.channelType); got != tt.endpoint {
+				t.Fatalf("managementAuthEndpoint(%d) = %q, want %q", tt.channelType, got, tt.endpoint)
+			}
+			if got := oauthProviderForChannelType(tt.channelType); got != tt.oauth {
+				t.Fatalf("oauthProviderForChannelType(%d) = %q, want %q", tt.channelType, got, tt.oauth)
+			}
+			if got := runtimeProviderFilter(tt.channelType); got != tt.provider {
+				t.Fatalf("runtimeProviderFilter(%d) = %q, want %q", tt.channelType, got, tt.provider)
+			}
+		})
+	}
+
+	t.Run("unknown channel type has no silent fallback", func(t *testing.T) {
+		unknown := types.OutboundType(999)
+		if contract, ok := runtimeOAuthChannelContract(unknown); ok {
+			t.Fatalf("runtimeOAuthChannelContract(%d) = %+v, want missing contract", unknown, contract)
+		}
+		if got := managementAuthEndpoint(unknown); got != "" {
+			t.Fatalf("managementAuthEndpoint(%d) = %q, want empty", unknown, got)
+		}
+		if got := oauthProviderForChannelType(unknown); got != "" {
+			t.Fatalf("oauthProviderForChannelType(%d) = %q, want empty", unknown, got)
+		}
+		if got := runtimeProviderFilter(unknown); got != "" {
+			t.Fatalf("runtimeProviderFilter(%d) = %q, want empty", unknown, got)
+		}
+	})
+}
+
+func TestCanonicalRuntimeProvider_MapsKnownAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		want     string
+	}{
+		{name: "github-copilot", provider: "github-copilot", want: "copilot"},
+		{name: "github", provider: "github", want: "copilot"},
+		{name: "copilot", provider: "copilot", want: "copilot"},
+		{name: "codex-cli", provider: "codex-cli", want: "codex-cli"},
+		{name: "openai-codex-cli", provider: "openai-codex-cli", want: "codex-cli"},
+		{name: "antigravity", provider: "antigravity", want: "antigravity"},
+		{name: "google-antigravity", provider: "google-antigravity", want: "antigravity"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canonicalRuntimeProvider(tt.provider); got != tt.want {
+				t.Fatalf("canonicalRuntimeProvider(%q) = %q, want %q", tt.provider, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRuntimeProviderMatches_DistinguishesCodexAndCodexCLI(t *testing.T) {
+	if got := oauthProviderForChannelType(types.OutboundCodex); got != "codex" {
+		t.Fatalf("oauthProviderForChannelType(Codex) = %q, want codex", got)
+	}
+	if got := oauthProviderForChannelType(types.OutboundCodexCLI); got != "codex" {
+		t.Fatalf("oauthProviderForChannelType(CodexCLI) = %q, want codex", got)
+	}
+
+	if !runtimeProviderMatches(types.OutboundCodex, "codex") {
+		t.Fatal("Codex should match codex provider")
+	}
+	if runtimeProviderMatches(types.OutboundCodex, "codex-cli") {
+		t.Fatal("Codex must not match codex-cli provider")
+	}
+	if runtimeProviderMatches(types.OutboundCodex, "openai-codex-cli") {
+		t.Fatal("Codex must not match openai-codex-cli provider")
+	}
+
+	if !runtimeProviderMatches(types.OutboundCodexCLI, "codex-cli") {
+		t.Fatal("CodexCLI should match codex-cli provider")
+	}
+	if !runtimeProviderMatches(types.OutboundCodexCLI, "openai-codex-cli") {
+		t.Fatal("CodexCLI should match openai-codex-cli provider alias")
+	}
+	if runtimeProviderMatches(types.OutboundCodexCLI, "codex") {
+		t.Fatal("CodexCLI must not match codex provider")
 	}
 }
 

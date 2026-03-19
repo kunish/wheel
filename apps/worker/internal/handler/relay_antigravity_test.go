@@ -6,28 +6,60 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/kunish/wheel/apps/worker/internal/codexruntime"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/mysqldialect"
 )
 
 func TestAntigravityRelay_ResolveAccessToken_MatchesAuthIndex(t *testing.T) {
-	t.Parallel()
+	t.Setenv("HOME", t.TempDir())
+
+	sqldb, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer sqldb.Close()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT version()")).WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow("8.0.36"))
+	db := bun.NewDB(sqldb, mysqldialect.New())
 
 	channelID := 77
 	fileName := "antigravity-testuser.json"
 	managedName := codexruntime.ManagedAuthFileName(channelID, fileName)
 	authIndex := runtimeauth.EnsureAuthIndex(managedName, "", "")
-
-	if authIndex == "" {
-		t.Fatal("authIndex should not be empty")
+	managedPath := filepath.Join(codexruntime.ManagedAuthDir(), managedName)
+	if err := os.MkdirAll(filepath.Dir(managedPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	authIndex2 := runtimeauth.EnsureAuthIndex(managedName, "", "")
-	if authIndex != authIndex2 {
-		t.Fatalf("authIndex mismatch: %q != %q", authIndex, authIndex2)
+	if err := os.WriteFile(managedPath, []byte(`{"type":"antigravity","access_token":"ag-token","project_id":"project-1"}`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT `codex_auth_file`.`id`, `codex_auth_file`.`channel_id`, `codex_auth_file`.`name`, `codex_auth_file`.`provider`, `codex_auth_file`.`email`, `codex_auth_file`.`disabled`, `codex_auth_file`.`content`, `codex_auth_file`.`created_at`, `codex_auth_file`.`updated_at` FROM `codex_auth_files` AS `codex_auth_file` WHERE (channel_id = ") + "[0-9]+" + regexp.QuoteMeta(") ORDER BY name ASC")).WillReturnRows(
+		sqlmock.NewRows([]string{"id", "channel_id", "name", "provider", "email", "disabled", "content", "created_at", "updated_at"}).
+			AddRow(1, channelID, fileName, "antigravity", "ag@example.com", false, `{"type":"antigravity","access_token":"stale-token","project_id":"project-1"}`, "2026-03-06 00:00:00", "2026-03-06 00:00:00"),
+	)
+
+	relay := NewAntigravityRelay(db)
+	token, projectID, err := relay.ResolveAccessToken(context.Background(), channelID, authIndex)
+	if err != nil {
+		t.Fatalf("ResolveAccessToken() error = %v", err)
+	}
+	if token != "ag-token" {
+		t.Fatalf("token = %q, want ag-token", token)
+	}
+	if projectID != "project-1" {
+		t.Fatalf("projectID = %q, want project-1", projectID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
 	}
 }
 
@@ -105,6 +137,34 @@ func TestTransformClaudeToGemini_DefaultProjectID(t *testing.T) {
 	envelope := transformClaudeToGemini(body, "gemini-3-flash", "")
 	if envelope.Project == "" {
 		t.Error("project should not be empty when projectID is empty (should generate random)")
+	}
+}
+
+func TestTransformClaudeToGemini_ClientFacingClaudeAliasResolvesToThinkingModel(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	}
+
+	envelope := transformClaudeToGemini(body, "claude-opus-4-6", "project-123")
+
+	if envelope.Model != "claude-opus-4-6-thinking" {
+		t.Errorf("model = %v, want claude-opus-4-6-thinking", envelope.Model)
+	}
+}
+
+func TestTransformClaudeToGemini_UpstreamThinkingModelRemainsStable(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	}
+
+	envelope := transformClaudeToGemini(body, "claude-opus-4-6-thinking", "project-123")
+
+	if envelope.Model != "claude-opus-4-6-thinking" {
+		t.Errorf("model = %v, want claude-opus-4-6-thinking", envelope.Model)
 	}
 }
 
