@@ -146,8 +146,32 @@ func (cfg *Config) ToSDKConfig() (*sdkconfig.Config, error) {
 	if err := yaml.Unmarshal(data, &out); err != nil {
 		return nil, fmt.Errorf("unmarshal runtime config for builder: %w", err)
 	}
+	out.OAuthModelAlias = cloneOAuthModelAliasToSDK(cfg.OAuthModelAlias)
 
 	return &out, nil
+}
+
+func cloneOAuthModelAliasToSDK(entries map[string][]OAuthModelAlias) map[string][]sdkconfig.OAuthModelAlias {
+	if entries == nil {
+		return nil
+	}
+	out := make(map[string][]sdkconfig.OAuthModelAlias, len(entries))
+	for channel, aliases := range entries {
+		if aliases == nil {
+			out[channel] = nil
+			continue
+		}
+		converted := make([]sdkconfig.OAuthModelAlias, len(aliases))
+		for i, alias := range aliases {
+			converted[i] = sdkconfig.OAuthModelAlias{
+				Name:  alias.Name,
+				Alias: alias.Alias,
+				Fork:  alias.Fork,
+			}
+		}
+		out[channel] = converted
+	}
+	return out
 }
 
 // ClaudeHeaderDefaults configures default header values injected into Claude API requests

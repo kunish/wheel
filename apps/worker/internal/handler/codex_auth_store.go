@@ -79,6 +79,34 @@ func (h *Handler) listLocalAuthFiles(authDir string) ([]codexAuthFile, error) {
 	return out, nil
 }
 
+func runtimeAuthFileProvider(storedProvider string, raw map[string]any) string {
+	if len(raw) > 0 {
+		if rawProvider := canonicalRuntimeProvider(stringFromMap(raw, "provider", "type")); rawProvider != "" {
+			return rawProvider
+		}
+	}
+	provider := canonicalRuntimeProvider(storedProvider)
+	if provider != "" {
+		return provider
+	}
+	return ""
+}
+
+func runtimePersistedAuthProvider(provider string) string {
+	switch canonicalRuntimeProvider(provider) {
+	case "copilot":
+		return "github-copilot"
+	case "codex-cli":
+		return "openai-codex-cli"
+	case "antigravity":
+		return "antigravity"
+	case "codex":
+		return "codex"
+	default:
+		return ""
+	}
+}
+
 func (h *Handler) uploadLocalAuthFile(authDir string, filename string, content []byte) error {
 	if strings.TrimSpace(filename) == "" {
 		return fmt.Errorf("filename is required")
@@ -163,15 +191,9 @@ func (h *Handler) listManagedCodexAuthFiles(ctx context.Context, channelID int) 
 	for _, item := range items {
 		raw := map[string]any{}
 		if err := json.Unmarshal([]byte(item.Content), &raw); err != nil {
-			continue
+			raw = map[string]any{}
 		}
-		provider := canonicalRuntimeProvider(item.Provider)
-		if provider == "" {
-			provider = canonicalRuntimeProvider(stringFromMap(raw, "type", "provider"))
-		}
-		if provider == "" {
-			provider = "codex"
-		}
+		provider := runtimeAuthFileProvider(item.Provider, raw)
 		out = append(out, codexAuthFile{
 			ID:         item.ID,
 			ChannelID:  item.ChannelID,
@@ -193,10 +215,12 @@ func parseCodexAuthContent(content []byte) (provider string, email string, disab
 	if err = json.Unmarshal(content, &raw); err != nil {
 		return "", "", false, "", nil, fmt.Errorf("invalid auth file json")
 	}
-	provider = canonicalRuntimeProvider(stringFromMap(raw, "type", "provider"))
+	provider = runtimeAuthFileProvider("", raw)
 	if provider == "" {
-		provider = "codex" // default; overridden for copilot channels at upload time
-		raw["type"] = provider
+		return "", "", false, "", nil, fmt.Errorf("missing provider metadata")
+	}
+	if !isSupportedRuntimeProvider(provider) {
+		return "", "", false, "", nil, fmt.Errorf("unsupported provider metadata")
 	}
 	email = strings.TrimSpace(stringFromMap(raw, "email"))
 	disabled = boolFromMap(raw, "disabled")
@@ -240,6 +264,9 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 	if err != nil {
 		return err
 	}
+	sawWrongProvider := false
+	sawAmbiguousProvider := false
+	importedAny := false
 	for _, file := range files {
 		if _, exists := snapshot[file.Name]; exists {
 			continue
@@ -247,7 +274,12 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 		if strings.HasPrefix(file.Name, "channel-") {
 			continue
 		}
+		if canonicalRuntimeProvider(file.Provider) == "" {
+			sawAmbiguousProvider = true
+			continue
+		}
 		if importScope != "" && canonicalRuntimeProvider(file.Provider) != importScope {
+			sawWrongProvider = true
 			continue
 		}
 		content, err := os.ReadFile(file.Path)
@@ -279,6 +311,10 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 		if err := os.Remove(file.Path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
+		importedAny = true
+	}
+	if !importedAny && (sawWrongProvider || sawAmbiguousProvider) {
+		return fmt.Errorf("no importable auth file in import scope")
 	}
 	h.bestEffortSyncCodexChannelModels(ctx, channelID)
 	h.bestEffortSyncCodexChannelKeys(ctx, channelID)
@@ -287,13 +323,18 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 
 // ── Per-item operation helpers for batch endpoints ───────────────
 
-func (h *Handler) uploadCodexLocalAuthFile(ctx context.Context, channelID int, file codexUploadFile) codexAuthUploadResult {
+func (h *Handler) uploadCodexLocalAuthFile(ctx context.Context, channelID int, channelType types.OutboundType, file codexUploadFile) codexAuthUploadResult {
 	result := codexAuthUploadResult{Name: file.Name}
 	content := file.Content
 	provider, email, disabled, normalized, _, err := parseCodexAuthContent(content)
 	if err != nil {
 		result.Status = "error"
 		result.Error = err.Error()
+		return result
+	}
+	if !runtimeProviderMatches(channelType, provider) {
+		result.Status = "error"
+		result.Error = "provider does not belong to this runtime channel"
 		return result
 	}
 	item := &types.CodexAuthFile{
@@ -313,9 +354,20 @@ func (h *Handler) uploadCodexLocalAuthFile(ctx context.Context, channelID int, f
 	return result
 }
 
-func (h *Handler) uploadCodexManagedAuthFile(ctx context.Context, file codexUploadFile) codexAuthUploadResult {
+func (h *Handler) uploadCodexManagedAuthFile(ctx context.Context, channelType types.OutboundType, file codexUploadFile) codexAuthUploadResult {
 	result := codexAuthUploadResult{Name: file.Name}
 	content := file.Content
+	provider, _, _, _, _, err := parseCodexAuthContent(content)
+	if err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	if !runtimeProviderMatches(channelType, provider) {
+		result.Status = "error"
+		result.Error = "provider does not belong to this runtime channel"
+		return result
+	}
 	var out map[string]any
 	if err := h.codexManagementUploadFile(ctx, file.Name, content, &out); err != nil {
 		result.Status = "error"
@@ -346,9 +398,25 @@ func (h *Handler) patchCodexLocalAuthFileStatus(ctx context.Context, file codexA
 	result := codexAuthUploadResult{Name: file.Name}
 	_, _, _, _, raw, err := parseCodexAuthContent([]byte(file.RawContent))
 	if err != nil {
-		result.Status = "error"
-		result.Error = err.Error()
-		return result
+		if strings.Contains(err.Error(), "missing provider metadata") && file.Provider != "" {
+			raw = map[string]any{}
+			if decodeErr := json.Unmarshal([]byte(file.RawContent), &raw); decodeErr != nil {
+				result.Status = "error"
+				result.Error = decodeErr.Error()
+				return result
+			}
+			persisted := runtimePersistedAuthProvider(file.Provider)
+			if persisted == "" {
+				result.Status = "error"
+				result.Error = err.Error()
+				return result
+			}
+			raw["type"] = persisted
+		} else {
+			result.Status = "error"
+			result.Error = err.Error()
+			return result
+		}
 	}
 	raw["disabled"] = disabled
 	encoded, err := json.Marshal(raw)
@@ -392,7 +460,11 @@ func (h *Handler) deleteCodexLocalAuthFile(ctx context.Context, channelID int, f
 		result.Error = err.Error()
 		return result
 	}
-	_ = codexruntime.RemoveOneAuthFile(&types.CodexAuthFile{ID: file.ID, ChannelID: file.ChannelID, Name: file.Name, Provider: file.Provider, Email: file.Email, Disabled: file.Disabled, Content: file.RawContent})
+	if err := codexruntime.RemoveOneAuthFile(&types.CodexAuthFile{ID: file.ID, ChannelID: file.ChannelID, Name: file.Name, Provider: file.Provider, Email: file.Email, Disabled: file.Disabled, Content: file.RawContent}); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
 	result.Status = "ok"
 	return result
 }
@@ -413,7 +485,7 @@ func (h *Handler) deleteCodexManagedAuthFile(c *gin.Context, name string) codexA
 // batchUploadCodexLocalAuthFiles parses all files, then batch-upserts
 // valid items into the database in a single operation instead of
 // issuing one INSERT per file.
-func (h *Handler) batchUploadCodexLocalAuthFiles(ctx context.Context, channelID int, files []codexUploadFile) codexAuthUploadResponse {
+func (h *Handler) batchUploadCodexLocalAuthFiles(ctx context.Context, channelID int, channelType types.OutboundType, files []codexUploadFile) codexAuthUploadResponse {
 	response := codexAuthUploadResponse{
 		Total:   len(files),
 		Results: make([]codexAuthUploadResult, 0, len(files)),
@@ -428,6 +500,13 @@ func (h *Handler) batchUploadCodexLocalAuthFiles(ctx context.Context, channelID 
 		if err != nil {
 			result.Status = "error"
 			result.Error = err.Error()
+			response.Results = append(response.Results, result)
+			response.FailedCount++
+			continue
+		}
+		if !runtimeProviderMatches(channelType, provider) {
+			result.Status = "error"
+			result.Error = "provider does not belong to this runtime channel"
 			response.Results = append(response.Results, result)
 			response.FailedCount++
 			continue
@@ -465,7 +544,7 @@ func (h *Handler) batchUploadCodexLocalAuthFiles(ctx context.Context, channelID 
 
 // concurrentUploadCodexManagedAuthFiles uploads files to the codex
 // runtime management API using a bounded worker pool for concurrency.
-func (h *Handler) concurrentUploadCodexManagedAuthFiles(ctx context.Context, files []codexUploadFile) codexAuthUploadResponse {
+func (h *Handler) concurrentUploadCodexManagedAuthFiles(ctx context.Context, channelType types.OutboundType, files []codexUploadFile) codexAuthUploadResponse {
 	const maxWorkers = 10
 	response := codexAuthUploadResponse{
 		Total:   len(files),
@@ -480,7 +559,7 @@ func (h *Handler) concurrentUploadCodexManagedAuthFiles(ctx context.Context, fil
 		go func(idx int, f codexUploadFile) {
 			defer wg.Done()
 			defer func() { <-sem }() // release
-			response.Results[idx] = h.uploadCodexManagedAuthFile(ctx, f)
+			response.Results[idx] = h.uploadCodexManagedAuthFile(ctx, channelType, f)
 		}(i, file)
 	}
 	wg.Wait()

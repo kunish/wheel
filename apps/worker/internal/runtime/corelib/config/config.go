@@ -781,31 +781,8 @@ func (cfg *Config) SanitizeOAuthModelAlias() {
 		return
 	}
 
-	// Inject channel defaults when the channel is absent in user config.
-	// Presence is checked case-insensitively and includes explicit nil/empty markers.
 	if cfg.OAuthModelAlias == nil {
 		cfg.OAuthModelAlias = make(map[string][]OAuthModelAlias)
-	}
-	hasChannel := func(channel string) bool {
-		for k := range cfg.OAuthModelAlias {
-			if strings.EqualFold(strings.TrimSpace(k), channel) {
-				return true
-			}
-		}
-		return false
-	}
-	if !hasChannel("kiro") {
-		cfg.OAuthModelAlias["kiro"] = defaultKiroAliases()
-	}
-	if !hasChannel("github-copilot") {
-		cfg.OAuthModelAlias["github-copilot"] = defaultGitHubCopilotAliases()
-	}
-	if !hasChannel("antigravity") {
-		cfg.OAuthModelAlias["antigravity"] = defaultAntigravityAliases()
-	}
-
-	if len(cfg.OAuthModelAlias) == 0 {
-		return
 	}
 	out := make(map[string][]OAuthModelAlias, len(cfg.OAuthModelAlias))
 	for rawChannel, aliases := range cfg.OAuthModelAlias {
@@ -840,6 +817,15 @@ func (cfg *Config) SanitizeOAuthModelAlias() {
 		if len(clean) > 0 {
 			out[channel] = clean
 		}
+	}
+	if _, ok := out["kiro"]; !ok {
+		out["kiro"] = defaultKiroAliases()
+	}
+	if _, ok := out["github-copilot"]; !ok {
+		out["github-copilot"] = defaultGitHubCopilotAliases()
+	}
+	if _, ok := out["antigravity"]; !ok {
+		out["antigravity"] = defaultAntigravityAliases()
 	}
 	cfg.OAuthModelAlias = out
 }

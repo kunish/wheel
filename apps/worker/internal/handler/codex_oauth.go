@@ -2,10 +2,12 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,27 +19,59 @@ import (
 // managementAuthEndpoint returns the management API path for initiating OAuth
 // based on the runtime channel type.
 func managementAuthEndpoint(t types.OutboundType) string {
-	switch t {
-	case types.OutboundCopilot:
-		return "/github-auth-url"
-	case types.OutboundAntigravity:
-		return "/antigravity-auth-url"
-	default:
-		return "/codex-auth-url"
+	contract, ok := runtimeOAuthChannelContract(t)
+	if !ok {
+		return ""
 	}
+	return contract.managementAuthEndpoint
+}
+
+func codexOAuthStartError(c *gin.Context, status int, code string) {
+	c.JSON(status, gin.H{
+		"success": false,
+		"data": gin.H{
+			"status": "error",
+			"phase":  "failed",
+			"code":   code,
+			"error":  code,
+		},
+	})
+}
+
+func (h *Handler) validateCodexOAuthStartChannel(c *gin.Context) (*types.Channel, error) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, "invalid channel ID")
+		return nil, err
+	}
+	channel, err := dal.GetChannel(c.Request.Context(), h.DB, id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err.Error())
+		return nil, err
+	}
+	if channel == nil {
+		errorJSON(c, http.StatusNotFound, "channel not found")
+		return nil, errors.New("channel not found")
+	}
+	if !isRuntimeChannel(channel.Type) {
+		codexOAuthStartError(c, http.StatusBadRequest, "unsupported_runtime_channel")
+		return nil, errors.New("unsupported runtime channel")
+	}
+	return channel, nil
 }
 
 // StartCodexOAuth initiates an OAuth flow via the runtime management API.
 // It selects the correct management endpoint based on the channel type and returns {url, state}.
 // For device-flow providers (e.g. Copilot), user_code is forwarded to the caller.
 func (h *Handler) StartCodexOAuth(c *gin.Context) {
-	channel, err := h.validateCodexChannel(c)
+	channel, err := h.validateCodexOAuthStartChannel(c)
 	if err != nil {
 		return
 	}
 
 	if err := h.ensureCodexManagementConfigured(); err != nil {
-		errorJSON(c, http.StatusBadRequest, err.Error())
+		codexOAuthStartError(c, http.StatusBadRequest, "runtime_not_configured")
 		return
 	}
 
@@ -56,14 +90,14 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 	codexOAuthStartMu.Lock()
 	defer codexOAuthStartMu.Unlock()
 	if !req.ForceRestart {
-		if session, ok := findActiveOAuthSession(channel.ID, provider); ok {
+		if session, ok := findActiveOAuthSessionForImportScope(channel.ID, provider, importProvider); ok {
 			successJSON(c, serializeCodexOAuthSession(session))
 			return
 		}
 	}
 	if active, ok := findConflictingActiveOAuthSessionForImportScope(channel.ID, provider, importProvider); ok {
 		_ = active
-		errorJSON(c, http.StatusConflict, "another runtime OAuth session is already active on this worker; wait for it to finish or expire before starting a new one")
+		codexOAuthStartError(c, http.StatusConflict, "runtime_session_conflict")
 		return
 	}
 
@@ -93,21 +127,33 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 	}
 	authPath := managementAuthEndpoint(channel.Type)
 	if err := h.codexManagementCall(c, http.MethodGet, authPath, query, nil, &resp); err != nil {
-		errorJSON(c, http.StatusBadGateway, err.Error())
+		codexOAuthStartError(c, http.StatusBadGateway, "provider_unavailable")
 		return
 	}
 	if strings.TrimSpace(resp.State) == "" {
-		errorJSON(c, http.StatusBadGateway, "codex management error: missing oauth state")
+		codexOAuthStartError(c, http.StatusBadGateway, "provider_unavailable")
+		return
+	}
+	if strings.TrimSpace(resp.URL) == "" {
+		codexOAuthStartError(c, http.StatusBadGateway, "provider_unavailable")
 		return
 	}
 
+	contract, _ := runtimeOAuthChannelContract(channel.Type)
 	flowType := "redirect"
-	supportsManual := true
+	supportsManual := contract.supportsManualCallbackImport
 	lastPhase := "awaiting_callback"
-	if strings.TrimSpace(resp.UserCode) != "" || strings.TrimSpace(resp.VerificationURI) != "" {
+	userCode := ""
+	verificationURI := ""
+	if !supportsManual {
+		if strings.TrimSpace(resp.UserCode) == "" || strings.TrimSpace(resp.VerificationURI) == "" {
+			codexOAuthStartError(c, http.StatusBadGateway, "provider_unavailable")
+			return
+		}
 		flowType = "device_code"
-		supportsManual = false
 		lastPhase = "awaiting_browser"
+		userCode = resp.UserCode
+		verificationURI = resp.VerificationURI
 	}
 
 	session := codexOAuthSession{
@@ -116,8 +162,8 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 		ImportProvider:  importProvider,
 		FlowType:        flowType,
 		URL:             resp.URL,
-		UserCode:        resp.UserCode,
-		VerificationURI: resp.VerificationURI,
+		UserCode:        userCode,
+		VerificationURI: verificationURI,
 		SupportsManual:  supportsManual,
 		State:           resp.State,
 		ExpiresAt:       time.Now().Add(codexOAuthSessionTTL).UTC().Truncate(time.Second),
@@ -125,7 +171,7 @@ func (h *Handler) StartCodexOAuth(c *gin.Context) {
 		LastPhase:       lastPhase,
 		Existing:        snapshot,
 	}
-	supersedeOAuthSessions(channel.ID, provider, resp.State)
+	supersedeOAuthSessions(channel.ID, provider, importProvider, resp.State)
 	storeOAuthSession(resp.State, session)
 	successJSON(c, serializeCodexOAuthSession(session))
 }
@@ -149,9 +195,17 @@ func (h *Handler) GetCodexOAuthStatus(c *gin.Context) {
 		return
 	}
 
-	session, ok := loadOAuthSession(state)
-	if !ok || session.ChannelID != channel.ID {
+	session, sessionState := loadOAuthSessionState(state)
+	if sessionState == "missing" || session.ChannelID != channel.ID {
 		successJSON(c, serializeCodexOAuthTransport(codexOAuthMissingSession(channel.Type)))
+		return
+	}
+	if session.Provider != oauthProviderForChannelType(channel.Type) || codexOAuthImportScope(session) != runtimeProviderFilter(channel.Type) {
+		successJSON(c, serializeCodexOAuthTransport(codexOAuthMissingSession(channel.Type)))
+		return
+	}
+	if sessionState == "expired" {
+		successJSON(c, serializeCodexOAuthTransport(session))
 		return
 	}
 	if codexOAuthPhaseTerminal(session.LastPhase) {
@@ -168,33 +222,50 @@ func (h *Handler) GetCodexOAuthStatus(c *gin.Context) {
 		errorJSON(c, http.StatusBadGateway, err.Error())
 		return
 	}
-	originalPhase := session.LastPhase
-	updated := codexOAuthApplyRuntimeStatus(session, resp.Status, resp.Error)
-	if resp.Status == "ok" {
-		if !codexOAuthCanCompleteFromRuntimeOK(session) {
-			updated = codexOAuthMissingSessionForStoredSession(session)
-		} else {
-			updated.LastStatus = "waiting"
-			updated.LastPhase = "importing_auth_file"
-			updated.LastCode = ""
-			updated.LastError = ""
-			if err := h.importOAuthAuthFilesToDB(c.Request.Context(), session.ChannelID, session.Existing, codexOAuthImportScope(session)); err != nil {
-				updated.LastStatus = "error"
-				updated.LastPhase = "failed"
-				updated.LastCode = "auth_import_failed"
-				updated.LastError = err.Error()
-				storeOAuthSession(state, updated)
-				logCodexOAuthPhaseTransition(updated, originalPhase)
-				successJSON(c, serializeCodexOAuthTransport(updated))
-				return
-			}
-			updated.LastStatus = "ok"
-			updated.LastPhase = "completed"
+	var payload gin.H
+	withCodexOAuthStateLock(state, func() {
+		session, sessionState := loadOAuthSessionState(state)
+		if sessionState == "missing" || session.ChannelID != channel.ID {
+			payload = serializeCodexOAuthTransport(codexOAuthMissingSession(channel.Type))
+			return
 		}
-	}
-	storeOAuthSession(state, updated)
-	logCodexOAuthPhaseTransition(updated, originalPhase)
-	successJSON(c, serializeCodexOAuthTransport(updated))
+		if session.Provider != oauthProviderForChannelType(channel.Type) || codexOAuthImportScope(session) != runtimeProviderFilter(channel.Type) {
+			payload = serializeCodexOAuthTransport(codexOAuthMissingSession(channel.Type))
+			return
+		}
+		if sessionState == "expired" || codexOAuthPhaseTerminal(session.LastPhase) {
+			payload = serializeCodexOAuthTransport(session)
+			return
+		}
+		originalPhase := session.LastPhase
+		updated := codexOAuthApplyRuntimeStatus(session, resp.Status, resp.Error)
+		if resp.Status == "ok" {
+			if !codexOAuthCanCompleteFromRuntimeOK(session) {
+				updated = codexOAuthMissingSessionForStoredSession(session)
+			} else {
+				updated.LastStatus = "waiting"
+				updated.LastPhase = "importing_auth_file"
+				updated.LastCode = ""
+				updated.LastError = ""
+				if err := h.importOAuthAuthFilesToDB(c.Request.Context(), session.ChannelID, session.Existing, codexOAuthImportScope(session)); err != nil {
+					updated.LastStatus = "error"
+					updated.LastPhase = "failed"
+					updated.LastCode = "auth_import_failed"
+					updated.LastError = err.Error()
+					storeOAuthSession(state, updated)
+					logCodexOAuthPhaseTransition(updated, originalPhase)
+					payload = serializeCodexOAuthTransport(updated)
+					return
+				}
+				updated.LastStatus = "ok"
+				updated.LastPhase = "completed"
+			}
+		}
+		storeOAuthSession(state, updated)
+		logCodexOAuthPhaseTransition(updated, originalPhase)
+		payload = serializeCodexOAuthTransport(updated)
+	})
+	successJSON(c, payload)
 }
 
 // SubmitCodexOAuthCallback accepts a manually pasted OAuth callback URL and forwards
@@ -232,6 +303,16 @@ func (h *Handler) SubmitCodexOAuthCallback(c *gin.Context) {
 		successJSON(c, serializeCodexOAuthCallbackValidationError(codexOAuthSession{}, "invalid_callback_url"))
 		return
 	}
+	scheme := strings.ToLower(strings.TrimSpace(parsedCallback.Scheme))
+	if scheme != "http" && scheme != "https" {
+		successJSON(c, serializeCodexOAuthCallbackValidationError(codexOAuthSession{}, "invalid_callback_url"))
+		return
+	}
+	host := strings.ToLower(strings.TrimSpace(parsedCallback.Hostname()))
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		successJSON(c, serializeCodexOAuthCallbackValidationError(codexOAuthSession{}, "invalid_callback_url"))
+		return
+	}
 	callbackState := strings.TrimSpace(parsedCallback.Query().Get("state"))
 	if callbackState == "" {
 		successJSON(c, serializeCodexOAuthCallbackValidationError(codexOAuthSession{}, "missing_state"))
@@ -243,85 +324,115 @@ func (h *Handler) SubmitCodexOAuthCallback(c *gin.Context) {
 		successJSON(c, serializeCodexOAuthCallbackValidationError(codexOAuthSession{}, "missing_code"))
 		return
 	}
-	activeSession, hasActive := findActiveOAuthSession(channel.ID, provider)
-	if hasActive && activeSession.State != callbackState {
-		successJSON(c, serializeCodexOAuthCallbackValidationError(activeSession, "state_mismatch"))
-		return
-	}
-	session, ok := loadOAuthSession(callbackState)
-	if !ok || session.ChannelID != channel.ID {
-		successJSON(c, serializeCodexOAuthCallbackError(codexOAuthMissingSession(channel.Type), false))
-		return
-	}
-	if session.Provider != provider {
-		successJSON(c, serializeCodexOAuthCallbackValidationError(session, "provider_mismatch"))
-		return
-	}
-	if session.State != callbackState {
-		successJSON(c, serializeCodexOAuthCallbackValidationError(session, "state_mismatch"))
-		return
-	}
-	if session.LastPhase == "callback_received" || session.LastPhase == "importing_auth_file" {
-		successJSON(c, serializeCodexOAuthCallbackDuplicate(session, true))
-		return
-	}
-	if session.LastPhase == "completed" {
-		successJSON(c, serializeCodexOAuthCallbackDuplicate(session, false))
-		return
-	}
-	if session.LastPhase == "failed" || session.LastPhase == "expired" {
-		successJSON(c, serializeCodexOAuthCallbackError(session, false))
-		return
-	}
-
-	// Forward to runtime management POST /oauth-callback which already
-	// supports parsing code/state from a redirect_url field.
-	body := map[string]string{
-		"provider":     provider,
-		"redirect_url": callbackURL,
-	}
-	var resp struct {
-		Status string `json:"status"`
-		Error  string `json:"error,omitempty"`
-	}
-	if err := h.codexManagementCall(c, http.MethodPost, "/oauth-callback", nil, body, &resp); err != nil {
-		errorJSON(c, http.StatusBadGateway, err.Error())
-		return
-	}
-	runtimeStatus := strings.ToLower(strings.TrimSpace(resp.Status))
-	runtimeError := strings.TrimSpace(resp.Error)
-	if runtimeStatus != "" && runtimeStatus != "ok" && runtimeStatus != "waiting" {
-		if updated, ok := codexOAuthTerminalCallbackResult(session, runtimeStatus, runtimeError); ok {
-			storeOAuthSession(callbackState, updated)
-			logCodexOAuthPhaseTransition(updated, session.LastPhase)
-			successJSON(c, serializeCodexOAuthCallbackError(updated, false))
+	var payload gin.H
+	var transportErr error
+	withCodexOAuthStateLock(callbackState, func() {
+		activeSession, hasActive := findActiveOAuthSession(channel.ID, provider)
+		if hasActive && activeSession.State != callbackState {
+			payload = serializeCodexOAuthCallbackValidationError(activeSession, "state_mismatch")
 			return
 		}
-		successJSON(c, serializeCodexOAuthCallbackRuntimeRejection(session, runtimeError))
+		session, ok := loadOAuthSession(callbackState)
+		if !ok || session.ChannelID != channel.ID {
+			payload = serializeCodexOAuthCallbackError(codexOAuthMissingSession(channel.Type), false)
+			return
+		}
+		if session.Provider != provider {
+			payload = serializeCodexOAuthCallbackValidationError(session, "provider_mismatch")
+			return
+		}
+		if codexOAuthImportScope(session) != runtimeProviderFilter(channel.Type) {
+			payload = serializeCodexOAuthCallbackValidationError(session, "provider_mismatch")
+			return
+		}
+		if !session.SupportsManual {
+			payload = serializeCodexOAuthCallbackValidationError(session, "manual_callback_not_supported")
+			return
+		}
+		if callbackError != "" {
+			updated := session
+			updated.LastStatus = "error"
+			updated.LastPhase = "failed"
+			updated.LastCode = codexOAuthCodeForRuntimeError(callbackError)
+			if updated.LastCode == "" {
+				updated.LastCode = "provider_error"
+			}
+			updated.LastError = humanizeCodexOAuthError(callbackError, "OAuth authorization failed")
+			storeOAuthSession(callbackState, updated)
+			payload = serializeCodexOAuthCallbackError(updated, false)
+			return
+		}
+		if session.State != callbackState {
+			payload = serializeCodexOAuthCallbackValidationError(session, "state_mismatch")
+			return
+		}
+		if session.LastPhase == "callback_received" || session.LastPhase == "importing_auth_file" {
+			payload = serializeCodexOAuthCallbackDuplicate(session, true)
+			return
+		}
+		if session.LastPhase == "completed" {
+			payload = serializeCodexOAuthCallbackDuplicate(session, false)
+			return
+		}
+		if session.LastPhase == "failed" || session.LastPhase == "expired" {
+			payload = serializeCodexOAuthCallbackError(session, false)
+			return
+		}
+
+		body := map[string]string{
+			"provider":     provider,
+			"redirect_url": callbackURL,
+		}
+		originalPhase := session.LastPhase
+		preflight := session
+		preflight.LastStatus = "waiting"
+		preflight.LastPhase = "callback_received"
+		preflight.LastCode = ""
+		preflight.LastError = ""
+		storeOAuthSession(callbackState, preflight)
+
+		var resp struct {
+			Status string `json:"status"`
+			Error  string `json:"error,omitempty"`
+		}
+		if err := h.codexManagementCall(c, http.MethodPost, "/oauth-callback", nil, body, &resp); err != nil {
+			storeOAuthSession(callbackState, session)
+			transportErr = err
+			return
+		}
+		runtimeStatus := strings.ToLower(strings.TrimSpace(resp.Status))
+		runtimeError := strings.TrimSpace(resp.Error)
+		if runtimeStatus != "" && runtimeStatus != "ok" && runtimeStatus != "waiting" {
+			if updated, ok := codexOAuthTerminalCallbackResult(session, runtimeStatus, runtimeError); ok {
+				storeOAuthSession(callbackState, updated)
+				logCodexOAuthPhaseTransition(updated, originalPhase)
+				payload = serializeCodexOAuthCallbackError(updated, false)
+				return
+			}
+			storeOAuthSession(callbackState, session)
+			payload = serializeCodexOAuthCallbackRuntimeRejection(session, runtimeError)
+			return
+		}
+		updated := preflight
+		storeOAuthSession(callbackState, updated)
+		logCodexOAuthPhaseTransition(updated, originalPhase)
+		payload = serializeCodexOAuthCallbackAccepted(updated)
+	})
+	if transportErr != nil {
+		errorJSON(c, http.StatusBadGateway, transportErr.Error())
 		return
 	}
-	originalPhase := session.LastPhase
-	updated := session
-	updated.LastStatus = "waiting"
-	updated.LastPhase = "callback_received"
-	updated.LastCode = ""
-	updated.LastError = ""
-	storeOAuthSession(callbackState, updated)
-	logCodexOAuthPhaseTransition(updated, originalPhase)
-	successJSON(c, serializeCodexOAuthCallbackAccepted(updated))
+	successJSON(c, payload)
 }
 
 // oauthProviderForChannelType maps a channel type to its OAuth provider name
 // used by the runtime management layer.
 func oauthProviderForChannelType(t types.OutboundType) string {
-	switch t {
-	case types.OutboundCopilot:
-		return "github"
-	case types.OutboundAntigravity:
-		return "antigravity"
-	default:
-		return "codex"
+	contract, ok := runtimeOAuthChannelContract(t)
+	if !ok {
+		return ""
 	}
+	return contract.oauthProvider
 }
 
 func serializeCodexOAuthSession(session codexOAuthSession) gin.H {
@@ -395,9 +506,13 @@ func serializeCodexOAuthCallbackError(session codexOAuthSession, shouldContinueP
 }
 
 func serializeCodexOAuthCallbackValidationError(session codexOAuthSession, code string) gin.H {
+	phase := "awaiting_callback"
+	if code == "manual_callback_not_supported" && session.LastPhase != "" {
+		phase = session.LastPhase
+	}
 	return gin.H{
 		"status":                "error",
-		"phase":                 codexOAuthCallbackPhase(session),
+		"phase":                 phase,
 		"code":                  code,
 		"error":                 codexOAuthCallbackErrorMessage(code),
 		"shouldContinuePolling": false,
@@ -405,9 +520,13 @@ func serializeCodexOAuthCallbackValidationError(session codexOAuthSession, code 
 }
 
 func serializeCodexOAuthCallbackRuntimeRejection(session codexOAuthSession, message string) gin.H {
+	phase := "awaiting_callback"
+	if session.LastPhase != "" && !codexOAuthPhaseTerminal(session.LastPhase) {
+		phase = session.LastPhase
+	}
 	return gin.H{
 		"status":                "error",
-		"phase":                 codexOAuthCallbackPhase(session),
+		"phase":                 phase,
 		"code":                  "runtime_callback_rejected",
 		"error":                 humanizeCodexOAuthError(message, "Runtime worker rejected the callback URL."),
 		"shouldContinuePolling": false,
@@ -415,9 +534,13 @@ func serializeCodexOAuthCallbackRuntimeRejection(session codexOAuthSession, mess
 }
 
 func codexOAuthMissingSession(t types.OutboundType) codexOAuthSession {
+	supportsManual := true
+	if contract, ok := runtimeOAuthChannelContract(t); ok {
+		supportsManual = contract.supportsManualCallbackImport
+	}
 	return codexOAuthSession{
 		FlowType:       "redirect",
-		SupportsManual: t != types.OutboundCopilot,
+		SupportsManual: supportsManual,
 		ExpiresAt:      time.Now().UTC().Truncate(time.Second),
 		LastStatus:     "expired",
 		LastPhase:      "expired",
@@ -448,7 +571,7 @@ func codexOAuthApplyRuntimeStatus(session codexOAuthSession, runtimeStatus strin
 	case "expired":
 		next.LastStatus = "expired"
 		next.LastPhase = "expired"
-		next.LastCode = "device_code_expired"
+		next.LastCode = "session_expired"
 		next.LastError = humanizeCodexOAuthError(runtimeError, "OAuth session expired")
 	case "error":
 		next.LastStatus = "error"
@@ -480,13 +603,6 @@ func codexOAuthCanCompleteFromRuntimeOK(session codexOAuthSession) bool {
 	}
 }
 
-func codexOAuthCallbackPhase(session codexOAuthSession) string {
-	if session.LastPhase == "" || codexOAuthPhaseTerminal(session.LastPhase) {
-		return "awaiting_callback"
-	}
-	return session.LastPhase
-}
-
 func codexOAuthCallbackErrorMessage(code string) string {
 	switch code {
 	case "invalid_callback_url":
@@ -499,6 +615,8 @@ func codexOAuthCallbackErrorMessage(code string) string {
 		return "This callback belongs to a different login attempt. Restart OAuth and try again."
 	case "provider_mismatch":
 		return "This callback belongs to a different provider. Restart OAuth and try again."
+	case "manual_callback_not_supported":
+		return "This login flow does not use manual callback import. Continue the device-code flow in the browser."
 	default:
 		return "OAuth callback validation failed."
 	}
@@ -534,6 +652,8 @@ func codexOAuthCodeForRuntimeError(message string) string {
 	switch {
 	case strings.Contains(msg, "access_denied") || strings.Contains(msg, "access denied"):
 		return "access_denied"
+	case strings.Contains(msg, "invalid_grant") || strings.Contains(msg, "rejected") || strings.Contains(msg, "invalid device code"):
+		return "device_code_rejected"
 	case strings.Contains(msg, "expired"):
 		return "device_code_expired"
 	default:
@@ -550,12 +670,7 @@ func humanizeCodexOAuthError(message string, fallback string) string {
 }
 
 func codexOAuthCanRetry(session codexOAuthSession) bool {
-	switch session.LastCode {
-	case "session_missing", "session_superseded", "device_code_expired", "access_denied":
-		return true
-	default:
-		return session.LastStatus == "waiting"
-	}
+	return session.LastStatus == "error" || session.LastStatus == "expired"
 }
 
 func logCodexOAuthPhaseTransition(session codexOAuthSession, previousPhase string) {

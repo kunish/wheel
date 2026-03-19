@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -13,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	codexruntime "github.com/kunish/wheel/apps/worker/internal/codexruntime"
-	"github.com/kunish/wheel/apps/worker/internal/db/dal"
+	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
 func (h *Handler) ListCodexAuthFiles(c *gin.Context) {
@@ -54,6 +53,7 @@ func (h *Handler) ListCodexAuthFiles(c *gin.Context) {
 		}
 		files = parseAuthFiles(resp.Files)
 	}
+	files = filterRuntimeOwnedCodexAuthFiles(files, channel.Type)
 
 	// When status filter is active, use cached quota data for instant filtering.
 	// No scanning of uncached files — cache is populated during normal page browsing.
@@ -131,34 +131,26 @@ func (h *Handler) PatchCodexAuthFileStatus(c *gin.Context) {
 
 	var out map[string]any
 	if h.codexCapabilities().LocalEnabled {
-		item, err := dal.GetCodexAuthFileByName(c.Request.Context(), h.DB, channel.ID, req.Name)
+		files, err := h.listManagedCodexAuthFiles(c.Request.Context(), channel.ID)
 		if err != nil {
 			errorJSON(c, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if item == nil {
+		owned := filterRuntimeOwnedCodexAuthFiles(files, channel.Type)
+		var target *codexAuthFile
+		for i := range owned {
+			if owned[i].Name == req.Name {
+				target = &owned[i]
+				break
+			}
+		}
+		if target == nil {
 			errorJSON(c, http.StatusNotFound, "auth file not found")
 			return
 		}
-		_, _, _, _, raw, err := parseCodexAuthContent([]byte(item.Content))
-		if err != nil {
-			errorJSON(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		raw["disabled"] = req.Disabled
-		encoded, err := json.Marshal(raw)
-		if err != nil {
-			errorJSON(c, http.StatusInternalServerError, "failed to encode auth file")
-			return
-		}
-		if err := dal.UpdateCodexAuthFile(c.Request.Context(), h.DB, item.ID, map[string]any{"disabled": req.Disabled, "content": string(encoded)}); err != nil {
-			errorJSON(c, http.StatusInternalServerError, err.Error())
-			return
-		}
-		item.Disabled = req.Disabled
-		item.Content = string(encoded)
-		if err := codexruntime.MaterializeOneAuthFile(item); err != nil {
-			errorJSON(c, http.StatusInternalServerError, err.Error())
+		result := h.patchCodexLocalAuthFileStatus(c.Request.Context(), *target, req.Disabled)
+		if result.Status != "ok" {
+			errorJSON(c, http.StatusInternalServerError, result.Error)
 			return
 		}
 		h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
@@ -166,6 +158,23 @@ func (h *Handler) PatchCodexAuthFileStatus(c *gin.Context) {
 	} else {
 		if err := h.ensureCodexManagementConfigured(); err != nil {
 			errorJSON(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		files, err := h.listAllCodexAuthFiles(c.Request.Context(), channel.ID)
+		if err != nil {
+			errorJSON(c, http.StatusBadGateway, err.Error())
+			return
+		}
+		owned := filterRuntimeOwnedCodexAuthFiles(files, channel.Type)
+		found := false
+		for i := range owned {
+			if owned[i].Name == req.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			errorJSON(c, http.StatusNotFound, "auth file not found")
 			return
 		}
 		if err := h.codexManagementCall(c, http.MethodPatch, "/auth-files/status", nil, req, &out); err != nil {
@@ -196,7 +205,7 @@ func (h *Handler) PatchCodexAuthFileStatusBatch(c *gin.Context) {
 		errorJSON(c, http.StatusBadGateway, err.Error())
 		return
 	}
-	selected, err := selectCodexAuthFilesForBatch(files, req.codexAuthBatchScope)
+	selected, err := selectCodexAuthFilesForBatch(filterRuntimeOwnedCodexAuthFiles(files, channel.Type), req.codexAuthBatchScope)
 	if err != nil {
 		errorJSON(c, http.StatusBadRequest, err.Error())
 		return
@@ -255,7 +264,7 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 		Results: make([]codexAuthUploadResult, 0, len(files)),
 	}
 	if h.codexCapabilities().LocalEnabled {
-		response = h.batchUploadCodexLocalAuthFiles(c.Request.Context(), channel.ID, files)
+		response = h.batchUploadCodexLocalAuthFiles(c.Request.Context(), channel.ID, channel.Type, files)
 		if response.SuccessCount > 0 {
 			if err := codexruntime.MaterializeChannelAuthFiles(c.Request.Context(), h.DB, channel.ID); err != nil {
 				log.Printf("[codex] materialize channel %d auth files failed: %v", channel.ID, err)
@@ -269,7 +278,7 @@ func (h *Handler) UploadCodexAuthFile(c *gin.Context) {
 			errorJSON(c, http.StatusBadRequest, err.Error())
 			return
 		}
-		response = h.concurrentUploadCodexManagedAuthFiles(c.Request.Context(), files)
+		response = h.concurrentUploadCodexManagedAuthFiles(c.Request.Context(), channel.Type, files)
 	}
 	successJSON(c, response)
 }
@@ -338,35 +347,46 @@ func (h *Handler) DeleteCodexAuthFile(c *gin.Context) {
 	var out map[string]any
 	if h.codexCapabilities().LocalEnabled {
 		if all == "true" || all == "1" || all == "*" {
-			items, err := dal.ListCodexAuthFiles(c.Request.Context(), h.DB, channel.ID)
+			items, err := h.listManagedCodexAuthFiles(c.Request.Context(), channel.ID)
 			if err != nil {
 				errorJSON(c, http.StatusInternalServerError, err.Error())
 				return
 			}
+			items = filterRuntimeOwnedCodexAuthFiles(items, channel.Type)
 			deleted := 0
+			failed := 0
 			for i := range items {
-				if err := dal.DeleteCodexAuthFile(c.Request.Context(), h.DB, items[i].ID); err == nil {
-					_ = codexruntime.RemoveOneAuthFile(&items[i])
+				if result := h.deleteCodexLocalAuthFile(c.Request.Context(), channel.ID, items[i]); result.Status == "ok" {
 					deleted++
+				} else {
+					failed++
 				}
 			}
 			h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
-			out = map[string]any{"status": "ok", "deleted": deleted}
+			out = map[string]any{"status": "ok", "deleted": deleted, "failed": failed}
 		} else {
-			item, err := dal.GetCodexAuthFileByName(c.Request.Context(), h.DB, channel.ID, name)
+			items, err := h.listManagedCodexAuthFiles(c.Request.Context(), channel.ID)
 			if err != nil {
 				errorJSON(c, http.StatusInternalServerError, err.Error())
 				return
+			}
+			owned := filterRuntimeOwnedCodexAuthFiles(items, channel.Type)
+			var item *codexAuthFile
+			for i := range owned {
+				if owned[i].Name == name {
+					item = &owned[i]
+					break
+				}
 			}
 			if item == nil {
 				errorJSON(c, http.StatusNotFound, "auth file not found")
 				return
 			}
-			if err := dal.DeleteCodexAuthFile(c.Request.Context(), h.DB, item.ID); err != nil {
-				errorJSON(c, http.StatusInternalServerError, err.Error())
+			result := h.deleteCodexLocalAuthFile(c.Request.Context(), channel.ID, *item)
+			if result.Status != "ok" {
+				errorJSON(c, http.StatusInternalServerError, result.Error)
 				return
 			}
-			_ = codexruntime.RemoveOneAuthFile(item)
 			h.bestEffortSyncCodexChannelModels(c.Request.Context(), channel.ID)
 			out = map[string]any{"status": "ok", "deleted": 1}
 		}
@@ -374,6 +394,43 @@ func (h *Handler) DeleteCodexAuthFile(c *gin.Context) {
 		if err := h.ensureCodexManagementConfigured(); err != nil {
 			errorJSON(c, http.StatusBadRequest, err.Error())
 			return
+		}
+		if all == "true" || all == "1" || all == "*" {
+			files, err := h.listAllCodexAuthFiles(c.Request.Context(), channel.ID)
+			if err != nil {
+				errorJSON(c, http.StatusBadGateway, err.Error())
+				return
+			}
+			owned := filterRuntimeOwnedCodexAuthFiles(files, channel.Type)
+			deleted := 0
+			for _, file := range owned {
+				result := h.deleteCodexManagedAuthFile(c, file.Name)
+				if result.Status == "ok" {
+					deleted++
+				}
+			}
+			out = map[string]any{"status": "ok", "deleted": deleted}
+			successJSON(c, out)
+			return
+		}
+		if name != "" {
+			files, err := h.listAllCodexAuthFiles(c.Request.Context(), channel.ID)
+			if err != nil {
+				errorJSON(c, http.StatusBadGateway, err.Error())
+				return
+			}
+			owned := filterRuntimeOwnedCodexAuthFiles(files, channel.Type)
+			found := false
+			for i := range owned {
+				if owned[i].Name == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				errorJSON(c, http.StatusNotFound, "auth file not found")
+				return
+			}
 		}
 		if err := h.codexManagementCall(c, http.MethodDelete, "/auth-files", query, nil, &out); err != nil {
 			errorJSON(c, http.StatusBadGateway, err.Error())
@@ -400,7 +457,7 @@ func (h *Handler) DeleteCodexAuthFileBatch(c *gin.Context) {
 		errorJSON(c, http.StatusBadGateway, err.Error())
 		return
 	}
-	selected, err := selectCodexAuthFilesForBatch(files, req)
+	selected, err := selectCodexAuthFilesForBatch(filterRuntimeOwnedCodexAuthFiles(files, channel.Type), req)
 	if err != nil {
 		errorJSON(c, http.StatusBadRequest, err.Error())
 		return
@@ -450,7 +507,54 @@ func (h *Handler) GetCodexAuthFileModels(c *gin.Context) {
 	}
 	query := url.Values{}
 	if name := c.Query("name"); name != "" {
+		files, err := h.listAllCodexAuthFiles(c.Request.Context(), channel.ID)
+		if err != nil {
+			errorJSON(c, http.StatusBadGateway, err.Error())
+			return
+		}
+		owned := filterRuntimeOwnedCodexAuthFiles(files, channel.Type)
+		found := false
+		for i := range owned {
+			if owned[i].Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			successJSON(c, gin.H{"models": []any{}})
+			return
+		}
 		query.Set("name", managedAuthRelativeName(channel.ID, name))
+	} else {
+		files, err := h.listAllCodexAuthFiles(c.Request.Context(), channel.ID)
+		if err != nil {
+			errorJSON(c, http.StatusBadGateway, err.Error())
+			return
+		}
+		owned := filterRuntimeOwnedCodexAuthFiles(files, channel.Type)
+		models, err := h.collectCodexChannelModelsBestEffort(c.Request.Context(), channel.ID, channel.Type, owned)
+		if err != nil {
+			errorJSON(c, http.StatusBadGateway, err.Error())
+			return
+		}
+		if len(models) == 0 && channel.Type == types.OutboundAntigravity {
+			hasOwnedAuth := false
+			for _, file := range owned {
+				if !file.Disabled && runtimeProviderMatches(channel.Type, file.Provider) {
+					hasOwnedAuth = true
+					break
+				}
+			}
+			if hasOwnedAuth {
+				models = defaultAntigravityModels()
+			}
+		}
+		out := make([]map[string]any, 0, len(models))
+		for _, model := range models {
+			out = append(out, map[string]any{"id": model})
+		}
+		successJSON(c, gin.H{"models": out})
+		return
 	}
 	var resp struct {
 		Models []map[string]any `json:"models"`

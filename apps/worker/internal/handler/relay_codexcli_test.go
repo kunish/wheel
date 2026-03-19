@@ -6,29 +6,49 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/kunish/wheel/apps/worker/internal/codexruntime"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/mysqldialect"
 )
 
 func TestCodexCLIRelay_ResolveAccessToken_MatchesAuthIndex(t *testing.T) {
-	t.Parallel()
+	sqldb, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer sqldb.Close()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT version()")).WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow("8.0.36"))
+	db := bun.NewDB(sqldb, mysqldialect.New())
 
 	channelID := 55
 	fileName := "codexcli-testuser.json"
 	managedName := codexruntime.ManagedAuthFileName(channelID, fileName)
 	authIndex := runtimeauth.EnsureAuthIndex(managedName, "", "")
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT `codex_auth_file`.`id`, `codex_auth_file`.`channel_id`, `codex_auth_file`.`name`, `codex_auth_file`.`provider`, `codex_auth_file`.`email`, `codex_auth_file`.`disabled`, `codex_auth_file`.`content`, `codex_auth_file`.`created_at`, `codex_auth_file`.`updated_at` FROM `codex_auth_files` AS `codex_auth_file` WHERE (channel_id = ") + "[0-9]+" + regexp.QuoteMeta(") ORDER BY name ASC")).WillReturnRows(
+		sqlmock.NewRows([]string{"id", "channel_id", "name", "provider", "email", "disabled", "content", "created_at", "updated_at"}).
+			AddRow(1, channelID, fileName, "codex-cli", "cli@example.com", false, `{"type":"openai-codex-cli","access_token":"cli-token","account_id":"acct-1"}`, "2026-03-06 00:00:00", "2026-03-06 00:00:00"),
+	)
 
-	if authIndex == "" {
-		t.Fatal("authIndex should not be empty")
+	relay := NewCodexCLIRelay(db)
+	token, accountID, err := relay.ResolveAccessToken(context.Background(), channelID, authIndex)
+	if err != nil {
+		t.Fatalf("ResolveAccessToken() error = %v", err)
 	}
-	// Verify hashing is deterministic.
-	authIndex2 := runtimeauth.EnsureAuthIndex(managedName, "", "")
-	if authIndex != authIndex2 {
-		t.Fatalf("authIndex mismatch: %q != %q", authIndex, authIndex2)
+	if token != "cli-token" {
+		t.Fatalf("token = %q, want cli-token", token)
+	}
+	if accountID != "acct-1" {
+		t.Fatalf("accountID = %q, want acct-1", accountID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
 	}
 }
 

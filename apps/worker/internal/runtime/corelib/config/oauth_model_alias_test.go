@@ -1,6 +1,107 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func assertRuntimeOAuthAliasDirection(t *testing.T, channel string, aliases []OAuthModelAlias) {
+	t.Helper()
+	if len(aliases) == 0 {
+		t.Fatalf("expected %s aliases to be present", channel)
+	}
+	for _, alias := range aliases {
+		if alias.Name == "" || alias.Alias == "" {
+			t.Fatalf("expected %s alias entries to stay non-empty, got %+v", channel, alias)
+		}
+		if strings.EqualFold(alias.Name, alias.Alias) {
+			t.Fatalf("expected %s alias direction to stay name->alias, got %+v", channel, alias)
+		}
+		switch channel {
+		case "kiro":
+			if !strings.HasPrefix(alias.Name, "kiro-") {
+				t.Fatalf("expected kiro upstream name to stay server-facing, got %+v", alias)
+			}
+			if strings.HasPrefix(alias.Alias, "kiro-") {
+				t.Fatalf("expected kiro alias to stay client-facing, got %+v", alias)
+			}
+		case "github-copilot":
+			if !strings.Contains(alias.Name, ".") {
+				t.Fatalf("expected github-copilot upstream name to stay dotted, got %+v", alias)
+			}
+			if strings.Contains(alias.Alias, ".") {
+				t.Fatalf("expected github-copilot alias to stay hyphenated, got %+v", alias)
+			}
+		case "antigravity":
+			if !strings.HasSuffix(alias.Name, "-thinking") {
+				t.Fatalf("expected antigravity upstream name to stay thinking model, got %+v", alias)
+			}
+			if strings.HasSuffix(alias.Alias, "-thinking") {
+				t.Fatalf("expected antigravity alias to stay client-facing non-thinking model, got %+v", alias)
+			}
+		}
+	}
+}
+
+func TestSanitizeOAuthModelAlias_RuntimeOAuthDefaultsStayAligned(t *testing.T) {
+	cfg := &Config{}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	for _, channel := range []string{"kiro", "github-copilot", "antigravity"} {
+		aliases, ok := cfg.OAuthModelAlias[channel]
+		if !ok {
+			t.Fatalf("expected %s defaults to be injected", channel)
+		}
+		assertRuntimeOAuthAliasDirection(t, channel, aliases)
+	}
+}
+
+func TestSanitizeOAuthModelAlias_RuntimeOAuthExplicitDeletionStaysDeleted(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		channel  string
+		aliases  []OAuthModelAlias
+		wantKiro bool
+	}{
+		{name: "kiro nil", channel: "kiro", aliases: nil},
+		{name: "kiro empty", channel: "kiro", aliases: []OAuthModelAlias{}},
+		{name: "github-copilot nil", channel: "github-copilot", aliases: nil, wantKiro: true},
+		{name: "github-copilot empty", channel: "github-copilot", aliases: []OAuthModelAlias{}, wantKiro: true},
+		{name: "antigravity nil", channel: "antigravity", aliases: nil, wantKiro: true},
+		{name: "antigravity empty", channel: "antigravity", aliases: []OAuthModelAlias{}, wantKiro: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{OAuthModelAlias: map[string][]OAuthModelAlias{tc.channel: tc.aliases}}
+
+			cfg.SanitizeOAuthModelAlias()
+
+			aliases, ok := cfg.OAuthModelAlias[tc.channel]
+			if !ok {
+				t.Fatalf("expected %s explicit deletion marker to be preserved", tc.channel)
+			}
+			if len(aliases) != 0 {
+				t.Fatalf("expected %s aliases to stay deleted, got %d entries", tc.channel, len(aliases))
+			}
+			if tc.wantKiro {
+				assertRuntimeOAuthAliasDirection(t, "kiro", cfg.OAuthModelAlias["kiro"])
+			}
+		})
+	}
+}
+
+func TestSanitizeOAuthModelAlias_RuntimeOAuthInvalidChannelVariantFallsBackToDefaults(t *testing.T) {
+	cfg := &Config{OAuthModelAlias: map[string][]OAuthModelAlias{
+		"  antigravity  ": {
+			{Name: "", Alias: ""},
+		},
+	}}
+
+	cfg.SanitizeOAuthModelAlias()
+
+	aliases := cfg.OAuthModelAlias["antigravity"]
+	assertRuntimeOAuthAliasDirection(t, "antigravity", aliases)
+}
 
 func TestSanitizeOAuthModelAlias_PreservesForkFlag(t *testing.T) {
 	cfg := &Config{

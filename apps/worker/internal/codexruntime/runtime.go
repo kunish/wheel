@@ -103,7 +103,7 @@ func MaterializeAuthFiles(ctx context.Context, db *bun.DB) error {
 	}
 	items := make([]types.CodexAuthFile, 0)
 	for _, ch := range channels {
-		if ch.Type != types.OutboundCodex && ch.Type != types.OutboundCopilot {
+		if ch.Type != types.OutboundCodex && ch.Type != types.OutboundCopilot && ch.Type != types.OutboundCodexCLI && ch.Type != types.OutboundAntigravity {
 			continue
 		}
 		channelItems, err := dal.ListCodexAuthFiles(ctx, db, ch.ID)

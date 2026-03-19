@@ -54,7 +54,52 @@ func (h *Handler) collectCodexChannelModels(ctx context.Context, channelID int, 
 			models = append(models, id)
 		}
 	}
-	if successCount == 0 && firstErr != nil {
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return models, nil
+}
+
+func (h *Handler) collectCodexChannelModelsBestEffort(ctx context.Context, channelID int, channelType types.OutboundType, files []codexAuthFile) ([]string, error) {
+	if err := h.ensureCodexManagementConfigured(); err != nil {
+		return nil, err
+	}
+	providerFilter := runtimeProviderFilter(channelType)
+	localMode := h.codexCapabilities().LocalEnabled
+	var retryUntil time.Time
+	if localMode {
+		retryUntil = time.Now().Add(codexModelSyncRetryWindow)
+	}
+	models := make([]string, 0)
+	seen := make(map[string]struct{})
+	var firstErr error
+	hadSuccess := false
+	for _, file := range files {
+		if file.Disabled || canonicalRuntimeProvider(file.Provider) != providerFilter {
+			continue
+		}
+		query := url.Values{"name": []string{managedAuthRelativeName(channelID, file.Name)}}
+		out, err := h.listCodexAuthFileModelsWithRetry(ctx, query, retryUntil)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		hadSuccess = true
+		for _, model := range out.Models {
+			id := strings.TrimSpace(model.ID)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			models = append(models, id)
+		}
+	}
+	if !hadSuccess && firstErr != nil {
 		return nil, firstErr
 	}
 	return models, nil
@@ -125,6 +170,16 @@ func (h *Handler) syncCodexChannelModels(ctx context.Context, channelID int) err
 	if err != nil {
 		return err
 	}
+	hasOwnedAuth := false
+	for _, file := range files {
+		if file.Disabled {
+			continue
+		}
+		if runtimeProviderMatches(channel.Type, file.Provider) {
+			hasOwnedAuth = true
+			break
+		}
+	}
 	models, err := h.collectCodexChannelModels(ctx, channelID, channel.Type, files)
 	if err != nil {
 		// If model collection fails (e.g. 403 TOS violation), treat as empty
@@ -136,6 +191,13 @@ func (h *Handler) syncCodexChannelModels(ctx context.Context, channelID int) err
 	// For Antigravity channels, use a built-in fallback list when the
 	// API cannot return models.
 	if len(models) == 0 {
+		if !hasOwnedAuth {
+			if err := h.persistCodexChannelModels(ctx, channelID, []string{}); err != nil {
+				return err
+			}
+			h.Cache.Delete("channels")
+			return nil
+		}
 		if channel.Type == types.OutboundAntigravity {
 			models = defaultAntigravityModels()
 		} else {
@@ -155,7 +217,6 @@ func defaultAntigravityModels() []string {
 	return []string{
 		"gemini-2.5-pro",
 		"gemini-2.5-flash",
-		"gemini-2.5-flash-lite-preview-06-17",
 		"claude-sonnet-4-6-thinking",
 		"claude-opus-4-6-thinking",
 	}
