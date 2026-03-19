@@ -154,6 +154,34 @@ func (h *Handler) persistCodexChannelModels(ctx context.Context, channelID int, 
 	})
 }
 
+func mergeChannelModelIDs(existing []string, discovered []string) []string {
+	seen := make(map[string]struct{}, len(discovered))
+	merged := make([]string, 0, len(discovered))
+	for _, id := range discovered {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		merged = append(merged, id)
+	}
+	for _, id := range existing {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		merged = append(merged, id)
+	}
+	return merged
+}
+
 func (h *Handler) syncCodexChannelModels(ctx context.Context, channelID int) error {
 	if h == nil || h.DB == nil {
 		return nil
@@ -182,9 +210,10 @@ func (h *Handler) syncCodexChannelModels(ctx context.Context, channelID int) err
 	}
 	models, err := h.collectCodexChannelModels(ctx, channelID, channel.Type, files)
 	if err != nil {
-		// If model collection fails (e.g. 403 TOS violation), treat as empty
-		// so the fallback logic below can provide default models.
-		models = nil
+		models, _ = h.collectCodexChannelModelsBestEffort(ctx, channelID, channel.Type, files)
+		if len(models) > 0 {
+			models = mergeChannelModelIDs([]string(channel.Model), models)
+		}
 	}
 	// Do not overwrite existing models with an empty list; the upstream
 	// model endpoint may be temporarily unavailable (e.g. TOS violation).

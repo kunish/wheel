@@ -107,6 +107,15 @@ func runtimePersistedAuthProvider(provider string) string {
 	}
 }
 
+func runtimeImportProviderMatchesScope(importScope string, provider string) bool {
+	provider = canonicalRuntimeProvider(provider)
+	importScope = canonicalRuntimeProvider(importScope)
+	if provider == importScope {
+		return true
+	}
+	return importScope == "codex-cli" && provider == "codex"
+}
+
 func (h *Handler) uploadLocalAuthFile(authDir string, filename string, content []byte) error {
 	if strings.TrimSpace(filename) == "" {
 		return fmt.Errorf("filename is required")
@@ -278,7 +287,7 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 			sawAmbiguousProvider = true
 			continue
 		}
-		if importScope != "" && canonicalRuntimeProvider(file.Provider) != importScope {
+		if importScope != "" && !runtimeImportProviderMatchesScope(importScope, file.Provider) {
 			sawWrongProvider = true
 			continue
 		}
@@ -289,6 +298,16 @@ func (h *Handler) importOAuthAuthFilesToDB(ctx context.Context, channelID int, s
 		provider, email, disabled, normalized, _, err := parseCodexAuthContent(content)
 		if err != nil {
 			return err
+		}
+		if importScope == "codex-cli" && provider == "codex" {
+			var raw map[string]any
+			if err := json.Unmarshal([]byte(normalized), &raw); err == nil {
+				raw["type"] = runtimePersistedAuthProvider(importScope)
+				if encoded, err := json.Marshal(raw); err == nil {
+					normalized = string(encoded)
+				}
+			}
+			provider = importScope
 		}
 		name, err := uniqueCodexAuthFileName(ctx, h.DB, channelID, filepath.Base(file.Name))
 		if err != nil {

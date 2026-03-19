@@ -581,6 +581,8 @@ func TestSyncCodexChannelModels_DoesNotPersistPartialModelSetOnMixedFailure(t *t
 	t.Cleanup(h.Cache.Close)
 	expectCodexChannelTypeLookup(mock, 58, types.OutboundCodex)
 	expectCodexAuthFileListForSync(mock, 58, []string{"first.json", "second.json"})
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE `channels` SET ") + ".*" + regexp.QuoteMeta("WHERE (id = 58)")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

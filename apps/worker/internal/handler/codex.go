@@ -217,6 +217,7 @@ func findActiveOAuthSessionForImportScope(channelID int, provider string, import
 	var latest codexOAuthSession
 	var found bool
 	importScope := canonicalRuntimeProvider(importProvider)
+	importFamily := codexOAuthUnderlyingImportFamily(importScope)
 	codexOAuthSessions.Range(func(key, value any) bool {
 		state, _ := key.(string)
 		session, ok := value.(codexOAuthSession)
@@ -231,7 +232,7 @@ func findActiveOAuthSessionForImportScope(channelID int, provider string, import
 		if session.ChannelID != channelID || session.Provider != provider {
 			return true
 		}
-		if codexOAuthImportScope(session) != importScope {
+		if codexOAuthUnderlyingImportFamily(codexOAuthImportScope(session)) != importFamily {
 			return true
 		}
 		if codexOAuthPhaseTerminal(session.LastPhase) {
@@ -283,10 +284,19 @@ func codexOAuthImportScope(session codexOAuthSession) string {
 	return canonicalRuntimeProvider(session.Provider)
 }
 
+func codexOAuthUnderlyingImportFamily(scope string) string {
+	scope = canonicalRuntimeProvider(scope)
+	if scope == "codex-cli" {
+		return "codex"
+	}
+	return scope
+}
+
 func findConflictingActiveOAuthSessionForImportScope(channelID int, provider string, importProvider string) (codexOAuthSession, bool) {
 	var latest codexOAuthSession
 	var found bool
 	importScope := canonicalRuntimeProvider(importProvider)
+	importFamily := codexOAuthUnderlyingImportFamily(importScope)
 	codexOAuthSessions.Range(func(key, value any) bool {
 		state, _ := key.(string)
 		session, ok := value.(codexOAuthSession)
@@ -304,7 +314,7 @@ func findConflictingActiveOAuthSessionForImportScope(channelID int, provider str
 		if session.ChannelID == channelID && session.Provider == provider {
 			return true
 		}
-		if codexOAuthImportScope(session) != importScope {
+		if codexOAuthUnderlyingImportFamily(codexOAuthImportScope(session)) != importFamily {
 			return true
 		}
 		if !found || session.createdAt.After(latest.createdAt) {
@@ -318,6 +328,7 @@ func findConflictingActiveOAuthSessionForImportScope(channelID int, provider str
 
 func supersedeOAuthSessions(channelID int, provider string, importProvider string, keepState string) {
 	importScope := canonicalRuntimeProvider(importProvider)
+	importFamily := codexOAuthUnderlyingImportFamily(importScope)
 	codexOAuthSessions.Range(func(key, value any) bool {
 		state, _ := key.(string)
 		session, ok := value.(codexOAuthSession)
@@ -325,10 +336,10 @@ func supersedeOAuthSessions(channelID int, provider string, importProvider strin
 			codexOAuthSessions.Delete(key)
 			return true
 		}
-		if session.ChannelID == channelID && session.Provider == provider && state != keepState && codexOAuthImportScope(session) == importScope {
+		if session.ChannelID == channelID && session.Provider == provider && state != keepState && codexOAuthUnderlyingImportFamily(codexOAuthImportScope(session)) == importFamily {
 			withCodexOAuthStateLock(state, func() {
 				current, ok := loadOAuthSession(state)
-				if !ok || current.ChannelID != channelID || current.Provider != provider || current.State == keepState || codexOAuthImportScope(current) != importScope {
+				if !ok || current.ChannelID != channelID || current.Provider != provider || current.State == keepState || codexOAuthUnderlyingImportFamily(codexOAuthImportScope(current)) != importFamily {
 					return
 				}
 				current.LastStatus = "expired"
