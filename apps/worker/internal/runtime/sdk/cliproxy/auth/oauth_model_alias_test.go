@@ -107,6 +107,36 @@ func TestResolveOAuthUpstreamModel_SuffixPreservation(t *testing.T) {
 			want:    "kimi-k2.5(high)",
 		},
 		{
+			name: "codex-cli file auth uses codex-cli alias channel not codex",
+			aliases: map[string][]internalconfig.OAuthModelAlias{
+				"codex-cli": {{Name: "gpt-5.2", Alias: "gpt-5"}},
+				"codex":     {{Name: "gpt-5.2-wrong", Alias: "gpt-5"}},
+			},
+			channel: "codex-cli",
+			input:   "gpt-5",
+			want:    "gpt-5.2",
+		},
+		{
+			name: "copilot provider string maps to github-copilot alias channel",
+			aliases: map[string][]internalconfig.OAuthModelAlias{
+				"github-copilot": {{Name: "claude-opus-4.6", Alias: "opus"}},
+				"codex":          {{Name: "wrong-model", Alias: "opus"}},
+			},
+			channel: "copilot-alias",
+			input:   "opus",
+			want:    "claude-opus-4.6",
+		},
+		{
+			name: "google-antigravity provider maps to antigravity alias channel",
+			aliases: map[string][]internalconfig.OAuthModelAlias{
+				"antigravity": {{Name: "claude-sonnet-4-6-thinking", Alias: "thinking-flip"}},
+				"gemini-cli":  {{Name: "wrong", Alias: "thinking-flip"}},
+			},
+			channel: "google-ag-alias",
+			input:   "thinking-flip",
+			want:    "claude-sonnet-4-6-thinking",
+		},
+		{
 			name: "case insensitive alias lookup with suffix",
 			aliases: map[string][]internalconfig.OAuthModelAlias{
 				"gemini-cli": {{Name: "gemini-2.5-pro-exp-03-25", Alias: "Gemini-2.5-Pro"}},
@@ -194,6 +224,13 @@ func createAuthForChannel(channel string) *Auth {
 		return &Auth{Provider: "kiro"}
 	case "github-copilot":
 		return &Auth{Provider: "github-copilot"}
+	case "codex-cli":
+		// Same Provider as file synthesizer for `type: openai-codex-cli` JSON.
+		return &Auth{Provider: "openai-codex-cli", Attributes: map[string]string{"auth_kind": "oauth"}}
+	case "copilot-alias":
+		return &Auth{Provider: "copilot", Attributes: map[string]string{"auth_kind": "oauth"}}
+	case "google-ag-alias":
+		return &Auth{Provider: "google-antigravity", Attributes: map[string]string{"auth_kind": "oauth"}}
 	default:
 		return &Auth{Provider: channel}
 	}
@@ -220,6 +257,44 @@ func TestOAuthModelAliasChannel_Kiro(t *testing.T) {
 
 	if got := OAuthModelAliasChannel("kiro", ""); got != "kiro" {
 		t.Fatalf("OAuthModelAliasChannel() = %q, want %q", got, "kiro")
+	}
+}
+
+func TestOAuthModelAliasChannel_CodexCLIFileProvider(t *testing.T) {
+	t.Parallel()
+
+	if got := OAuthModelAliasChannel("openai-codex-cli", "oauth"); got != "codex-cli" {
+		t.Fatalf("OAuthModelAliasChannel(openai-codex-cli) = %q, want %q", got, "codex-cli")
+	}
+	if got := OAuthModelAliasChannel("codex-cli", "oauth"); got != "codex-cli" {
+		t.Fatalf("OAuthModelAliasChannel(codex-cli) = %q, want %q", got, "codex-cli")
+	}
+	if got := OAuthModelAliasChannel("openai-codex-cli", "apikey"); got != "" {
+		t.Fatalf("OAuthModelAliasChannel(openai-codex-cli apikey) = %q, want empty", got)
+	}
+}
+
+func TestOAuthModelAliasChannel_CopilotCanonicalProviders(t *testing.T) {
+	t.Parallel()
+
+	for _, prov := range []string{"github", "copilot", "GitHub", "COPILOT"} {
+		if got := OAuthModelAliasChannel(prov, "oauth"); got != "github-copilot" {
+			t.Fatalf("OAuthModelAliasChannel(%q) = %q, want github-copilot", prov, got)
+		}
+	}
+	if got := OAuthModelAliasChannel("copilot", "apikey"); got != "" {
+		t.Fatalf("OAuthModelAliasChannel(copilot apikey) = %q, want empty", got)
+	}
+}
+
+func TestOAuthModelAliasChannel_GoogleAntigravity(t *testing.T) {
+	t.Parallel()
+
+	if got := OAuthModelAliasChannel("google-antigravity", "oauth"); got != "antigravity" {
+		t.Fatalf("OAuthModelAliasChannel(google-antigravity) = %q, want antigravity", got)
+	}
+	if got := OAuthModelAliasChannel("GOOGLE-ANTIGRAVITY", ""); got != "antigravity" {
+		t.Fatalf("OAuthModelAliasChannel(GOOGLE-ANTIGRAVITY) = %q, want antigravity", got)
 	}
 }
 

@@ -1,21 +1,24 @@
 import { ApiError, apiFetch, apiRawFetch } from "./client"
 
-const CHANNEL_TYPE_COPILOT = 34
-const CHANNEL_TYPE_CODEX = 35
-const CHANNEL_TYPE_ANTIGRAVITY = 36
+/** Outbound channel type IDs — must match `apps/worker/internal/types/enums.go` OutboundType. */
+const OUTBOUND_CODEX = 33
+const OUTBOUND_COPILOT = 34
+const OUTBOUND_CODEX_CLI = 35
+const OUTBOUND_ANTIGRAVITY = 36
 
 /**
  * Returns the API URL prefix for runtime-managed channels.
  * Copilot channels use `/copilot/`, Antigravity channels use `/antigravity/`,
- * and Codex plus unknown runtime-managed channels use `/codex/`.
+ * and Codex, Codex CLI, plus unknown runtime-managed channels use `/codex/`.
  */
 function runtimePrefix(channelType?: number): string {
   switch (channelType) {
-    case CHANNEL_TYPE_COPILOT:
+    case OUTBOUND_COPILOT:
       return "copilot"
-    case CHANNEL_TYPE_ANTIGRAVITY:
+    case OUTBOUND_ANTIGRAVITY:
       return "antigravity"
-    case CHANNEL_TYPE_CODEX:
+    case OUTBOUND_CODEX:
+    case OUTBOUND_CODEX_CLI:
     default:
       return "codex"
   }
@@ -26,11 +29,11 @@ function runtimePrefix(channelType?: number): string {
  */
 export function runtimeProviderFilter(channelType?: number): string {
   switch (channelType) {
-    case CHANNEL_TYPE_COPILOT:
+    case OUTBOUND_COPILOT:
       return "copilot"
-    case CHANNEL_TYPE_CODEX:
+    case OUTBOUND_CODEX_CLI:
       return "codex-cli"
-    case CHANNEL_TYPE_ANTIGRAVITY:
+    case OUTBOUND_ANTIGRAVITY:
       return "antigravity"
     default:
       return "codex"

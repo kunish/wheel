@@ -221,7 +221,8 @@ func modelAliasChannel(auth *Auth) string {
 // and auth kind. Returns empty string if the provider/authKind combination doesn't support
 // OAuth model alias (e.g., API key authentication).
 //
-// Supported channels: gemini-cli, vertex, aistudio, antigravity, claude, codex, qwen, iflow, kiro, github-copilot, kimi.
+// Supported channels: gemini-cli, vertex, aistudio, antigravity, google-antigravity, claude,
+// codex, codex-cli, qwen, iflow, kiro, github-copilot (plus github/copilot), kimi.
 func OAuthModelAliasChannel(provider, authKind string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	authKind = strings.ToLower(strings.TrimSpace(authKind))
@@ -245,6 +246,22 @@ func OAuthModelAliasChannel(provider, authKind string) string {
 			return ""
 		}
 		return "codex"
+	// Auth JSON uses type "openai-codex-cli" (file synthesizer sets Provider from `type`).
+	// oauth-model-alias uses the dedicated "codex-cli" channel so CLI Codex aliases do not
+	// collide with embedded Codex ("codex" channel).
+	case "openai-codex-cli", "codex-cli":
+		if authKind == "apikey" {
+			return ""
+		}
+		return "codex-cli"
+	// Legacy or alternate JSON `type` values; aligns with handler canonicalRuntimeProvider.
+	case "github", "copilot":
+		if authKind == "apikey" {
+			return ""
+		}
+		return "github-copilot"
+	case "google-antigravity":
+		return "antigravity"
 	case "gemini-cli", "aistudio", "antigravity", "qwen", "iflow", "kiro", "github-copilot", "kimi":
 		return provider
 	default:
