@@ -245,9 +245,9 @@ type relayOpenAIResponse struct {
 }
 
 type relayOpenAIChoice struct {
-	Index        int32              `json:"index"`
-	Message      *relayOpenAIMsg    `json:"message,omitempty"`
-	FinishReason *string            `json:"finish_reason,omitempty"`
+	Index        int32           `json:"index"`
+	Message      *relayOpenAIMsg `json:"message,omitempty"`
+	FinishReason *string         `json:"finish_reason,omitempty"`
 }
 
 type relayOpenAIMsg struct {
@@ -361,6 +361,85 @@ func geminiResponseToOpenAI(resp *genai.GenerateContentResponse, modelName strin
 		}
 	}
 
+	return out
+}
+
+// ConvertOpenAIResponseToGemini maps a chat.completion JSON object to
+// generateContent-style JSON for Gemini-native clients (e.g. /gemini/v1beta/...).
+func ConvertOpenAIResponseToGemini(openai map[string]any) map[string]any {
+	if openai == nil {
+		return map[string]any{}
+	}
+	b, err := json.Marshal(openai)
+	if err != nil {
+		return openai
+	}
+	var resp relayOpenAIResponse
+	if err := json.Unmarshal(b, &resp); err != nil {
+		return openai
+	}
+	out := map[string]any{
+		"model":      resp.Model,
+		"candidates": []any{},
+	}
+	usageMeta := func() {
+		if resp.Usage != nil {
+			out["usageMetadata"] = map[string]any{
+				"promptTokenCount":     resp.Usage.PromptTokens,
+				"candidatesTokenCount": resp.Usage.CompletionTokens,
+				"totalTokenCount":      resp.Usage.TotalTokens,
+			}
+		}
+	}
+	if len(resp.Choices) == 0 {
+		usageMeta()
+		return out
+	}
+
+	ch := resp.Choices[0]
+	var parts []any
+	if ch.Message != nil {
+		switch c := ch.Message.Content.(type) {
+		case string:
+			if c != "" {
+				parts = append(parts, map[string]any{"text": c})
+			}
+		case []any:
+			for _, p := range c {
+				pm, ok := p.(map[string]any)
+				if !ok {
+					continue
+				}
+				if typ, _ := pm["type"].(string); typ == "text" {
+					if t, ok := pm["text"].(string); ok && t != "" {
+						parts = append(parts, map[string]any{"text": t})
+					}
+				}
+			}
+		}
+		for _, tc := range ch.Message.ToolCalls {
+			args := protocol.ParseJSONArgs(tc.Function.Arguments)
+			parts = append(parts, map[string]any{
+				"functionCall": map[string]any{
+					"name": tc.Function.Name,
+					"args": args,
+				},
+			})
+		}
+	}
+
+	cand := map[string]any{
+		"index": ch.Index,
+		"content": map[string]any{
+			"role":  "model",
+			"parts": parts,
+		},
+	}
+	if ch.FinishReason != nil && *ch.FinishReason != "" {
+		cand["finishReason"] = protocol.MapOpenAIFinishReasonToGeminiString(*ch.FinishReason)
+	}
+	out["candidates"] = []any{cand}
+	usageMeta()
 	return out
 }
 

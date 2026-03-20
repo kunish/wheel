@@ -2,320 +2,280 @@
 
 ## [1.34.0](https://github.com/kunish/wheel/compare/v1.33.2...v1.34.0) (2026-03-18)
 
-
 ### Features
 
-* optimize runtime oauth flow ([65d3e94](https://github.com/kunish/wheel/commit/65d3e947cb58ea00e45eebb7521348c242d5a0ee))
+- **Cursor IDE** channel (type 37): HTTP/2 ConnectRPC bridge to `api2.cursor.sh` AgentService (`Run` / `GetUsableModels`), compatible with [cursoride2api](https://github.com/kunish/cursoride2api) credentials
+- **Cursor / native APIs:** group-style Claude model aliases (e.g. `claude-opus-4-6` → `claude-4.6-opus-high`); Cursor streaming now emits Anthropic SSE when the client uses `/v1/messages`, and Gemini `streamGenerateContent`-style `data:` JSON when using `/gemini/v1beta/...`; non-stream `/gemini/...` responses are converted back to `generateContent` JSON
+- **Cursor channel:** accept cursoride2api `token.json` shape (`tokens[]`); `GetUsableModels` parsing supports string model ids, alternate JSON fields, and falls back to built-in Cursor model ids when upstream returns an empty list so “fetch models” / preview is not blank
+- **Web:** Cursor channels show an expandable “Cursor IDE” section with **Refresh** (calls `POST /api/v1/channel/:id/cursor/refresh-models`) to re-pull upstream models and persist them like Codex/Antigravity sync
+- optimize runtime oauth flow ([65d3e94](https://github.com/kunish/wheel/commit/65d3e947cb58ea00e45eebb7521348c242d5a0ee))
 
 ## [1.33.2](https://github.com/kunish/wheel/compare/v1.33.1...v1.33.2) (2026-03-17)
 
-
 ### Bug Fixes
 
-* align Antigravity relay with CLIProxyAPIPlus for Claude model support ([4bab332](https://github.com/kunish/wheel/commit/4bab3320f84fbe2c574cfb281c75e85c25f724f8))
-* align Antigravity relay with CLIProxyAPIPlus request format ([5145cab](https://github.com/kunish/wheel/commit/5145cab2a4d2efc5c15b5bc97600702a4c16a484))
-* force HTTP/1.1, use daily (non-sandbox) URL with fallback ([0d24720](https://github.com/kunish/wheel/commit/0d2472056b8d4a16813120000aefa6a79ede4e38))
-* model sync fallback and Antigravity request format issues ([a8e00d4](https://github.com/kunish/wheel/commit/a8e00d4d0ce5a3ade8e8bd997bedd7801ba8098e))
-* remove system prompt injection and clean up debug logs ([ef0965d](https://github.com/kunish/wheel/commit/ef0965d32de90352954beb96ca5f4f3593949ce7))
-* route Claude models to prod endpoint, Gemini to sandbox daily ([9b4aa02](https://github.com/kunish/wheel/commit/9b4aa02652af15206d89f20bcb048c1cac0f29a6))
-* use daily sandbox URL for all models including Claude ([3076cc5](https://github.com/kunish/wheel/commit/3076cc5aa287505432d4f87079fded5febfc63f7))
+- align Antigravity relay with CLIProxyAPIPlus for Claude model support ([4bab332](https://github.com/kunish/wheel/commit/4bab3320f84fbe2c574cfb281c75e85c25f724f8))
+- align Antigravity relay with CLIProxyAPIPlus request format ([5145cab](https://github.com/kunish/wheel/commit/5145cab2a4d2efc5c15b5bc97600702a4c16a484))
+- force HTTP/1.1, use daily (non-sandbox) URL with fallback ([0d24720](https://github.com/kunish/wheel/commit/0d2472056b8d4a16813120000aefa6a79ede4e38))
+- model sync fallback and Antigravity request format issues ([a8e00d4](https://github.com/kunish/wheel/commit/a8e00d4d0ce5a3ade8e8bd997bedd7801ba8098e))
+- remove system prompt injection and clean up debug logs ([ef0965d](https://github.com/kunish/wheel/commit/ef0965d32de90352954beb96ca5f4f3593949ce7))
+- route Claude models to prod endpoint, Gemini to sandbox daily ([9b4aa02](https://github.com/kunish/wheel/commit/9b4aa02652af15206d89f20bcb048c1cac0f29a6))
+- use daily sandbox URL for all models including Claude ([3076cc5](https://github.com/kunish/wheel/commit/3076cc5aa287505432d4f87079fded5febfc63f7))
 
 ## [1.33.1](https://github.com/kunish/wheel/compare/v1.33.0...v1.33.1) (2026-03-16)
 
-
 ### Bug Fixes
 
-* read Antigravity access token from managed auth file on disk ([a741ef6](https://github.com/kunish/wheel/commit/a741ef61b7e4e922394ac2620611b1000faba986))
+- read Antigravity access token from managed auth file on disk ([a741ef6](https://github.com/kunish/wheel/commit/a741ef61b7e4e922394ac2620611b1000faba986))
 
 ## [1.33.0](https://github.com/kunish/wheel/compare/v1.32.2...v1.33.0) (2026-03-16)
 
-
 ### Features
 
-* split Antigravity routes, auto-sync keys, fix upstream request format ([71aee99](https://github.com/kunish/wheel/commit/71aee994a5ca435e1cb83537cdb12b0c0ad686ac))
+- split Antigravity routes, auto-sync keys, fix upstream request format ([71aee99](https://github.com/kunish/wheel/commit/71aee994a5ca435e1cb83537cdb12b0c0ad686ac))
 
 ## [1.32.2](https://github.com/kunish/wheel/compare/v1.32.1...v1.32.2) (2026-03-16)
 
-
 ### Bug Fixes
 
-* resolve Antigravity OAuth login flow failing in handler-only mode ([9af459b](https://github.com/kunish/wheel/commit/9af459bf524113b8fc83d4fc2ef4fbe9b86cbe28))
+- resolve Antigravity OAuth login flow failing in handler-only mode ([9af459b](https://github.com/kunish/wheel/commit/9af459bf524113b8fc83d4fc2ef4fbe9b86cbe28))
 
 ## [1.32.1](https://github.com/kunish/wheel/compare/v1.32.0...v1.32.1) (2026-03-16)
 
-
 ### Bug Fixes
 
-* allow authenticated requests to bypass remote management check ([366f074](https://github.com/kunish/wheel/commit/366f0748fc23ed1ce7d535371d215a79dcd5dcf4))
+- allow authenticated requests to bypass remote management check ([366f074](https://github.com/kunish/wheel/commit/366f0748fc23ed1ce7d535371d215a79dcd5dcf4))
 
 ## [1.32.0](https://github.com/kunish/wheel/compare/v1.31.2...v1.32.0) (2026-03-16)
 
-
 ### Features
 
-* fix chart colors, add cache token tracking, Responses API relay, and server-side log stats ([7b06de8](https://github.com/kunish/wheel/commit/7b06de8cc3df8305c98dd9c7487afc0e469cded6))
+- fix chart colors, add cache token tracking, Responses API relay, and server-side log stats ([7b06de8](https://github.com/kunish/wheel/commit/7b06de8cc3df8305c98dd9c7487afc0e469cded6))
 
 ## [1.31.2](https://github.com/kunish/wheel/compare/v1.31.1...v1.31.2) (2026-03-16)
 
-
 ### Bug Fixes
 
-* **ci:** use BUILDPLATFORM for web Docker build to avoid QEMU crash on arm64 ([a8ebde2](https://github.com/kunish/wheel/commit/a8ebde293746a592c7faceb352b24efe0d9d3f40))
+- **ci:** use BUILDPLATFORM for web Docker build to avoid QEMU crash on arm64 ([a8ebde2](https://github.com/kunish/wheel/commit/a8ebde293746a592c7faceb352b24efe0d9d3f40))
 
 ## [1.31.1](https://github.com/kunish/wheel/compare/v1.31.0...v1.31.1) (2026-03-16)
 
-
 ### Bug Fixes
 
-* **ci:** pull latest changes before pushing screenshots to avoid rejection ([a161254](https://github.com/kunish/wheel/commit/a16125484edab78712beff4c638b1e2a545b07ab))
+- **ci:** pull latest changes before pushing screenshots to avoid rejection ([a161254](https://github.com/kunish/wheel/commit/a16125484edab78712beff4c638b1e2a545b07ab))
 
 ## [1.31.0](https://github.com/kunish/wheel/compare/v1.30.0...v1.31.0) (2026-03-16)
 
-
 ### Features
 
-* add Codex CLI (type 35) and Antigravity (type 36) channel providers ([4019caf](https://github.com/kunish/wheel/commit/4019cafda8197896ee7a269d6f934079fcc2483a))
-* upgrade Antigravity relay to match sub2api and add UI support for type 35/36 ([4be90e2](https://github.com/kunish/wheel/commit/4be90e251dbf37dddb8d2d0209835216ab57a518))
-
+- add Codex CLI (type 35) and Antigravity (type 36) channel providers ([4019caf](https://github.com/kunish/wheel/commit/4019cafda8197896ee7a269d6f934079fcc2483a))
+- upgrade Antigravity relay to match sub2api and add UI support for type 35/36 ([4be90e2](https://github.com/kunish/wheel/commit/4be90e251dbf37dddb8d2d0209835216ab57a518))
 
 ### Bug Fixes
 
-* sync upstream bug fixes and clean up code quality ([#91](https://github.com/kunish/wheel/issues/91)) ([3931857](https://github.com/kunish/wheel/commit/3931857864367f913492d760b3f93b138e0c4926))
+- sync upstream bug fixes and clean up code quality ([#91](https://github.com/kunish/wheel/issues/91)) ([3931857](https://github.com/kunish/wheel/commit/3931857864367f913492d760b3f93b138e0c4926))
 
 ## [1.30.0](https://github.com/kunish/wheel/compare/v1.29.4...v1.30.0) (2026-03-10)
 
-
 ### Features
 
-* eliminate port 8317 by embedding Codex runtime as in-process handler ([f3cc479](https://github.com/kunish/wheel/commit/f3cc479841ec1e456ccc1abf7035fd903859413e))
+- eliminate port 8317 by embedding Codex runtime as in-process handler ([f3cc479](https://github.com/kunish/wheel/commit/f3cc479841ec1e456ccc1abf7035fd903859413e))
 
 ## [1.29.4](https://github.com/kunish/wheel/compare/v1.29.3...v1.29.4) (2026-03-10)
 
-
 ### Bug Fixes
 
-* resolve multiple issues in log detail views ([ca4ea89](https://github.com/kunish/wheel/commit/ca4ea89c43bd2533efbf2d3634c305947a2db35f))
+- resolve multiple issues in log detail views ([ca4ea89](https://github.com/kunish/wheel/commit/ca4ea89c43bd2533efbf2d3634c305947a2db35f))
 
 ## [1.29.3](https://github.com/kunish/wheel/compare/v1.29.2...v1.29.3) (2026-03-09)
 
-
 ### Bug Fixes
 
-* set MCP SSE server base path to resolve 404 on /mcp/sse ([1e0e591](https://github.com/kunish/wheel/commit/1e0e591e7ab37db9a9d76c8a663ad76a4bc66341))
+- set MCP SSE server base path to resolve 404 on /mcp/sse ([1e0e591](https://github.com/kunish/wheel/commit/1e0e591e7ab37db9a9d76c8a663ad76a4bc66341))
 
 ## [1.29.2](https://github.com/kunish/wheel/compare/v1.29.1...v1.29.2) (2026-03-09)
 
-
 ### Bug Fixes
 
-* convert OpenAI SSE to Anthropic SSE for non-Anthropic channels ([c3dd0ae](https://github.com/kunish/wheel/commit/c3dd0ae600b4c9e1fcad5af1a76fa594d5b59dd0))
-* handle tool_calls in OpenAI-to-Anthropic SSE converter ([cf3df41](https://github.com/kunish/wheel/commit/cf3df415a66b47a91da1911e320e31989758eeab))
+- convert OpenAI SSE to Anthropic SSE for non-Anthropic channels ([c3dd0ae](https://github.com/kunish/wheel/commit/c3dd0ae600b4c9e1fcad5af1a76fa594d5b59dd0))
+- handle tool_calls in OpenAI-to-Anthropic SSE converter ([cf3df41](https://github.com/kunish/wheel/commit/cf3df415a66b47a91da1911e320e31989758eeab))
 
 ## [1.29.1](https://github.com/kunish/wheel/compare/v1.29.0...v1.29.1) (2026-03-09)
 
-
 ### Bug Fixes
 
-* translate Anthropic body to OpenAI format for Copilot channels ([c8f8ce8](https://github.com/kunish/wheel/commit/c8f8ce88b28ff7e2f236b43437e58581e1a7be03))
+- translate Anthropic body to OpenAI format for Copilot channels ([c8f8ce8](https://github.com/kunish/wheel/commit/c8f8ce88b28ff7e2f236b43437e58581e1a7be03))
 
 ## [1.29.0](https://github.com/kunish/wheel/compare/v1.28.0...v1.29.0) (2026-03-09)
 
-
 ### Features
 
-* cache-only quota status filter for auth files ([ef748b7](https://github.com/kunish/wheel/commit/ef748b7ebab24acbbfdb3db3ecc14f93c666b931))
+- cache-only quota status filter for auth files ([ef748b7](https://github.com/kunish/wheel/commit/ef748b7ebab24acbbfdb3db3ecc14f93c666b931))
 
 ## [1.28.0](https://github.com/kunish/wheel/compare/v1.27.4...v1.28.0) (2026-03-09)
 
-
 ### Features
 
-* add auth file status filter and optimize narrow layout ([7e532fc](https://github.com/kunish/wheel/commit/7e532fcd11909615521091b9b255155c1ddba812))
-
+- add auth file status filter and optimize narrow layout ([7e532fc](https://github.com/kunish/wheel/commit/7e532fcd11909615521091b9b255155c1ddba812))
 
 ### Bug Fixes
 
-* prevent refresh_token_reused by setting NextRefreshAfter ([5eec453](https://github.com/kunish/wheel/commit/5eec453f668e22ed54b497ae4b7657ed4253b762))
-* suppress management API info-level logs in gin logger ([a327c98](https://github.com/kunish/wheel/commit/a327c98c859126e4bc303ff8cbd5e3e691f1963a))
+- prevent refresh_token_reused by setting NextRefreshAfter ([5eec453](https://github.com/kunish/wheel/commit/5eec453f668e22ed54b497ae4b7657ed4253b762))
+- suppress management API info-level logs in gin logger ([a327c98](https://github.com/kunish/wheel/commit/a327c98c859126e4bc303ff8cbd5e3e691f1963a))
 
 ## [1.27.4](https://github.com/kunish/wheel/compare/v1.27.3...v1.27.4) (2026-03-09)
 
-
 ### Bug Fixes
 
-* use correct management API path for auth file models endpoint ([9047222](https://github.com/kunish/wheel/commit/90472229601b01d52c2786052803e80a02f1f44c))
-
+- use correct management API path for auth file models endpoint ([9047222](https://github.com/kunish/wheel/commit/90472229601b01d52c2786052803e80a02f1f44c))
 
 ### Performance Improvements
 
-* optimize bulk auth file upload with batch upsert and async model sync ([05c9136](https://github.com/kunish/wheel/commit/05c91366ed17215bfe5d9c87e25ebfd4c3823093))
+- optimize bulk auth file upload with batch upsert and async model sync ([05c9136](https://github.com/kunish/wheel/commit/05c91366ed17215bfe5d9c87e25ebfd4c3823093))
 
 ## [1.27.3](https://github.com/kunish/wheel/compare/v1.27.2...v1.27.3) (2026-03-09)
 
-
 ### Bug Fixes
 
-* remove stale CLIProxyAPIPlus COPY from worker Dockerfile ([424b291](https://github.com/kunish/wheel/commit/424b2911733cd46d553eb29431750419de3a6e2f))
+- remove stale CLIProxyAPIPlus COPY from worker Dockerfile ([424b291](https://github.com/kunish/wheel/commit/424b2911733cd46d553eb29431750419de3a6e2f))
 
 ## [1.27.2](https://github.com/kunish/wheel/compare/v1.27.1...v1.27.2) (2026-03-09)
 
-
 ### Bug Fixes
 
-* add OAuth session TTL and propagate request context across handlers ([22b22ad](https://github.com/kunish/wheel/commit/22b22ada791d6c155207a977ae77e81dbb595dd9))
-* auth file list text overflow by completing min-w-0 truncation chain ([872e3e1](https://github.com/kunish/wheel/commit/872e3e13c0f7f042eb1269271cf81e704944f250))
-* wrap static file serving in catch-all handle to avoid API rewrite ([05dab40](https://github.com/kunish/wheel/commit/05dab40c8a6da927de01c1392b6f0f03e49c091c))
+- add OAuth session TTL and propagate request context across handlers ([22b22ad](https://github.com/kunish/wheel/commit/22b22ada791d6c155207a977ae77e81dbb595dd9))
+- auth file list text overflow by completing min-w-0 truncation chain ([872e3e1](https://github.com/kunish/wheel/commit/872e3e13c0f7f042eb1269271cf81e704944f250))
+- wrap static file serving in catch-all handle to avoid API rewrite ([05dab40](https://github.com/kunish/wheel/commit/05dab40c8a6da927de01c1392b6f0f03e49c091c))
 
 ## [1.27.1](https://github.com/kunish/wheel/compare/v1.27.0...v1.27.1) (2026-03-08)
 
-
 ### Bug Fixes
 
-* fix pre-existing test failures, update docs, and eliminate sdk/config indirection ([1c42da8](https://github.com/kunish/wheel/commit/1c42da882042c7e3f6d56e1dd14fa7d2f51d5670))
+- fix pre-existing test failures, update docs, and eliminate sdk/config indirection ([1c42da8](https://github.com/kunish/wheel/commit/1c42da882042c7e3f6d56e1dd14fa7d2f51d5670))
 
 ## [1.27.0](https://github.com/kunish/wheel/compare/v1.26.1...v1.27.0) (2026-03-08)
 
-
 ### Features
 
-* absorb vendored module into worker and migrate all auth handlers to first-party ([bd6e3ad](https://github.com/kunish/wheel/commit/bd6e3ad679c8ef5a4b1aa785bcc44d27200e87d8))
-* migrate device-flow auth providers to first-party ownership ([1b2e801](https://github.com/kunish/wheel/commit/1b2e8010ccba19a498a264030998ecb25b9556dd))
-* migrate runtime integration ownership seams ([926ef98](https://github.com/kunish/wheel/commit/926ef9827f067c0d8957320f1f7f58f59e4c3877))
-
+- absorb vendored module into worker and migrate all auth handlers to first-party ([bd6e3ad](https://github.com/kunish/wheel/commit/bd6e3ad679c8ef5a4b1aa785bcc44d27200e87d8))
+- migrate device-flow auth providers to first-party ownership ([1b2e801](https://github.com/kunish/wheel/commit/1b2e8010ccba19a498a264030998ecb25b9556dd))
+- migrate runtime integration ownership seams ([926ef98](https://github.com/kunish/wheel/commit/926ef9827f067c0d8957320f1f7f58f59e4c3877))
 
 ### Bug Fixes
 
-* resolve Copilot 502 by direct executor integration in relay handler ([41934e1](https://github.com/kunish/wheel/commit/41934e132b5bb995ebe05adddc62089f66b133de))
-* restore runtime seam factory files ([e9f7056](https://github.com/kunish/wheel/commit/e9f7056ea41b09fe0b685977cfb60610c6579dad))
+- resolve Copilot 502 by direct executor integration in relay handler ([41934e1](https://github.com/kunish/wheel/commit/41934e132b5bb995ebe05adddc62089f66b133de))
+- restore runtime seam factory files ([e9f7056](https://github.com/kunish/wheel/commit/e9f7056ea41b09fe0b685977cfb60610c6579dad))
 
 ## [1.26.1](https://github.com/kunish/wheel/compare/v1.26.0...v1.26.1) (2026-03-08)
 
-
 ### Bug Fixes
 
-* tighten runtime OpenAI compatibility ([20d4d72](https://github.com/kunish/wheel/commit/20d4d7288b38bc6d6fb9427ba86c9c5d97179821))
+- tighten runtime OpenAI compatibility ([20d4d72](https://github.com/kunish/wheel/commit/20d4d7288b38bc6d6fb9427ba86c9c5d97179821))
 
 ## [1.26.0](https://github.com/kunish/wheel/compare/v1.25.0...v1.26.0) (2026-03-07)
 
-
 ### Features
 
-* improve runtime auth bulk management ([ab6c57a](https://github.com/kunish/wheel/commit/ab6c57a964f072f6a493f8b4e26693abed700b3a))
+- improve runtime auth bulk management ([ab6c57a](https://github.com/kunish/wheel/commit/ab6c57a964f072f6a493f8b4e26693abed700b3a))
 
 ## [1.25.0](https://github.com/kunish/wheel/compare/v1.24.0...v1.25.0) (2026-03-07)
 
-
 ### Features
 
-* clarify runtime model sync updates ([2048f87](https://github.com/kunish/wheel/commit/2048f87b5caaf564568e050cadbfc4e80361647d))
+- clarify runtime model sync updates ([2048f87](https://github.com/kunish/wheel/commit/2048f87b5caaf564568e050cadbfc4e80361647d))
 
 ## [1.24.0](https://github.com/kunish/wheel/compare/v1.23.0...v1.24.0) (2026-03-07)
 
-
 ### Features
 
-* improve runtime channel auth and quota UX ([ef4f6e4](https://github.com/kunish/wheel/commit/ef4f6e4a8cb0aeed47e3d43cdc8198c3483ccb2f))
+- improve runtime channel auth and quota UX ([ef4f6e4](https://github.com/kunish/wheel/commit/ef4f6e4a8cb0aeed47e3d43cdc8198c3483ccb2f))
 
 ## [1.23.0](https://github.com/kunish/wheel/compare/v1.22.5...v1.23.0) (2026-03-07)
 
-
 ### Features
 
-* expand OpenAI-compatible relay support ([5e28cda](https://github.com/kunish/wheel/commit/5e28cdaa7934f5308b2c9eb886e79b5158922cf4))
+- expand OpenAI-compatible relay support ([5e28cda](https://github.com/kunish/wheel/commit/5e28cdaa7934f5308b2c9eb886e79b5158922cf4))
 
 ## [1.22.5](https://github.com/kunish/wheel/compare/v1.22.4...v1.22.5) (2026-03-07)
 
-
 ### Bug Fixes
 
-* include vendored cliproxy sdk in worker runtime ([706de3a](https://github.com/kunish/wheel/commit/706de3a94ce0647cf53adaf1de65417a2d3f4bbf))
+- include vendored cliproxy sdk in worker runtime ([706de3a](https://github.com/kunish/wheel/commit/706de3a94ce0647cf53adaf1de65417a2d3f4bbf))
 
 ## [1.22.4](https://github.com/kunish/wheel/compare/v1.22.3...v1.22.4) (2026-03-07)
 
-
 ### Bug Fixes
 
-* stage vendored worker module metadata in docker build ([2d9edff](https://github.com/kunish/wheel/commit/2d9edff16dc53b653f535bacf5d19245170e9875))
+- stage vendored worker module metadata in docker build ([2d9edff](https://github.com/kunish/wheel/commit/2d9edff16dc53b653f535bacf5d19245170e9875))
 
 ## [1.22.3](https://github.com/kunish/wheel/compare/v1.22.2...v1.22.3) (2026-03-06)
 
-
 ### Bug Fixes
 
-* vendor CLIProxyAPIPlus for worker runtime ([13e936d](https://github.com/kunish/wheel/commit/13e936df0de2263531a03c6ea696fef68fe63dd3))
+- vendor CLIProxyAPIPlus for worker runtime ([13e936d](https://github.com/kunish/wheel/commit/13e936df0de2263531a03c6ea696fef68fe63dd3))
 
 ## [1.22.2](https://github.com/kunish/wheel/compare/v1.22.1...v1.22.2) (2026-03-06)
 
-
 ### Bug Fixes
 
-* preserve codex runtime management key on auth refresh ([a9faf5b](https://github.com/kunish/wheel/commit/a9faf5bb9f2dcfea6148b425275674d56eb645b0))
+- preserve codex runtime management key on auth refresh ([a9faf5b](https://github.com/kunish/wheel/commit/a9faf5bb9f2dcfea6148b425275674d56eb645b0))
 
 ## [1.22.1](https://github.com/kunish/wheel/compare/v1.22.0...v1.22.1) (2026-03-06)
 
-
 ### Bug Fixes
 
-* remove local CLIProxyAPI replace from worker module ([4ffb192](https://github.com/kunish/wheel/commit/4ffb1926bfee29173fe04c2441bc2dd629ab2e30))
+- remove local CLIProxyAPI replace from worker module ([4ffb192](https://github.com/kunish/wheel/commit/4ffb1926bfee29173fe04c2441bc2dd629ab2e30))
 
 ## [1.22.0](https://github.com/kunish/wheel/compare/v1.21.0...v1.22.0) (2026-03-06)
 
-
 ### Features
 
-* expand runtime channels and log observability ([bd1d809](https://github.com/kunish/wheel/commit/bd1d8094b69ba6726b45449a8f90bc05f603a4af))
-
+- expand runtime channels and log observability ([bd1d809](https://github.com/kunish/wheel/commit/bd1d8094b69ba6726b45449a8f90bc05f603a4af))
 
 ### Bug Fixes
 
-* stabilize Codex auth sync and quota loading ([b1cccc7](https://github.com/kunish/wheel/commit/b1cccc76f6dbde5620adb3d47f3ced3d2afc5ac8))
+- stabilize Codex auth sync and quota loading ([b1cccc7](https://github.com/kunish/wheel/commit/b1cccc76f6dbde5620adb3d47f3ced3d2afc5ac8))
 
 ## [1.21.0](https://github.com/kunish/wheel/compare/v1.20.0...v1.21.0) (2026-03-06)
 
-
 ### Features
 
-* add Codex (CLIProxyAPI) provider support ([e5b237f](https://github.com/kunish/wheel/commit/e5b237f3020e612e70f69d4499107c1389ff41d6))
-* add codex runtime and auth upload flow ([a9eeb63](https://github.com/kunish/wheel/commit/a9eeb631680086399875dd74b574d5c0171609ec))
+- add Codex (CLIProxyAPI) provider support ([e5b237f](https://github.com/kunish/wheel/commit/e5b237f3020e612e70f69d4499107c1389ff41d6))
+- add codex runtime and auth upload flow ([a9eeb63](https://github.com/kunish/wheel/commit/a9eeb631680086399875dd74b574d5c0171609ec))
 
 ## [1.20.0](https://github.com/kunish/wheel/compare/v1.19.2...v1.20.0) (2026-03-05)
 
-
 ### Features
 
-* **logs:** stabilize list layout and enrich detail diagnostics ([256804d](https://github.com/kunish/wheel/commit/256804d9fbfc84798f1aa6549a5a4513998c81bb))
+- **logs:** stabilize list layout and enrich detail diagnostics ([256804d](https://github.com/kunish/wheel/commit/256804d9fbfc84798f1aa6549a5a4513998c81bb))
 
 ## [1.19.2](https://github.com/kunish/wheel/compare/v1.19.1...v1.19.2) (2026-03-05)
 
-
 ### Bug Fixes
 
-* **mcp:** split gateway endpoints and stabilize tool discovery ([43e6249](https://github.com/kunish/wheel/commit/43e62497f8ee81ccc388039f1ab7c10dd5216a8d))
-* **relay:** stop retrying non-retryable proxy errors ([fd7fefb](https://github.com/kunish/wheel/commit/fd7fefbe78d65c308b97f1efb31567c3274feba5))
+- **mcp:** split gateway endpoints and stabilize tool discovery ([43e6249](https://github.com/kunish/wheel/commit/43e62497f8ee81ccc388039f1ab7c10dd5216a8d))
+- **relay:** stop retrying non-retryable proxy errors ([fd7fefb](https://github.com/kunish/wheel/commit/fd7fefbe78d65c308b97f1efb31567c3274feba5))
 
 ## [1.19.1](https://github.com/kunish/wheel/compare/v1.19.0...v1.19.1) (2026-03-04)
 
-
 ### Bug Fixes
 
-* **playground:** streamline settings entry and confirm clear action ([468dbf1](https://github.com/kunish/wheel/commit/468dbf1e9eed243f2fe0f01466fe19e9e1787d32))
+- **playground:** streamline settings entry and confirm clear action ([468dbf1](https://github.com/kunish/wheel/commit/468dbf1e9eed243f2fe0f01466fe19e9e1787d32))
 
 ## [1.19.0](https://github.com/kunish/wheel/compare/v1.18.0...v1.19.0) (2026-03-04)
 
-
 ### Features
 
-* implement 20 enterprise features inspired by Bifrost AI gateway ([e9b5826](https://github.com/kunish/wheel/commit/e9b5826126d3491efad293ae5a9b160a00bb5c82))
-* **playground:** add MCP auto/manual chat workflow ([b07be5c](https://github.com/kunish/wheel/commit/b07be5c97730d8b8cce1b9a61efa0baa8a563b33))
-* **playground:** add MCP-aware request builders and API helpers ([7aab15c](https://github.com/kunish/wheel/commit/7aab15cae68d2ab62af846cc512b7acfc09b94f0))
-
+- implement 20 enterprise features inspired by Bifrost AI gateway ([e9b5826](https://github.com/kunish/wheel/commit/e9b5826126d3491efad293ae5a9b160a00bb5c82))
+- **playground:** add MCP auto/manual chat workflow ([b07be5c](https://github.com/kunish/wheel/commit/b07be5c97730d8b8cce1b9a61efa0baa8a563b33))
+- **playground:** add MCP-aware request builders and API helpers ([7aab15c](https://github.com/kunish/wheel/commit/7aab15cae68d2ab62af846cc512b7acfc09b94f0))
 
 ### Bug Fixes
 
-* **playground:** keep cleared tool selection and continue after tool errors ([17683d5](https://github.com/kunish/wheel/commit/17683d5d126ec1fa96472d851c910a3b1b17b098))
-* **playground:** resolve MCP review blockers ([6c178fd](https://github.com/kunish/wheel/commit/6c178fdc72e630f4b04d8f88e6c179e5c53b41a7))
-* **playground:** scope model selector to active profile groups ([dac0d6b](https://github.com/kunish/wheel/commit/dac0d6bb8d1db2f0d28d93ec6741c4d796505304))
-* **playground:** stabilize relay background flows and dashboard UX ([67a7c85](https://github.com/kunish/wheel/commit/67a7c85f4e8decdbff1699d18d83626cf530c113))
+- **playground:** keep cleared tool selection and continue after tool errors ([17683d5](https://github.com/kunish/wheel/commit/17683d5d126ec1fa96472d851c910a3b1b17b098))
+- **playground:** resolve MCP review blockers ([6c178fd](https://github.com/kunish/wheel/commit/6c178fdc72e630f4b04d8f88e6c179e5c53b41a7))
+- **playground:** scope model selector to active profile groups ([dac0d6b](https://github.com/kunish/wheel/commit/dac0d6bb8d1db2f0d28d93ec6741c4d796505304))
+- **playground:** stabilize relay background flows and dashboard UX ([67a7c85](https://github.com/kunish/wheel/commit/67a7c85f4e8decdbff1699d18d83626cf530c113))
 
 ## [1.18.0](https://github.com/kunish/wheel/compare/v1.17.0...v1.18.0) (2026-03-02)
 

@@ -28,7 +28,8 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { EMPTY_CHANNEL_FORM } from "./channel-dialog"
 import { CodexChannelDetail } from "./codex-channel-detail"
-import { isRuntimeChannelType } from "./codex-channel-draft"
+import { isRuntimeChannelType, OUTBOUND_CURSOR_CHANNEL_TYPE } from "./codex-channel-draft"
+import { CursorChannelDetail } from "./cursor-channel-detail"
 
 // ─── Inline delete confirmation ────────────────
 // Re-uses ConfirmDeleteDialog from the shared component
@@ -438,13 +439,15 @@ function DraggableChannel({
                 />
               )}
             </div>
-            {isRuntimeChannelType(channel.type) && (
+            {channel.type === OUTBOUND_CURSOR_CHANNEL_TYPE ? (
+              <CursorChannelDetail channelId={channel.id} />
+            ) : isRuntimeChannelType(channel.type) ? (
               <CodexChannelDetail
                 channelId={channel.id}
                 channelType={channel.type}
                 modelCount={modelNames.length}
               />
-            )}
+            ) : null}
           </CardContent>
         </div>
       </div>

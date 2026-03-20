@@ -60,6 +60,16 @@ export function fetchChannelModelsPreview(data: { type: number; baseUrl: string;
   )
 }
 
+/** Refresh Cursor channel models from upstream GetUsableModels and persist to the channel. */
+export function refreshCursorChannelModels(channelId: number) {
+  return apiFetch<{
+    success: boolean
+    data: { models: string[]; count?: number; unchanged?: boolean }
+  }>(`/api/v1/channel/${channelId}/cursor/refresh-models`, {
+    method: "POST",
+  })
+}
+
 export function reorderChannels(orderedIds: number[]) {
   return apiFetch<{ success: boolean }>("/api/v1/channel/reorder", {
     method: "POST",

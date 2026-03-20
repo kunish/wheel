@@ -24,6 +24,7 @@ type relayAttemptParams struct {
 	UpstreamBodyForLog     *string
 	IsAnthropicPassthrough bool
 	IsAnthropicInbound     bool
+	IsGeminiNative         bool
 	ResponsesOutput        bool
 	FirstTokenTimeout      int
 	ApiKeyID               int
@@ -75,6 +76,11 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 	// Antigravity channels: convert Anthropic → Gemini and proxy to Google internal API.
 	if p.Channel.Type == types.OutboundAntigravity && h.AntigravityRelay != nil {
 		return h.executeAntigravityStreaming(p)
+	}
+
+	// Cursor IDE channels: ConnectRPC AgentService (HTTP/2).
+	if p.Channel.Type == types.OutboundCursor && h.CursorRelay != nil {
+		return h.executeCursorStreaming(p)
 	}
 
 	streamId := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), p.Channel.ID, p.ApiKeyID)
@@ -201,6 +207,11 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 		return h.executeAntigravityNonStreaming(p)
 	}
 
+	// Cursor IDE channels: ConnectRPC AgentService (HTTP/2).
+	if p.Channel.Type == types.OutboundCursor && h.CursorRelay != nil {
+		return h.executeCursorNonStreaming(p)
+	}
+
 	// Use the in-process Codex client when available for Codex channels.
 	httpClient := h.HTTPClient
 	if p.Channel.Type == types.OutboundCodex && h.CodexHTTPClient != nil {
@@ -290,6 +301,10 @@ func (s *nonStreamStrategy) HandleSuccess(h *RelayHandler, p *relayAttemptParams
 	}
 	if p.IsAnthropicInbound {
 		p.C.JSON(200, relay.ConvertToAnthropicResponse(result.Response))
+		return
+	}
+	if p.IsGeminiNative {
+		p.C.JSON(200, relay.ConvertOpenAIResponseToGemini(result.Response))
 		return
 	}
 	p.C.JSON(200, result.Response)

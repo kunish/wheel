@@ -12,7 +12,8 @@ func needsResponsesConversion(channelType types.OutboundType) bool {
 		types.OutboundGemini,
 		types.OutboundBedrock,
 		types.OutboundVertex,
-		types.OutboundCohere:
+		types.OutboundCohere,
+		types.OutboundCursor:
 		return true
 	default:
 		return false

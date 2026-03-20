@@ -95,6 +95,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	admin.GET("/channel/:id/antigravity/oauth/status", h.GetCodexOAuthStatus)
 	admin.POST("/channel/:id/antigravity/oauth/callback", h.SubmitCodexOAuthCallback)
 
+	// Cursor IDE channel — refresh model list from GetUsableModels
+	admin.POST("/channel/:id/cursor/refresh-models", h.RefreshCursorChannelModels)
+
 	// Group routes
 	admin.GET("/group/list", h.ListGroups)
 	admin.POST("/group/create", h.CreateGroup)

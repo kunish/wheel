@@ -44,15 +44,125 @@ import {
   startCodexOAuth,
   uploadCodexAuthFile,
 } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import {
   adaptChannelDraftForType,
   ensureCodexChannelId,
   getRuntimeProviderKey,
   isRuntimeChannelType,
   mergeRuntimeChannelModels,
+  OUTBOUND_CURSOR_CHANNEL_TYPE,
   shouldShowGenericModelFetch,
 } from "./codex-channel-draft"
 import { channelsQueryKey, codexUploadRefreshQueryKeys } from "./codex-query-keys"
+
+const CURSOR_CREDENTIAL_FILE_MAX_BYTES = 64 * 1024
+
+function normalizeCursorCredentialFileText(file: File, raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    throw new Error("empty")
+  }
+  const name = file.name.toLowerCase()
+  const looksJSON = name.endsWith(".json") || trimmed.startsWith("{")
+  if (looksJSON) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      throw new Error("badJson")
+    }
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return JSON.stringify(parsed)
+    }
+    if (typeof parsed === "string") {
+      const s = parsed.trim()
+      if (!s) {
+        throw new Error("empty")
+      }
+      return s
+    }
+    throw new Error("badJson")
+  }
+  return trimmed
+}
+
+function CursorCredentialsFileUploadButton({
+  setForm,
+}: {
+  setForm: Dispatch<SetStateAction<ChannelFormData>>
+}) {
+  const { t } = useTranslation("model")
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const onFiles = useCallback(
+    async (list: FileList | null | undefined) => {
+      const file = list?.[0]
+      if (!file) {
+        return
+      }
+      if (file.size > CURSOR_CREDENTIAL_FILE_MAX_BYTES) {
+        toast.error(t("channelDialog.cursorCredentialFileTooLarge"))
+        return
+      }
+      setBusy(true)
+      try {
+        const raw = await file.text()
+        const credential = normalizeCursorCredentialFileText(file, raw)
+        setForm((prev) => ({
+          ...prev,
+          keys: [{ channelKey: credential, remark: prev.keys[0]?.remark ?? "" }],
+        }))
+        toast.success(t("channelDialog.cursorCredentialImported"))
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : ""
+        if (msg === "empty") {
+          toast.error(t("channelDialog.cursorCredentialImportEmpty"))
+        } else if (msg === "badJson") {
+          toast.error(t("channelDialog.cursorCredentialImportInvalidJson"))
+        } else {
+          toast.error(t("channelDialog.cursorCredentialImportReadError"))
+        }
+      } finally {
+        setBusy(false)
+      }
+    },
+    [setForm, t],
+  )
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-fit"
+        disabled={busy}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        {busy ? (
+          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Upload className="mr-1.5 h-3.5 w-3.5" />
+        )}
+        {busy
+          ? t("channelDialog.cursorCredentialUploading")
+          : t("channelDialog.cursorCredentialUpload")}
+      </Button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,.txt,application/json,text/plain"
+        className="hidden"
+        onChange={(e) => {
+          void onFiles(e.target.files)
+          e.currentTarget.value = ""
+        }}
+      />
+    </>
+  )
+}
 
 export interface ChannelFormData {
   id?: number
@@ -173,7 +283,7 @@ function FetchModelsButton({
 
   const baseUrl = form.baseUrls[0]?.url?.trim()
   const key = form.keys[0]?.channelKey?.trim()
-  const canFetch = !!baseUrl && !!key
+  const canFetch = !!key && (form.type === OUTBOUND_CURSOR_CHANNEL_TYPE ? true : !!baseUrl)
 
   async function handleFetch() {
     if (!canFetch) {
@@ -184,7 +294,7 @@ function FetchModelsButton({
     try {
       const res = await fetchChannelModelsPreview({
         type: form.type,
-        baseUrl,
+        baseUrl: baseUrl ?? "",
         key,
       })
       const models = res.data.models
@@ -386,9 +496,11 @@ function CodexOAuthButton({
               <div className="space-y-3">
                 {oauthUserCode && (
                   <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
-                    <p className="mb-1 text-xs text-muted-foreground">{t("codex.oauthDeviceCode")}</p>
+                    <p className="text-muted-foreground mb-1 text-xs">
+                      {t("codex.oauthDeviceCode")}
+                    </p>
                     <div className="flex items-center gap-2">
-                      <code className="rounded bg-background px-2 py-1 text-lg font-bold tracking-widest">
+                      <code className="bg-background rounded px-2 py-1 text-lg font-bold tracking-widest">
                         {oauthUserCode}
                       </code>
                       <Button
@@ -682,6 +794,7 @@ export default function ChannelDialog({
       34: t("typeLabels.34"),
       35: t("typeLabels.35"),
       36: t("typeLabels.36"),
+      37: t("typeLabels.37"),
     }),
     [t],
   )
@@ -737,7 +850,7 @@ export default function ChannelDialog({
             <div className="flex flex-col gap-2">
               <Label>{t("channelDialog.baseUrl")}</Label>
               <Input
-                placeholder="https://api.openai.com"
+                placeholder={form.type === 37 ? "https://api2.cursor.sh" : "https://api.openai.com"}
                 value={form.baseUrls[0]?.url ?? ""}
                 onChange={(e) =>
                   setForm({
@@ -773,6 +886,50 @@ export default function ChannelDialog({
                   invalidJsonMessage={runtimeInvalidJsonMessage}
                   saveChannelFirstMessage={runtimeSaveChannelFirst}
                 />
+              </div>
+            </div>
+          ) : form.type === 37 ? (
+            <div className="bg-muted/30 flex flex-col gap-2 rounded-lg border px-3 py-3">
+              <Label>{t("channelDialog.cursorCredentialsLabel")}</Label>
+              <p className="text-muted-foreground text-xs">
+                {t("channelDialog.cursorCredentialsHint")}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <CursorCredentialsFileUploadButton setForm={setForm} />
+                <span className="text-muted-foreground text-xs">
+                  {t("channelDialog.cursorCredentialUploadHint")}
+                </span>
+              </div>
+              <div className="relative">
+                <Textarea
+                  placeholder={t("channelDialog.cursorCredentialsPlaceholder")}
+                  value={form.keys[0]?.channelKey ?? ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      keys: [{ channelKey: e.target.value, remark: form.keys[0]?.remark ?? "" }],
+                    })
+                  }
+                  rows={6}
+                  className={cn(
+                    "resize-y pr-10 font-mono text-xs break-all",
+                    !showKey && "[-webkit-text-security:disc]",
+                  )}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1.5 right-1.5 h-7 w-7"
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={
+                    showKey ? t("channelDialog.hideApiKey") : t("channelDialog.showApiKey")
+                  }
+                >
+                  {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
               </div>
             </div>
           ) : (

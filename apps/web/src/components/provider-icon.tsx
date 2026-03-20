@@ -33,6 +33,7 @@ const PROVIDER_LOGO_MAP: Record<number, string> = {
   34: "github", // GitHub Copilot
   35: "openai", // Codex CLI
   36: "google", // Antigravity
+  37: "openai", // Cursor (no models.dev logo; use generic)
 }
 
 function getProviderLogoUrl(channelType: number): string | null {

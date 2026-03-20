@@ -35,6 +35,7 @@ const (
 	OutboundCopilot     OutboundType = 34 // GitHub Copilot via embedded runtime
 	OutboundCodexCLI    OutboundType = 35 // OpenAI Codex CLI (chatgpt.com Responses API)
 	OutboundAntigravity OutboundType = 36 // Google Antigravity (Gemini internal API)
+	OutboundCursor      OutboundType = 37 // Cursor IDE (api2.cursor.sh Agent API via ConnectRPC)
 )
 
 // outboundTypeName returns a human-readable name for the provider type.
@@ -92,6 +93,8 @@ func outboundTypeName(t OutboundType) string {
 		return "codex-cli"
 	case OutboundAntigravity:
 		return "antigravity"
+	case OutboundCursor:
+		return "cursor"
 	default:
 		return "unknown"
 	}
@@ -142,6 +145,8 @@ func DefaultBaseURL(t OutboundType) string {
 		return "https://chatgpt.com"
 	case OutboundAntigravity:
 		return "https://cloudcode-pa.googleapis.com"
+	case OutboundCursor:
+		return "https://api2.cursor.sh"
 	default:
 		return ""
 	}

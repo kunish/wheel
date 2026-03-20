@@ -132,6 +132,9 @@ type RelayHandler struct {
 	// ── Antigravity (Google internal Gemini API) ──
 	AntigravityRelay *AntigravityRelay
 
+	// ── Cursor IDE (api2.cursor.sh Agent API) ──
+	CursorRelay *CursorRelay
+
 	// ── Codex runtime (in-process) ──
 	CodexStreamClient *http.Client
 	CodexHTTPClient   *http.Client

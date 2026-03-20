@@ -81,7 +81,22 @@ func (h *RelayHandler) executeBackgroundNonStream(
 
 			var result *relay.ProxyResult
 			var err error
-			if relay.ShouldUseMultimodalExecution(requestType, channel.Type) {
+			useCursor := channel.Type == types.OutboundCursor && h.CursorRelay != nil &&
+				(requestType == relay.RequestTypeChat || requestType == relay.RequestTypeAnthropicMsg)
+			if useCursor {
+				bodyForCursor := requestBody
+				if requestType == relay.RequestTypeAnthropicMsg {
+					bodyForCursor = convertAnthropicBodyToOpenAI(requestBody)
+				}
+				result, err = h.CursorRelay.ProxyNonStreaming(
+					context.Background(),
+					channel,
+					selectedKey.ChannelKey,
+					requestModel,
+					targetModel,
+					bodyForCursor,
+				)
+			} else if relay.ShouldUseMultimodalExecution(requestType, channel.Type) {
 				upstream = relay.BuildMultimodalUpstreamRequest(
 					channelConfig,
 					selectedKey.ChannelKey,

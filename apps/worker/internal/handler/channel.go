@@ -310,14 +310,18 @@ func (h *Handler) FetchModelPreview(c *gin.Context) {
 		return
 	}
 
-	if req.BaseUrl == "" || req.Key == "" {
-		errorJSON(c, http.StatusBadRequest, "baseUrl and key are required")
+	if req.Key == "" {
+		errorJSON(c, http.StatusBadRequest, "key is required")
 		return
 	}
 
 	channelType := req.Type
 	if channelType == 0 {
 		channelType = 1
+	}
+	if req.BaseUrl == "" && types.OutboundType(channelType) != types.OutboundCursor {
+		errorJSON(c, http.StatusBadRequest, "baseUrl and key are required")
+		return
 	}
 
 	pseudoChannel := &types.Channel{
@@ -418,7 +422,9 @@ func fetchModelsFromChannel(ctx context.Context, channel *types.Channel, kv *cac
 	if len(channel.BaseUrls) > 0 {
 		baseUrl = strings.TrimRight(channel.BaseUrls[0].URL, "/")
 	}
-	if baseUrl == "" {
+	// Cursor uses cursorChannelBaseURL() inside FetchUsableModels (default api2.cursor.sh);
+	// do not bail out when base URL is empty.
+	if baseUrl == "" && channel.Type != types.OutboundCursor {
 		return []string{}, false, nil
 	}
 
@@ -426,6 +432,9 @@ func fetchModelsFromChannel(ctx context.Context, channel *types.Channel, kv *cac
 	defer cancel()
 
 	switch channel.Type {
+	case types.OutboundCursor:
+		models, err := NewCursorRelay().FetchUsableModels(ctx, channel, key.ChannelKey)
+		return models, false, err
 	case types.OutboundAnthropic:
 		models, err := relay.FetchAnthropicModels(ctx, baseUrl, key.ChannelKey)
 		if err != nil && kv != nil {

@@ -339,6 +339,7 @@ func main() {
 		CopilotRelay:      handler.NewCopilotRelay(database),
 		CodexCLIRelay:     handler.NewCodexCLIRelay(database),
 		AntigravityRelay:  handler.NewAntigravityRelay(database),
+		CursorRelay:       handler.NewCursorRelay(),
 		CodexStreamClient: codexStreamClient,
 		CodexHTTPClient:   codexHTTPClient,
 	}

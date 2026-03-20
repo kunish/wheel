@@ -32,7 +32,8 @@
     "33": "Codex",
     "34": "GitHub Copilot",
     "35": "Codex CLI",
-    "36": "Antigravity"
+    "36": "Antigravity",
+    "37": "Cursor"
   },
   "modeLabels": {
     "1": "RoundRobin",
@@ -102,10 +103,21 @@
     "fetchModels": "Fetch Models",
     "fetching": "Fetching...",
     "fetchError": "Failed to fetch models",
-    "fetchFillFirst": "Please fill in Base URL and API Key first",
+    "fetchFillFirst": "Please fill in Base URL and credentials first",
     "fetchNoModels": "No models found from this provider",
     "fetchSuccess": "Fetched {{count}} models",
-    "fetchFallback": "API unreachable, loaded {{count}} models from models.dev"
+    "fetchFallback": "API unreachable, loaded {{count}} models from models.dev",
+    "cursorCredentialsLabel": "Cursor credentials",
+    "cursorCredentialsPlaceholder": "JSON: {\"accessToken\":\"...\",\"machineId\":\"...\",\"macMachineId\":\"...\"} — or paste accessToken only",
+    "cursorCredentialsHint": "Paste {\"accessToken\",\"machineId\",\"macMachineId\"}, a raw token, or a full cursoride2api token.json with a \"tokens\" array. Base URL defaults to https://api2.cursor.sh when empty.",
+    "cursorCredentialUpload": "Import from file",
+    "cursorCredentialUploading": "Reading…",
+    "cursorCredentialUploadHint": ".json (credential object) or .txt (raw token). Max 64 KB.",
+    "cursorCredentialImported": "Imported. Click Save below to apply.",
+    "cursorCredentialImportEmpty": "The file is empty.",
+    "cursorCredentialImportInvalidJson": "Invalid JSON. Expected a credential object {…} or a string.",
+    "cursorCredentialImportReadError": "Could not read the file.",
+    "cursorCredentialFileTooLarge": "File too large (max 64 KB)."
   },
   "groupDialog": {
     "createTitle": "Create Group",
@@ -205,6 +217,13 @@
       "editPrice": "Edit price for {{name}}",
       "deletePrice": "Delete price for {{name}}"
     }
+  },
+  "cursor": {
+    "managementTitle": "Cursor IDE",
+    "refreshHint": "Pull the latest model list from Cursor (GetUsableModels) and save it on this channel.",
+    "refreshSuccess": "Updated {{count}} models on this channel",
+    "refreshUnchanged": "No model list available (check that a channel key is set and enabled). The channel was not changed.",
+    "refreshFailed": "Could not refresh models"
   },
   "codex": {
     "authFiles": "Auth Files",

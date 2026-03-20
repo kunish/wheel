@@ -163,6 +163,35 @@ describe("runtime channel helpers", () => {
     expect(shouldShowGenericModelFetch(34)).toBe(false)
     expect(shouldShowGenericModelFetch(35)).toBe(false)
     expect(shouldShowGenericModelFetch(36)).toBe(false)
+    expect(shouldShowGenericModelFetch(37)).toBe(true)
     expect(shouldShowGenericModelFetch(1)).toBe(true)
+  })
+
+  it("prefills Cursor (37) base URL when empty", () => {
+    expect(
+      adaptChannelDraftForType(
+        {
+          ...baseForm,
+          type: 1,
+          baseUrls: [{ url: "", delay: 7 }],
+          keys: [{ channelKey: "", remark: "" }],
+        },
+        37,
+      ).baseUrls,
+    ).toEqual([{ url: "https://api2.cursor.sh", delay: 7 }])
+  })
+
+  it("keeps existing base URL when switching to Cursor (37)", () => {
+    expect(
+      adaptChannelDraftForType(
+        {
+          ...baseForm,
+          type: 1,
+          baseUrls: [{ url: "https://custom.example", delay: 0 }],
+          keys: [{ channelKey: "tok", remark: "" }],
+        },
+        37,
+      ).baseUrls,
+    ).toEqual([{ url: "https://custom.example", delay: 0 }])
   })
 })

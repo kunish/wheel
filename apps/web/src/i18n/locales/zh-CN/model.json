@@ -32,7 +32,8 @@
     "33": "Codex",
     "34": "GitHub Copilot",
     "35": "Codex CLI",
-    "36": "Antigravity"
+    "36": "Antigravity",
+    "37": "Cursor"
   },
   "modeLabels": {
     "1": "轮询",
@@ -102,10 +103,21 @@
     "fetchModels": "获取模型",
     "fetching": "获取中...",
     "fetchError": "获取模型失败",
-    "fetchFillFirst": "请先填写基础 URL 和 API 密钥",
+    "fetchFillFirst": "请先填写基础 URL 和凭证",
     "fetchNoModels": "该供应商未找到模型",
     "fetchSuccess": "已获取 {{count}} 个模型",
-    "fetchFallback": "API 不可达，已从 models.dev 加载 {{count}} 个模型"
+    "fetchFallback": "API 不可达，已从 models.dev 加载 {{count}} 个模型",
+    "cursorCredentialsLabel": "Cursor 凭证",
+    "cursorCredentialsPlaceholder": "JSON：{\"accessToken\":\"...\",\"machineId\":\"...\",\"macMachineId\":\"...\"}，或仅粘贴 accessToken",
+    "cursorCredentialsHint": "支持单行 JSON、纯 token，或含 \"tokens\" 数组的 cursoride2api 整份 token.json。未填写基础 URL 时默认 https://api2.cursor.sh。",
+    "cursorCredentialUpload": "从文件导入",
+    "cursorCredentialUploading": "读取中…",
+    "cursorCredentialUploadHint": "支持 .json（凭证对象）或 .txt（纯 token），最大 64 KB。",
+    "cursorCredentialImported": "已导入，请点击下方保存生效。",
+    "cursorCredentialImportEmpty": "文件为空。",
+    "cursorCredentialImportInvalidJson": "JSON 无效，需为对象 {…} 或字符串。",
+    "cursorCredentialImportReadError": "无法读取该文件。",
+    "cursorCredentialFileTooLarge": "文件过大（最大 64 KB）。"
   },
   "groupDialog": {
     "createTitle": "创建分组",
@@ -205,6 +217,13 @@
       "editPrice": "编辑 {{name}} 的价格",
       "deletePrice": "删除 {{name}} 的价格"
     }
+  },
+  "cursor": {
+    "managementTitle": "Cursor IDE",
+    "refreshHint": "从 Cursor 上游重新获取可用模型列表（GetUsableModels）并保存到本渠道。",
+    "refreshSuccess": "已更新本渠道 {{count}} 个模型",
+    "refreshUnchanged": "没有可用的模型列表（请检查凭证是否启用、渠道密钥是否填写）；渠道模型未改动。",
+    "refreshFailed": "刷新模型失败"
   },
   "codex": {
     "authFiles": "认证文件",

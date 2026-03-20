@@ -216,6 +216,13 @@ func (h *RelayHandler) executeWithRetry(
 				upstreamBodyForLog = &s
 			}
 
+			var isGeminiNative bool
+			if gv, ok := c.Get("gemini_native"); ok {
+				if b, ok := gv.(bool); ok {
+					isGeminiNative = b
+				}
+			}
+
 			params := &relayAttemptParams{
 				C:                      c,
 				RequestType:            req.RequestType,
@@ -228,6 +235,7 @@ func (h *RelayHandler) executeWithRetry(
 				UpstreamBodyForLog:     upstreamBodyForLog,
 				IsAnthropicPassthrough: isAnthropicPassthrough,
 				IsAnthropicInbound:     isAnthropicInbound,
+				IsGeminiNative:         isGeminiNative,
 				ResponsesOutput:        req.RequestType == relay.RequestTypeResponses && needsResponsesConversion(channel.Type),
 				FirstTokenTimeout:      firstTokenTimeout,
 				ApiKeyID:               apiKeyId,

@@ -33,6 +33,24 @@ func TestNormalizeRuntimeTargetModel(t *testing.T) {
 			model:       "claude-opus-4-6",
 			want:        "claude-opus-4-6",
 		},
+		{
+			name:        "cursor maps gpt-4 alias to composer-2",
+			channelType: types.OutboundCursor,
+			model:       "gpt-4",
+			want:        "composer-2",
+		},
+		{
+			name:        "cursor maps group claude-opus-4-6 to Cursor opus id",
+			channelType: types.OutboundCursor,
+			model:       "claude-opus-4-6",
+			want:        "claude-4.6-opus-high",
+		},
+		{
+			name:        "cursor maps hyphen-normalized claude sonnet alias",
+			channelType: types.OutboundCursor,
+			model:       "claude-sonnet-4-5",
+			want:        "claude-4.5-sonnet",
+		},
 	}
 
 	for _, tt := range tests {

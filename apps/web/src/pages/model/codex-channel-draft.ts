@@ -2,6 +2,9 @@ import type { ChannelInput } from "@/lib/api/channels"
 
 export const RUNTIME_MANAGED_CHANNEL_KEY = "managed-by-auth-files"
 
+/** @see apps/worker/internal/types/enums.go OutboundCursor */
+export const OUTBOUND_CURSOR_CHANNEL_TYPE = 37
+
 export type RuntimeProviderKey = "codex" | "copilot" | "codex-cli" | "antigravity"
 
 interface SaveChannelResponse {
@@ -36,15 +39,27 @@ export function isRuntimeChannelType(channelType?: number): boolean {
   return getRuntimeProviderKey(channelType) !== null
 }
 
+const CURSOR_DEFAULT_BASE_URL = "https://api2.cursor.sh"
+
 export function adaptChannelDraftForType<T extends ChannelInput>(form: T, channelType: number): T {
   const isRuntime = isRuntimeChannelType(channelType)
   const currentKey = form.keys[0]?.channelKey ?? ""
   const currentRemark = form.keys[0]?.remark ?? ""
 
+  let baseUrls = form.baseUrls
+  if (isRuntime) {
+    baseUrls = [{ url: "", delay: form.baseUrls[0]?.delay ?? 0 }]
+  } else {
+    const url0 = form.baseUrls[0]?.url?.trim() ?? ""
+    if (channelType === 37 && url0 === "") {
+      baseUrls = [{ url: CURSOR_DEFAULT_BASE_URL, delay: form.baseUrls[0]?.delay ?? 0 }]
+    }
+  }
+
   return {
     ...form,
     type: channelType,
-    baseUrls: isRuntime ? [{ url: "", delay: form.baseUrls[0]?.delay ?? 0 }] : form.baseUrls,
+    baseUrls,
     keys: isRuntime
       ? [{ channelKey: RUNTIME_MANAGED_CHANNEL_KEY, remark: currentRemark }]
       : currentKey === RUNTIME_MANAGED_CHANNEL_KEY
