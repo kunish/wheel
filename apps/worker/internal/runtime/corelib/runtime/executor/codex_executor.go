@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	codexClientVersion = "0.101.0"
-	codexUserAgent     = "codex_cli_rs/0.101.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464"
+	codexUserAgent  = "codex_cli_rs/0.116.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464"
+	codexOriginator = "codex_cli_rs"
 )
 
 var dataTag = []byte("data:")
@@ -665,8 +665,10 @@ func applyCodexHeaders(r *http.Request, auth *cliproxyauth.Auth, token string, s
 		ginHeaders = ginCtx.Request.Header
 	}
 
-	misc.EnsureHeader(r.Header, ginHeaders, "Version", codexClientVersion)
+	misc.EnsureHeader(r.Header, ginHeaders, "Version", "")
 	misc.EnsureHeader(r.Header, ginHeaders, "Session_id", uuid.NewString())
+	misc.EnsureHeader(r.Header, ginHeaders, "X-Codex-Turn-Metadata", "")
+	misc.EnsureHeader(r.Header, ginHeaders, "X-Client-Request-Id", "")
 	misc.EnsureHeader(r.Header, ginHeaders, "User-Agent", codexUserAgent)
 
 	if stream {
@@ -682,8 +684,12 @@ func applyCodexHeaders(r *http.Request, auth *cliproxyauth.Auth, token string, s
 			isAPIKey = true
 		}
 	}
+	if originator := strings.TrimSpace(ginHeaders.Get("Originator")); originator != "" {
+		r.Header.Set("Originator", originator)
+	} else if !isAPIKey {
+		r.Header.Set("Originator", codexOriginator)
+	}
 	if !isAPIKey {
-		r.Header.Set("Originator", "codex_cli_rs")
 		if auth != nil && auth.Metadata != nil {
 			if accountID, ok := auth.Metadata["account_id"].(string); ok {
 				r.Header.Set("Chatgpt-Account-Id", accountID)
