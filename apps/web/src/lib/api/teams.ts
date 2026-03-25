@@ -29,7 +29,12 @@ export function createTeam(data: { name: string; description?: string; maxBudget
   })
 }
 
-export function updateTeam(data: { id: number; name?: string; description?: string; maxBudget?: number }) {
+export function updateTeam(data: {
+  id: number
+  name?: string
+  description?: string
+  maxBudget?: number
+}) {
   return apiFetch<{ success: boolean }>("/api/v1/team/update", {
     method: "POST",
     body: data,
@@ -43,5 +48,7 @@ export function deleteTeam(id: number) {
 }
 
 export function getTeamBudgets() {
-  return apiFetch<{ success: boolean; data: { budgets: TeamBudgetSummary[] } }>("/api/v1/team/budgets")
+  return apiFetch<{ success: boolean; data: { budgets: TeamBudgetSummary[] } }>(
+    "/api/v1/team/budgets",
+  )
 }

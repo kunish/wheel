@@ -139,8 +139,6 @@ func (h *Handler) listCodexAuthFileModelsWithRetry(ctx context.Context, query ur
 		case <-timer.C:
 		}
 	}
-
-	return out, nil
 }
 
 func (h *Handler) persistCodexChannelModels(ctx context.Context, channelID int, models []string) error {

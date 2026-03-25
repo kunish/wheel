@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router"
 import { buildFilterSearchParams, parseLogFilters } from "@/pages/logs/log-filters"
 
@@ -29,6 +29,11 @@ export function useLogFilters() {
   )
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
   const debouncedUpdateFilter = useCallback(
     (key: string, value: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current)

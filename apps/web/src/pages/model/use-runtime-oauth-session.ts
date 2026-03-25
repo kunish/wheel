@@ -212,7 +212,7 @@ export function useRuntimeOAuthSession(input: {
     [input.channelId, input.channelType],
   )
   const [session, setSession] = useState<RuntimeOAuthSessionState>(getInitialState)
-  const [callbackInput, setCallbackInputState] = useState("")
+  const [callbackInput, setCallbackInputRaw] = useState("")
   const [callbackValidation, setCallbackValidation] = useState<CallbackValidation>({
     code: "empty",
   })
@@ -568,7 +568,7 @@ export function useRuntimeOAuthSession(input: {
         verificationUri: data.verification_uri,
         expiresAt: data.expiresAt,
       })
-      setCallbackInputState("")
+      setCallbackInputRaw("")
       setCallbackValidation({ code: "empty" })
     },
     [clearWarningCode, input.channelId, input.channelType, persistSession],
@@ -588,7 +588,7 @@ export function useRuntimeOAuthSession(input: {
 
   const setCallbackInput = useCallback(
     (value: string) => {
-      setCallbackInputState(value)
+      setCallbackInputRaw(value)
       setCallbackValidation(validateCallbackUrl(value, session.state || undefined))
       clearWarningCode("clipboard_read_failed")
     },

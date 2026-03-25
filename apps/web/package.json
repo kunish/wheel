@@ -53,7 +53,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@vitest/coverage-v8": "catalog:",
-    "jsdom": "^26.1.0",
+    "jsdom": "catalog:",
     "openapi-typescript": "catalog:",
     "shadcn": "catalog:",
     "swagger2openapi": "catalog:",

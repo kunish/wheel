@@ -20,8 +20,9 @@
 **Step 1: Write the failing test**
 
 ```ts
+import type { SelectedToolRef } from "./mcp-alias"
 import { describe, expect, it } from "vitest"
-import { buildToolAliasMap, type SelectedToolRef } from "./mcp-alias"
+import { buildToolAliasMap } from "./mcp-alias"
 
 describe("buildToolAliasMap", () => {
   it("builds alias -> tool ref map and deduplicates collisions", () => {
@@ -426,9 +427,9 @@ git commit -m "refactor(playground): integrate MCP dual-mode orchestration"
 **Step 1: Add failing key-coverage check (simple static test)**
 
 ```ts
+import { expect, it } from "vitest"
 import en from "@/i18n/locales/en/playground.json"
 import zh from "@/i18n/locales/zh-CN/playground.json"
-import { expect, it } from "vitest"
 
 it("zh playground locale has all en keys", () => {
   expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort())

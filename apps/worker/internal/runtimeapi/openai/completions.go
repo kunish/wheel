@@ -209,7 +209,6 @@ func (h *APIHandler) handleCompletionsStreamingResponse(c *gin.Context, rawJSON 
 					flusher.Flush()
 				}
 			}
-			return
 		}
 	}
 }

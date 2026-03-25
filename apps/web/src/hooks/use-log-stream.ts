@@ -54,7 +54,6 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
 
   const processEvent = useCallback(
     (event: BufferedEvent) => {
-      setConnectionState("connected")
       const { type, data } = event
 
       if (type === "log-stream-start") {
@@ -248,12 +247,13 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
   const togglePause = useCallback(() => {
     setIsPaused((prev) => {
       if (prev) {
-        // Resuming: flush buffered events
         const events = bufferedEventsRef.current
         bufferedEventsRef.current = []
-        for (const event of events) {
-          processEvent(event)
-        }
+        queueMicrotask(() => {
+          for (const event of events) {
+            processEvent(event)
+          }
+        })
       }
       return !prev
     })

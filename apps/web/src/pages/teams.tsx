@@ -26,13 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  createTeam,
-  deleteTeam,
-  getTeamBudgets,
-  listTeams,
-  updateTeam,
-} from "@/lib/api"
+import { createTeam, deleteTeam, getTeamBudgets, listTeams, updateTeam } from "@/lib/api"
 
 interface TeamFormData {
   name: string
@@ -123,7 +117,9 @@ export default function TeamsPage() {
   if (loading) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
-        <div className="text-muted-foreground text-sm">{t("loading", { ns: "common", defaultValue: "Loading..." })}</div>
+        <div className="text-muted-foreground text-sm">
+          {t("loading", { ns: "common", defaultValue: "Loading..." })}
+        </div>
       </div>
     )
   }
@@ -211,9 +207,7 @@ export default function TeamsPage() {
                     <TableCell>
                       {team.maxBudget > 0 ? `$${team.maxBudget.toFixed(2)}` : "—"}
                     </TableCell>
-                    <TableCell>
-                      {budget ? `$${budget.totalSpend.toFixed(2)}` : "—"}
-                    </TableCell>
+                    <TableCell>{budget ? `$${budget.totalSpend.toFixed(2)}` : "—"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button
@@ -230,11 +224,7 @@ export default function TeamsPage() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteConfirm(team)}
-                        >
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(team)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>

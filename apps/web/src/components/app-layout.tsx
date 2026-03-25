@@ -348,14 +348,8 @@ function BottomNav() {
   const logout = useAuthStore((s) => s.logout)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
-  // Show only the most important items on mobile bottom nav
-  const mobileNavItems = [
-    allNavItems[0], // dashboard
-    allNavItems[1], // model
-    allNavItems[5], // usage
-    allNavItems[6], // logs
-    allNavItems[14], // settings
-  ]
+  const mobileNavHrefs = new Set(["/dashboard", "/model", "/usage", "/logs", "/settings"])
+  const mobileNavItems = allNavItems.filter((item) => mobileNavHrefs.has(item.href))
 
   return (
     <>

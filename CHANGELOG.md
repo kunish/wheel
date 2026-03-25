@@ -2,17 +2,15 @@
 
 ## [1.35.0](https://github.com/kunish/wheel/compare/v1.34.0...v1.35.0) (2026-03-20)
 
-
 ### Features
 
-* **worker,web:** cursor outbound channel and relay fixes ([fcc4d06](https://github.com/kunish/wheel/commit/fcc4d062ef0276c42cdc2d26307ae7e09814fdb8))
-
+- **worker,web:** cursor outbound channel and relay fixes ([fcc4d06](https://github.com/kunish/wheel/commit/fcc4d062ef0276c42cdc2d26307ae7e09814fdb8))
 
 ### Bug Fixes
 
-* align runtime oauth channel behavior ([6ded995](https://github.com/kunish/wheel/commit/6ded995aaa49b166c0577ba8569ea00448833364))
-* harden runtime oauth ownership handling ([2a3c828](https://github.com/kunish/wheel/commit/2a3c828a04d6e4fc1d83c367dd63fdc444b93f92))
-* **runtime:** align OAuth model alias channels for runtime providers ([63b8feb](https://github.com/kunish/wheel/commit/63b8feb80c7c227f63a2cabf003a706a2f749e87))
+- align runtime oauth channel behavior ([6ded995](https://github.com/kunish/wheel/commit/6ded995aaa49b166c0577ba8569ea00448833364))
+- harden runtime oauth ownership handling ([2a3c828](https://github.com/kunish/wheel/commit/2a3c828a04d6e4fc1d83c367dd63fdc444b93f92))
+- **runtime:** align OAuth model alias channels for runtime providers ([63b8feb](https://github.com/kunish/wheel/commit/63b8feb80c7c227f63a2cabf003a706a2f749e87))
 
 ## [1.34.0](https://github.com/kunish/wheel/compare/v1.33.2...v1.34.0) (2026-03-18)
 

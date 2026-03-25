@@ -364,7 +364,6 @@ function CodexOAuthButton({
   })
   const [panelOpen, setPanelOpen] = useState(false)
   const [oauthUrl, setOauthUrl] = useState("")
-  const [_oauthState, setOauthState] = useState("")
   const [oauthUserCode, setOauthUserCode] = useState("")
   const [oauthStatus, setOauthStatus] = useState<
     "idle" | "starting" | "waiting" | "success" | "error"
@@ -388,13 +387,11 @@ function CodexOAuthButton({
       setOauthStatus("starting")
       setOauthError("")
       setOauthUrl("")
-      setOauthState("")
       setOauthUserCode("")
       try {
         const res = await startCodexOAuth(resolvedChannelId, channelType)
         const { url, state, user_code } = res.data
         setOauthUrl(url)
-        setOauthState(state)
         if (user_code) setOauthUserCode(user_code)
         setOauthStatus("waiting")
 
@@ -439,7 +436,6 @@ function CodexOAuthButton({
         stopPolling()
         setOauthStatus("idle")
         setOauthUrl("")
-        setOauthState("")
         setOauthUserCode("")
         setOauthError("")
       }
@@ -736,7 +732,7 @@ export default function ChannelDialog({
           form,
           saveChannel: createChannel,
         })
-        setForm({ ...form, id: channelId })
+        setForm((prev) => ({ ...prev, id: channelId }))
         await queryClient.invalidateQueries({ queryKey: channelsQueryKey })
         toast.success(t("toast.channelCreated"))
         return channelId

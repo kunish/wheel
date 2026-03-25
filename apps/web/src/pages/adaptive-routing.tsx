@@ -132,8 +132,11 @@ export default function AdaptiveRoutingPage() {
         <div className="bg-card rounded-lg border p-4">
           <h3 className="mb-4 text-sm font-medium">{t("channelHealth")}</h3>
           <div className="space-y-2">
-            {trafficData.map((ch, i) => (
-              <div key={i} className="bg-muted/50 flex items-center justify-between rounded-md p-3">
+            {trafficData.map((ch) => (
+              <div
+                key={ch.name}
+                className="bg-muted/50 flex items-center justify-between rounded-md p-3"
+              >
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-slate-400" />
                   <span className="text-sm font-medium">{ch.name}</span>

@@ -175,11 +175,15 @@ export function CodeBlock({ label, content }: { label: string; content: string }
     )
   }
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(plainText)
-    setCopied(true)
-    toast.success(t("toast.copied"))
-    setTimeout(() => setCopied(false), 2000)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(plainText)
+      setCopied(true)
+      toast.success(t("toast.copied"))
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error(t("actions.copyFailed", { ns: "common" }))
+    }
   }
 
   return (

@@ -6,7 +6,7 @@ export default antfu(
     typescript: true,
     react: true,
     stylistic: false,
-    ignores: ["**/dist/**"],
+    ignores: ["**/dist/**", "docs/**/*.md"],
   },
   {
     files: ["apps/web/**/*.ts", "apps/web/**/*.tsx"],

@@ -218,8 +218,8 @@ export default function ObservabilityPage() {
                     label={({ percent }: any) => `${((percent ?? 0) * 100).toFixed(0)}%`}
                     labelLine={false}
                   >
-                    {modelDistribution.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    {modelDistribution.map((entry, i) => (
+                      <Cell key={entry.name} fill={COLORS[i % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value: any, name: any) => [value, name]} />

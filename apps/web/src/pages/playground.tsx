@@ -79,7 +79,7 @@ export default function PlaygroundPage() {
     el.scrollTop = el.scrollHeight
   }, [visibleTurns.length, chat.response])
 
-  const handleCopyAsCurl = useCallback(() => {
+  const handleCopyAsCurl = useCallback(async () => {
     const authKey = chat.customApiKey || chat.defaultApiKey || "YOUR_API_KEY"
     const baseUrl = getApiBaseUrl() || window.location.origin
     const body: Record<string, unknown> = {
@@ -97,8 +97,12 @@ export default function PlaygroundPage() {
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${authKey}" \\
   -d '${JSON.stringify(body, null, 2)}'`
-    navigator.clipboard.writeText(curl)
-    toast.success(t("copiedCurl"))
+    try {
+      await navigator.clipboard.writeText(curl)
+      toast.success(t("copiedCurl"))
+    } catch {
+      toast.error(t("actions.copyFailed", { ns: "common" }))
+    }
   }, [chat, t])
 
   return (
@@ -133,9 +137,13 @@ export default function PlaygroundPage() {
                       size="icon"
                       className="h-7 w-7"
                       title={t("actions.copy", { ns: "common" })}
-                      onClick={() => {
-                        navigator.clipboard.writeText(chat.response)
-                        toast.success(t("actions.copied", { ns: "common" }))
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(chat.response)
+                          toast.success(t("actions.copied", { ns: "common" }))
+                        } catch {
+                          toast.error(t("actions.copyFailed", { ns: "common" }))
+                        }
                       }}
                     >
                       <Copy className="h-3.5 w-3.5" />
