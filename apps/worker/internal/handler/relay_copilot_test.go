@@ -16,6 +16,7 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/runtimeauth"
 	"github.com/kunish/wheel/apps/worker/internal/types"
+	"github.com/tidwall/gjson"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/mysqldialect"
 )
@@ -740,3 +741,444 @@ func TestConvertAnthropicBodyToOpenAI_SystemArray(t *testing.T) {
 		t.Errorf("system content = %q, want 'First.\\nSecond.'", content)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// New tests for CLIProxyAPIPlus optimizations
+// ---------------------------------------------------------------------------
+
+func TestIsCopilotAgentInitiated(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"empty body", "", false},
+		{"user message only", `{"messages":[{"role":"user","content":"hi"}]}`, false},
+		{"last role assistant", `{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}`, true},
+		{"last role tool", `{"messages":[{"role":"user","content":"hi"},{"role":"tool","content":"result"}]}`, true},
+		{"user with tool_result content", `{"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}]}`, true},
+		{"user after assistant with tool_use", `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"f"}]},{"role":"user","content":"result"}]}`, true},
+		{"simple multi-turn follow-up", `{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"},{"role":"user","content":"thanks"}]}`, false},
+		{"responses api function_call_output", `{"input":[{"type":"function_call_output","call_id":"c1","output":"ok"}]}`, true},
+		{"responses api function_call", `{"input":[{"type":"function_call","call_id":"c1","name":"f"}]}`, true},
+		{"responses api user only", `{"input":[{"type":"message","role":"user","content":"hi"}]}`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := isCopilotAgentInitiated([]byte(tt.body))
+			if got != tt.want {
+				t.Errorf("isCopilotAgentInitiated() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectCopilotVisionContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"no vision", `{"messages":[{"role":"user","content":"hi"}]}`, false},
+		{"image_url type", `{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,abc"}}]}]}`, true},
+		{"image type", `{"messages":[{"role":"user","content":[{"type":"image","source":{"data":"abc"}}]}]}`, true},
+		{"text only array", `{"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := detectCopilotVisionContent([]byte(tt.body))
+			if got != tt.want {
+				t.Errorf("detectCopilotVisionContent() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyCopilotHeaders_NewHeaders(t *testing.T) {
+	t.Parallel()
+
+	// Test with agent-initiated body
+	agentBody := []byte(`{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"},{"role":"tool","content":"result"}]}`)
+	req := httptest.NewRequest("POST", "https://api.githubcopilot.com/chat/completions", nil)
+	applyCopilotHeaders(req, "test-token", agentBody)
+
+	if got := req.Header.Get("X-Request-Id"); got == "" {
+		t.Error("X-Request-Id should not be empty")
+	}
+	if got := req.Header.Get("X-Initiator"); got != "agent" {
+		t.Errorf("X-Initiator = %q, want 'agent'", got)
+	}
+	if got := req.Header.Get("Openai-Intent"); got != "conversation-edits" {
+		t.Errorf("Openai-Intent = %q, want 'conversation-edits'", got)
+	}
+
+	// Test with user-initiated body
+	userBody := []byte(`{"messages":[{"role":"user","content":"hi"}]}`)
+	req2 := httptest.NewRequest("POST", "https://api.githubcopilot.com/chat/completions", nil)
+	applyCopilotHeaders(req2, "test-token", userBody)
+
+	if got := req2.Header.Get("X-Initiator"); got != "user" {
+		t.Errorf("X-Initiator = %q, want 'user'", got)
+	}
+}
+
+func TestShouldUseCopilotResponsesEndpoint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		body  map[string]any
+		model string
+		want  bool
+	}{
+		{"chat completions model", map[string]any{"messages": []any{}}, "gpt-4o", false},
+		{"codex model", map[string]any{"messages": []any{}}, "codex-mini-latest", true},
+		{"body has input field", map[string]any{"input": []any{}}, "gpt-4o", true},
+		{"claude model", map[string]any{"messages": []any{}}, "claude-sonnet-4", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := shouldUseCopilotResponsesEndpoint(tt.body, tt.model)
+			if got != tt.want {
+				t.Errorf("shouldUseCopilotResponsesEndpoint() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeCopilotReasoningField(t *testing.T) {
+	t.Parallel()
+
+	t.Run("maps reasoning_text to reasoning_content", func(t *testing.T) {
+		t.Parallel()
+		input := `{"choices":[{"delta":{"reasoning_text":"thinking..."}}]}`
+		result := normalizeCopilotReasoningField([]byte(input))
+		var obj map[string]any
+		_ = json.Unmarshal(result, &obj)
+
+		choices := obj["choices"].([]any)
+		delta := choices[0].(map[string]any)["delta"].(map[string]any)
+		if delta["reasoning_content"] != "thinking..." {
+			t.Errorf("reasoning_content = %v, want 'thinking...'", delta["reasoning_content"])
+		}
+	})
+
+	t.Run("preserves existing reasoning_content", func(t *testing.T) {
+		t.Parallel()
+		input := `{"choices":[{"delta":{"reasoning_text":"old","reasoning_content":"existing"}}]}`
+		result := normalizeCopilotReasoningField([]byte(input))
+		var obj map[string]any
+		_ = json.Unmarshal(result, &obj)
+
+		choices := obj["choices"].([]any)
+		delta := choices[0].(map[string]any)["delta"].(map[string]any)
+		if delta["reasoning_content"] != "existing" {
+			t.Errorf("reasoning_content = %v, want 'existing'", delta["reasoning_content"])
+		}
+	})
+}
+
+func TestFlattenCopilotAssistantContent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("flattens text-only array", func(t *testing.T) {
+		t.Parallel()
+		input := `{"messages":[{"role":"assistant","content":[{"type":"text","text":"hello"},{"type":"text","text":" world"}]}]}`
+		result := flattenCopilotAssistantContent([]byte(input))
+		content := gjson.GetBytes(result, "messages.0.content").String()
+		if content != "hello world" {
+			t.Errorf("content = %q, want 'hello world'", content)
+		}
+	})
+
+	t.Run("skips non-text content", func(t *testing.T) {
+		t.Parallel()
+		input := `{"messages":[{"role":"assistant","content":[{"type":"text","text":"hi"},{"type":"tool_use","id":"t1"}]}]}`
+		result := flattenCopilotAssistantContent([]byte(input))
+		content := gjson.GetBytes(result, "messages.0.content")
+		if !content.IsArray() {
+			t.Error("content should remain as array when tool_use is present")
+		}
+	})
+}
+
+func TestNormalizeCopilotChatTools(t *testing.T) {
+	t.Parallel()
+
+	t.Run("filters non-function tools", func(t *testing.T) {
+		t.Parallel()
+		input := `{"tools":[{"type":"function","function":{"name":"f1"}},{"type":"computer","name":"c1"}],"tool_choice":"auto"}`
+		result := normalizeCopilotChatTools([]byte(input))
+		tools := gjson.GetBytes(result, "tools")
+		if len(tools.Array()) != 1 {
+			t.Errorf("tools count = %d, want 1", len(tools.Array()))
+		}
+	})
+
+	t.Run("invalid tool_choice falls back to auto", func(t *testing.T) {
+		t.Parallel()
+		input := `{"tool_choice":"invalid"}`
+		result := normalizeCopilotChatTools([]byte(input))
+		tc := gjson.GetBytes(result, "tool_choice").String()
+		if tc != "auto" {
+			t.Errorf("tool_choice = %q, want 'auto'", tc)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests for stripCopilotUnsupportedBetas
+// ---------------------------------------------------------------------------
+
+func TestStripCopilotUnsupportedBetas_RemovesContext1M(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"model":"claude-opus-4.6","betas":["interleaved-thinking-2025-05-14","context-1m-2025-08-07","claude-code-20250219"],"messages":[]}`)
+	result := stripCopilotUnsupportedBetas(body)
+
+	betas := gjson.GetBytes(result, "betas")
+	if !betas.Exists() {
+		t.Fatal("betas field should still exist after stripping")
+	}
+	for _, item := range betas.Array() {
+		if item.String() == "context-1m-2025-08-07" {
+			t.Fatal("context-1m-2025-08-07 should have been stripped")
+		}
+	}
+	found := false
+	for _, item := range betas.Array() {
+		if item.String() == "interleaved-thinking-2025-05-14" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("other betas should be preserved")
+	}
+}
+
+func TestStripCopilotUnsupportedBetas_NoBetasField(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"model":"gpt-4o","messages":[]}`)
+	result := stripCopilotUnsupportedBetas(body)
+	if string(result) != string(body) {
+		t.Fatalf("body should be unchanged when no betas field exists, got %s", string(result))
+	}
+}
+
+func TestStripCopilotUnsupportedBetas_MetadataBetas(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"model":"claude-opus-4.6","metadata":{"betas":["context-1m-2025-08-07","other-beta"]},"messages":[]}`)
+	result := stripCopilotUnsupportedBetas(body)
+
+	betas := gjson.GetBytes(result, "metadata.betas")
+	if !betas.Exists() {
+		t.Fatal("metadata.betas field should still exist after stripping")
+	}
+	for _, item := range betas.Array() {
+		if item.String() == "context-1m-2025-08-07" {
+			t.Fatal("context-1m-2025-08-07 should have been stripped from metadata.betas")
+		}
+	}
+	if betas.Array()[0].String() != "other-beta" {
+		t.Fatal("other betas in metadata.betas should be preserved")
+	}
+}
+
+func TestStripCopilotUnsupportedBetas_AllBetasStripped(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"model":"claude-opus-4.6","betas":["context-1m-2025-08-07"],"messages":[]}`)
+	result := stripCopilotUnsupportedBetas(body)
+
+	betas := gjson.GetBytes(result, "betas")
+	if betas.Exists() {
+		t.Fatal("betas field should be deleted when all betas are stripped")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for applyCopilotResponsesDefaults
+// ---------------------------------------------------------------------------
+
+func TestApplyCopilotResponsesDefaults_SetsAllDefaults(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"input":"hello","reasoning":{"effort":"medium"}}`)
+	got := applyCopilotResponsesDefaults(body)
+
+	if gjson.GetBytes(got, "store").Bool() != false {
+		t.Fatalf("store = %v, want false", gjson.GetBytes(got, "store").Raw)
+	}
+	inc := gjson.GetBytes(got, "include")
+	if !inc.IsArray() || inc.Array()[0].String() != "reasoning.encrypted_content" {
+		t.Fatalf("include = %s, want [\"reasoning.encrypted_content\"]", inc.Raw)
+	}
+	if gjson.GetBytes(got, "reasoning.summary").String() != "auto" {
+		t.Fatalf("reasoning.summary = %q, want auto", gjson.GetBytes(got, "reasoning.summary").String())
+	}
+}
+
+func TestApplyCopilotResponsesDefaults_DoesNotOverrideExisting(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"input":"hello","store":true,"include":["other"],"reasoning":{"effort":"high","summary":"concise"}}`)
+	got := applyCopilotResponsesDefaults(body)
+
+	if gjson.GetBytes(got, "store").Bool() != true {
+		t.Fatalf("store should not be overridden, got %s", gjson.GetBytes(got, "store").Raw)
+	}
+	if gjson.GetBytes(got, "include").Array()[0].String() != "other" {
+		t.Fatalf("include should not be overridden, got %s", gjson.GetBytes(got, "include").Raw)
+	}
+	if gjson.GetBytes(got, "reasoning.summary").String() != "concise" {
+		t.Fatalf("reasoning.summary should not be overridden, got %q", gjson.GetBytes(got, "reasoning.summary").String())
+	}
+}
+
+func TestApplyCopilotResponsesDefaults_NoReasoningEffort(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"input":"hello"}`)
+	got := applyCopilotResponsesDefaults(body)
+
+	if gjson.GetBytes(got, "store").Bool() != false {
+		t.Fatalf("store = %v, want false", gjson.GetBytes(got, "store").Raw)
+	}
+	if gjson.GetBytes(got, "reasoning.summary").Exists() {
+		t.Fatalf("reasoning.summary should not be set when reasoning.effort is absent, got %q", gjson.GetBytes(got, "reasoning.summary").String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Additional normalizeCopilotReasoningField tests
+// ---------------------------------------------------------------------------
+
+func TestNormalizeCopilotReasoningField_MultiChoice(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"choices":[{"message":{"reasoning_text":"thought-0"}},{"message":{"reasoning_text":"thought-1"}}]}`)
+	got := normalizeCopilotReasoningField(data)
+	rc0 := gjson.GetBytes(got, "choices.0.message.reasoning_content").String()
+	rc1 := gjson.GetBytes(got, "choices.1.message.reasoning_content").String()
+	if rc0 != "thought-0" {
+		t.Fatalf("choices[0].reasoning_content = %q, want %q", rc0, "thought-0")
+	}
+	if rc1 != "thought-1" {
+		t.Fatalf("choices[1].reasoning_content = %q, want %q", rc1, "thought-1")
+	}
+}
+
+func TestNormalizeCopilotReasoningField_NoChoices(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"id":"chatcmpl-123"}`)
+	got := normalizeCopilotReasoningField(data)
+	if string(got) != string(data) {
+		t.Fatalf("expected no change, got %s", string(got))
+	}
+}
+
+func TestNormalizeCopilotReasoningField_NonStreaming(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"choices":[{"message":{"content":"hello","reasoning_text":"I think..."}}]}`)
+	got := normalizeCopilotReasoningField(data)
+	rc := gjson.GetBytes(got, "choices.0.message.reasoning_content").String()
+	if rc != "I think..." {
+		t.Fatalf("reasoning_content = %q, want %q", rc, "I think...")
+	}
+}
+
+func TestNormalizeCopilotReasoningField_StreamingDelta(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"choices":[{"delta":{"reasoning_text":"thinking delta"}}]}`)
+	got := normalizeCopilotReasoningField(data)
+	rc := gjson.GetBytes(got, "choices.0.delta.reasoning_content").String()
+	if rc != "thinking delta" {
+		t.Fatalf("reasoning_content = %q, want %q", rc, "thinking delta")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for normalizeCopilotReasoningFieldSSE
+// ---------------------------------------------------------------------------
+
+func TestNormalizeCopilotReasoningFieldSSE_Normalizes(t *testing.T) {
+	t.Parallel()
+	line := []byte(`data: {"choices":[{"delta":{"reasoning_text":"thinking..."}}]}`)
+	got := normalizeCopilotReasoningFieldSSE(line)
+	if !strings.Contains(string(got), "reasoning_content") {
+		t.Fatalf("expected reasoning_content in output, got %s", string(got))
+	}
+	if !strings.HasPrefix(string(got), "data: ") {
+		t.Fatalf("expected data: prefix, got %s", string(got))
+	}
+}
+
+func TestNormalizeCopilotReasoningFieldSSE_PassthroughNonData(t *testing.T) {
+	t.Parallel()
+	line := []byte("event: ping")
+	got := normalizeCopilotReasoningFieldSSE(line)
+	if string(got) != string(line) {
+		t.Fatalf("non-data line should pass through unchanged, got %s", string(got))
+	}
+}
+
+func TestNormalizeCopilotReasoningFieldSSE_PassthroughDone(t *testing.T) {
+	t.Parallel()
+	line := []byte("data: [DONE]")
+	got := normalizeCopilotReasoningFieldSSE(line)
+	if string(got) != string(line) {
+		t.Fatalf("[DONE] should pass through unchanged, got %s", string(got))
+	}
+}
+
+func TestNormalizeCopilotReasoningFieldSSE_NoChangeWhenNoReasoningText(t *testing.T) {
+	t.Parallel()
+	line := []byte(`data: {"choices":[{"delta":{"content":"hello"}}]}`)
+	got := normalizeCopilotReasoningFieldSSE(line)
+	if string(got) != string(line) {
+		t.Fatalf("line without reasoning_text should be unchanged, got %s", string(got))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Additional isCopilotAgentInitiated tests
+// ---------------------------------------------------------------------------
+
+func TestIsCopilotAgentInitiated_UserFollowUpAfterToolHistory(t *testing.T) {
+	t.Parallel()
+	// User follow-up after a completed tool-use conversation.
+	// The last message is a genuine user question — should be "user", not "agent".
+	body := []byte(`{"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{}}]},{"role":"tool","tool_call_id":"tu1","content":"file data"},{"role":"assistant","content":"I read the file."},{"role":"user","content":"What did we do so far?"}]}`)
+	got := isCopilotAgentInitiated(body)
+	if got != false {
+		t.Fatalf("isCopilotAgentInitiated() = %v, want false (genuine follow-up after tool history)", got)
+	}
+}
+
+func TestIsCopilotAgentInitiated_ResponsesAPIHistoryHasAssistant(t *testing.T) {
+	t.Parallel()
+	// Responses API: last item is user-role but history contains assistant → agent.
+	body := []byte(`{"input":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I can help"}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Do X"}]}]}`)
+	got := isCopilotAgentInitiated(body)
+	if got != true {
+		t.Fatalf("isCopilotAgentInitiated() = %v, want true (history has assistant)", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test for OpenAI-Intent header value
+// ---------------------------------------------------------------------------
+
+func TestApplyCopilotHeaders_OpenAIIntentValue(t *testing.T) {
+	t.Parallel()
+	req, _ := http.NewRequest(http.MethodPost, "https://example.com", nil)
+	applyCopilotHeaders(req, "token", nil)
+	if got := req.Header.Get("Openai-Intent"); got != "conversation-edits" {
+		t.Fatalf("Openai-Intent = %q, want conversation-edits", got)
+	}
+}
+
