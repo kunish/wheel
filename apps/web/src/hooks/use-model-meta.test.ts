@@ -22,6 +22,7 @@ const MODEL_MAP: Record<string, ModelMeta> = {
   "claude-haiku-4-5": meta("Claude Haiku 4.5"),
   "claude-opus-4-5": meta("Claude Opus 4.5"),
   "claude-sonnet-4": meta("Claude Sonnet 4"),
+  "claude-sonnet-4-6": meta("Claude Sonnet 4.6"),
 
   // Anthropic — dated variants (unbeautified — models.dev stores raw ID as name)
   "claude-sonnet-4-5-20250929": meta("claude-sonnet-4-5-20250929"),
@@ -672,6 +673,14 @@ describe("fuzzyLookup", () => {
 
     it("claude Code request model: claude-opus-4-6", () => {
       expect(fuzzyLookup(MODEL_MAP, "claude-opus-4-6")?.name).toBe("Claude Opus 4.6")
+    })
+
+    it("copilot model: claude-sonnet-4-6", () => {
+      expect(fuzzyLookup(MODEL_MAP, "claude-sonnet-4-6")?.name).toBe("Claude Sonnet 4.6")
+    })
+
+    it("copilot model with thinking suffix: claude-sonnet-4-6-thinking", () => {
+      expect(fuzzyLookup(MODEL_MAP, "claude-sonnet-4-6-thinking")?.name).toBe("Claude Sonnet 4.6")
     })
 
     it("relay actual model: claude-sonnet-4-5-20250929-thinking", () => {

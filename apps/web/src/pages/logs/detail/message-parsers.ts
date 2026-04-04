@@ -280,19 +280,32 @@ export function parseResponseContent(content: string): ParsedResponse | null {
       const choices: ParsedResponseChoice[] = rawChoices.map(
         (
           choice: {
-            message?: { content?: string; tool_calls?: ParsedMessage["tool_calls"] }
+            message?: {
+              content?: string
+              reasoning_content?: string
+              tool_calls?: ParsedMessage["tool_calls"]
+            }
             finish_reason?: string
             index?: number
           },
           i: number,
-        ) => ({
-          assistantContent:
-            typeof choice.message?.content === "string" ? choice.message.content : null,
-          thinkingContent: i === 0 ? thinking : null,
-          toolCalls: choice.message?.tool_calls ?? undefined,
-          finishReason: choice.finish_reason ?? null,
-          index: choice.index ?? i,
-        }),
+        ) => {
+          // Extract reasoning_content from OpenAI-format responses (e.g. Copilot
+          // Claude models). Falls back to the <|thinking|> tag extraction for the
+          // first choice.
+          const reasoningContent =
+            typeof choice.message?.reasoning_content === "string"
+              ? choice.message.reasoning_content
+              : null
+          return {
+            assistantContent:
+              typeof choice.message?.content === "string" ? choice.message.content : null,
+            thinkingContent: reasoningContent ?? (i === 0 ? thinking : null),
+            toolCalls: choice.message?.tool_calls ?? undefined,
+            finishReason: choice.finish_reason ?? null,
+            index: choice.index ?? i,
+          }
+        },
       )
       const usage = parsed.usage
         ? {
