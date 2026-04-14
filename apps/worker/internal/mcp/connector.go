@@ -48,11 +48,7 @@ func connectSSE(ctx context.Context, cfg *MCPClient, oauthBearerToken string) (c
 	if err != nil {
 		return nil, nil, fmt.Errorf("sse connect failed: %w", err)
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	// Keep a cancellable lifecycle context; protocol initialization happens on client calls.
-	go func() {
-		<-ctx.Done()
-	}()
+	_, cancel := context.WithCancel(ctx)
 	return c, cancel, nil
 }
 

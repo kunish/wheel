@@ -1,8 +1,8 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -65,7 +65,7 @@ func (h *RelayHandler) handleAnthropicNative(c *gin.Context) {
 
 	// Rewrite to standard relay path and let existing handler process it
 	c.Request.URL.Path = "/v1/messages"
-	c.Request.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	c.Request.ContentLength = int64(len(bodyBytes))
 
 	h.handleRelay(c)
@@ -108,10 +108,17 @@ func (h *RelayHandler) handleGeminiNative(c *gin.Context) {
 		"stream":   stream,
 	}
 
-	newBodyBytes, _ := json.Marshal(openaiBody)
+	newBodyBytes, err := json.Marshal(openaiBody)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+			"code":    500,
+			"message": "Failed to marshal request body",
+		}})
+		return
+	}
 	c.Set("gemini_native", true)
 	c.Request.URL.Path = "/v1/chat/completions"
-	c.Request.Body = io.NopCloser(strings.NewReader(string(newBodyBytes)))
+	c.Request.Body = io.NopCloser(bytes.NewReader(newBodyBytes))
 	c.Request.ContentLength = int64(len(newBodyBytes))
 
 	h.handleRelay(c)
@@ -171,7 +178,7 @@ func convertGeminiToOpenAI(body map[string]any) []map[string]any {
 		if len(textParts) > 0 {
 			messages = append(messages, map[string]any{
 				"role":    openaiRole,
-				"content": fmt.Sprintf("%s", strings.Join(textParts, "\n")),
+				"content": strings.Join(textParts, "\n"),
 			})
 		}
 	}

@@ -98,9 +98,9 @@ export function useLogStream(filterState: FilterRefs, streamRefs: StreamRefs) {
           const next = new Map(prev)
           const contentLen = (data.responseLength ?? 0) + (data.thinkingLength ?? 0)
           const estimatedOutputTokens = Math.floor(contentLen / 3)
-          const inputPrice = (entry as any)._inputPrice ?? 0
-          const outputPrice = (entry as any)._outputPrice ?? 0
-          const estimatedInputTokens = (entry as any)._estimatedInputTokens ?? 0
+          const inputPrice = entry._inputPrice ?? 0
+          const outputPrice = entry._outputPrice ?? 0
+          const estimatedInputTokens = entry._estimatedInputTokens ?? 0
           const estimatedCost =
             (estimatedInputTokens * inputPrice + estimatedOutputTokens * outputPrice) / 1_000_000
           next.set(data.streamId, {

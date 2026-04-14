@@ -379,13 +379,15 @@ func main() {
 	// ── Cron Jobs ──
 	c := cron.New()
 	// Sync model prices and builtin profiles every 6 hours
-	_, _ = c.AddFunc("0 */6 * * *", func() {
+	if _, err := c.AddFunc("0 */6 * * *", func() {
 		log.Println("[cron] Syncing from models.dev...")
 		if _, err := service.SyncAllFromModelsDev(context.Background(), database); err != nil {
 			log.Printf("[cron] models.dev sync error: %v", err)
 		}
-	})
-	_, _ = c.AddFunc("0 */6 * * *", func() {
+	}); err != nil {
+		log.Fatalf("[startup] Failed to register cron job (models.dev sync): %v", err)
+	}
+	if _, err := c.AddFunc("0 */6 * * *", func() {
 		log.Println("[cron] Refreshing model metadata...")
 		if metadata, err := service.FetchAndFlattenMetadata(); err != nil {
 			log.Printf("[cron] metadata refresh error: %v", err)
@@ -394,8 +396,10 @@ func main() {
 			service.UpsertBuiltinProfilesFromMetadata(context.Background(), database, metadata)
 			log.Printf("[cron] metadata refreshed: %d entries", len(metadata))
 		}
-	})
-	_, _ = c.AddFunc("0 */6 * * *", func() {
+	}); err != nil {
+		log.Fatalf("[startup] Failed to register cron job (metadata refresh): %v", err)
+	}
+	if _, err := c.AddFunc("0 */6 * * *", func() {
 		log.Println("[cron] Syncing all channel models...")
 		result, err := relay.SyncAllModels(context.Background(), database, kv)
 		if err != nil {
@@ -405,7 +409,9 @@ func main() {
 				result.SyncedChannels, len(result.Errors))
 			hub.Broadcast("model-sync", result)
 		}
-	})
+	}); err != nil {
+		log.Fatalf("[startup] Failed to register cron job (model sync): %v", err)
+	}
 	c.Start()
 	defer c.Stop()
 
@@ -427,7 +433,9 @@ func main() {
 	adaptiveBalancer.Stop()
 
 	// Gracefully shut down HTTP server (stop accepting new requests)
-	if err := srv.Shutdown(context.Background()); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("[shutdown] HTTP server shutdown error: %v", err)
 	}
 

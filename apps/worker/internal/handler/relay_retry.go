@@ -146,7 +146,8 @@ func (h *RelayHandler) executeWithRetry(
 			attemptCount++
 			currentAttemptNum := attemptCount
 
-			_, attemptSpan := h.Observer.StartAttemptSpan(c.Request.Context(), currentAttemptNum, channel.Name, channel.ID)
+			attemptCtx, attemptSpan := h.Observer.StartAttemptSpan(c.Request.Context(), currentAttemptNum, channel.Name, channel.ID)
+			_ = attemptCtx
 
 			// Build upstream request
 			isAnthropicPassthrough := isAnthropicInbound && channel.Type == types.OutboundAnthropic

@@ -92,7 +92,13 @@ func fallbackModelsFromMetadata(kv *cache.MemoryKV, providerKey string) []string
 }
 
 func fetchModelsDevProviders() (map[string]string, error) {
-	resp, err := http.Get("https://models.dev/api.json")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://models.dev/api.json", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +106,10 @@ func fetchModelsDevProviders() (map[string]string, error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("models.dev returned %d", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 	type modelEntry struct {
 		ID string `json:"id"`
 	}

@@ -21,7 +21,7 @@ export function HubModelList({ data }: { data?: ModelStatsItem[] }) {
     if (!data) return undefined
     return data.map((item) => ({
       id: item.model,
-      label: item.model.split("/").pop()!,
+      label: item.model.split("/").pop() ?? item.model,
       link: `/logs?model=${encodeURIComponent(item.model)}`,
       stats: (
         <>
