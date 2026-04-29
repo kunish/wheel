@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 import type { LogEntry } from "./columns"
 import type { LogDetail, StreamingOverlay } from "./types"
 import { ChevronDown, ChevronUp, Copy, Loader2, Play, TriangleAlert } from "lucide-react"
-import { Component, useCallback, useEffect, useMemo, useState } from "react"
+import { Component, useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router"
 import { toast } from "sonner"
@@ -210,6 +210,7 @@ export function LogDetailSheet() {
             return (
               <DetailErrorBoundary>
                 <DetailPanel
+                  key={streamingDetail.id}
                   detail={streamingDetail}
                   streamingOverlay={streamingOverlay}
                   isStreaming={true}
@@ -307,10 +308,6 @@ function DetailPanel({
   )
   const endTimestampMs = isStreaming ? detail.time * 1000 + detail.useTime : detail.time * 1000
   const startTimestampMs = isStreaming ? detail.time * 1000 : endTimestampMs - detail.useTime
-
-  useEffect(() => {
-    setRetryExpanded(false)
-  }, [detail.id])
 
   const isTruncated =
     /\[truncated,?\s*\d+\s*chars\s*total\]/.test(detail.requestContent) ||

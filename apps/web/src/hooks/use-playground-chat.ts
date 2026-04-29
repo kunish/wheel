@@ -193,7 +193,7 @@ export function usePlaygroundChat() {
 
   const persistedSettings = useMemo(() => readPlaygroundSettings(), [])
 
-  const [model, setModel] = useState(persistedSettings?.model ?? "")
+  const [modelInput, setModelInput] = useState(persistedSettings?.model ?? "")
   const [systemPrompt, setSystemPrompt] = useState(persistedSettings?.systemPrompt ?? "")
   const [userMessage, setUserMessage] = useState("")
   const [customApiKey, setCustomApiKey] = useState("")
@@ -242,6 +242,10 @@ export function usePlaygroundChat() {
   })
   const defaultApiKey = apiKeyData?.data?.apiKeys?.find((k) => k.enabled)?.apiKey ?? ""
   const authKey = customApiKey || defaultApiKey || ""
+  const model = useMemo(() => {
+    if (models.length === 0) return modelInput
+    return modelInput && models.includes(modelInput) ? modelInput : (models[0] ?? "")
+  }, [models, modelInput])
 
   const resolvedStream = resolveStreamForRequest(stream, mcp.enabled)
   const conversation = useMemo(() => deriveConversationTurns(messageHistory), [messageHistory])
@@ -263,13 +267,6 @@ export function usePlaygroundChat() {
       topP,
     })
   }, [model, systemPrompt, stream, temperature, maxTokens, topP])
-
-  useEffect(() => {
-    if (models.length === 0) return
-    if (!model || !models.includes(model)) {
-      setModel(models[0])
-    }
-  }, [models, model])
 
   const updateTimeline = useCallback((callId: string, patch: Partial<TimelineItem>) => {
     setTimeline((prev) => prev.map((x) => (x.callId === callId ? { ...x, ...patch } : x)))
@@ -626,7 +623,7 @@ export function usePlaygroundChat() {
 
   return {
     model,
-    setModel,
+    setModel: setModelInput,
     systemPrompt,
     setSystemPrompt,
     userMessage,

@@ -1,7 +1,7 @@
 import type { CodexAuthFile, CodexQuotaItem } from "@/lib/api"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Eye, Loader2, LogIn, RefreshCw, Trash2, Upload } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -56,6 +56,17 @@ import { useRuntimeOAuthSession } from "./use-runtime-oauth-session"
 const AUTH_FILES_PAGE_SIZE = 8
 const AUTH_PAGE_SIZE_OPTIONS = [8, 20, 50, 100]
 
+type AuthPageAction = { type: "set"; page: number } | { type: "clamp"; maxPage: number }
+
+function authPageReducer(page: number, action: AuthPageAction) {
+  switch (action.type) {
+    case "set":
+      return Math.max(1, action.page)
+    case "clamp":
+      return Math.min(page, Math.max(1, action.maxPage))
+  }
+}
+
 interface CodexChannelDetailProps {
   channelId: number
   channelType?: number
@@ -70,14 +81,42 @@ export function CodexChannelDetail({
   const { t } = useTranslation("model")
   const queryClient = useQueryClient()
   const [modelsDialogFile, setModelsDialogFile] = useState<CodexAuthFile | null>(null)
-  const [authPage, setAuthPage] = useState(1)
+  const [authPage, dispatchAuthPage] = useReducer(authPageReducer, 1)
+  const setAuthPage = useCallback((page: number) => dispatchAuthPage({ type: "set", page }), [])
   const [authPageSize, setAuthPageSize] = useState(AUTH_FILES_PAGE_SIZE)
   const [authSearch, setAuthSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
-  const [selection, setSelection] = useState(createRuntimeAuthSelection)
   const providerKey = getRuntimeProviderKey(channelType)
   const providerLabel = providerKey ? t(`typeLabels.${channelType}`) : t("typeLabels.33")
   const providerFilter = runtimeProviderFilter(channelType)
+  const selectionScopeKey = `${authPageSize}\u0000${authSearch}\u0000${providerFilter}\u0000${statusFilter}`
+  const [selectionState, setSelectionState] = useState(() => ({
+    scopeKey: selectionScopeKey,
+    value: createRuntimeAuthSelection(),
+  }))
+  const selection =
+    selectionState.scopeKey === selectionScopeKey
+      ? selectionState.value
+      : createRuntimeAuthSelection()
+  const setSelection = useCallback(
+    (
+      next:
+        | ReturnType<typeof createRuntimeAuthSelection>
+        | ((
+            current: ReturnType<typeof createRuntimeAuthSelection>,
+          ) => ReturnType<typeof createRuntimeAuthSelection>),
+    ) => {
+      setSelectionState((current) => {
+        const currentSelection =
+          current.scopeKey === selectionScopeKey ? current.value : createRuntimeAuthSelection()
+        return {
+          scopeKey: selectionScopeKey,
+          value: typeof next === "function" ? next(currentSelection) : next,
+        }
+      })
+    },
+    [selectionScopeKey],
+  )
 
   const invalidateRuntimeAuthQueries = useCallback(() => {
     for (const queryKey of codexUploadRefreshQueryKeys(channelId)) {
@@ -242,17 +281,18 @@ export function CodexChannelDetail({
     onError: (err: Error) => toast.error(err.message),
   })
 
-  const [oauthPanelOpen, setOauthPanelOpen] = useState(false)
+  const [oauthPanelRequestedOpen, setOauthPanelRequestedOpen] = useState(false)
+  const [dismissedRestoredOAuthUrl, setDismissedRestoredOAuthUrl] = useState("")
   const [oauthLaunching, setOauthLaunching] = useState(false)
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
-  const autoOpenedRestoredOAuthStateRef = useRef<string | null>(null)
   const oauthSession = useRuntimeOAuthSession({
     channelId,
     channelType,
     providerLabel,
     onCompleted: () => {
       invalidateRuntimeAuthQueries()
-      setOauthPanelOpen(false)
+      setOauthPanelRequestedOpen(false)
+      setDismissedRestoredOAuthUrl("")
       toast.success(t("runtime.oauth.terminal.completed"))
     },
   })
@@ -274,6 +314,23 @@ export function CodexChannelDetail({
     }
     return oauthSession.error
   }, [oauthSession.error, oauthSession.errorCode, t])
+
+  const restoredOAuthPanelOpen =
+    oauthSession.restoredFromStorage &&
+    oauthSession.status === "waiting" &&
+    !!oauthSession.flowType &&
+    !!oauthSession.oauthUrl &&
+    dismissedRestoredOAuthUrl !== oauthSession.oauthUrl
+  const oauthPanelOpen = oauthPanelRequestedOpen || restoredOAuthPanelOpen
+  const handleOAuthPanelOpenChange = useCallback(
+    (open: boolean) => {
+      setOauthPanelRequestedOpen(open)
+      if (!open && restoredOAuthPanelOpen) {
+        setDismissedRestoredOAuthUrl(oauthSession.oauthUrl)
+      }
+    },
+    [oauthSession.oauthUrl, restoredOAuthPanelOpen],
+  )
 
   const oauthDialogDescription = useMemo(() => {
     if (oauthSession.status === "expired") {
@@ -307,7 +364,7 @@ export function CodexChannelDetail({
   }, [oauthSession.phase, oauthSession.status, oauthTerminalMessage, providerLabel, t])
 
   const handleStartOAuth = useCallback(async () => {
-    setOauthPanelOpen(true)
+    setOauthPanelRequestedOpen(true)
     if (oauthSession.status === "waiting" && oauthSession.flowType) {
       return
     }
@@ -320,7 +377,7 @@ export function CodexChannelDetail({
         await oauthSession.restart()
       }
     } catch (err) {
-      setOauthPanelOpen(false)
+      setOauthPanelRequestedOpen(false)
       toast.error(err instanceof Error ? err.message : t("runtime.oauth.startFailed"))
     } finally {
       setOauthLaunching(false)
@@ -362,31 +419,6 @@ export function CodexChannelDetail({
     }
   }, [oauthSession.status, oauthTerminalMessage])
 
-  useEffect(() => {
-    if (
-      !oauthSession.restoredFromStorage ||
-      oauthSession.status !== "waiting" ||
-      !oauthSession.flowType
-    ) {
-      return
-    }
-    if (!oauthSession.oauthUrl || !oauthSession.callbackValidation) {
-      return
-    }
-    if (autoOpenedRestoredOAuthStateRef.current === oauthSession.oauthUrl) {
-      return
-    }
-
-    autoOpenedRestoredOAuthStateRef.current = oauthSession.oauthUrl
-    setOauthPanelOpen(true)
-  }, [
-    oauthSession.callbackValidation,
-    oauthSession.flowType,
-    oauthSession.oauthUrl,
-    oauthSession.restoredFromStorage,
-    oauthSession.status,
-  ])
-
   const authFiles = authQuery.data?.data.files ?? []
   const inlineQuotaItems = authQuery.data?.data.quotaItems
   const externalQuotaItems = quotaQuery.data?.data.items ?? []
@@ -414,13 +446,9 @@ export function CodexChannelDetail({
 
   useEffect(() => {
     if (authPage > authTotalPages) {
-      setAuthPage(authTotalPages)
+      dispatchAuthPage({ type: "clamp", maxPage: authTotalPages })
     }
   }, [authPage, authTotalPages])
-
-  useEffect(() => {
-    setSelection(clearRuntimeAuthSelection())
-  }, [authPageSize, authSearch, providerFilter, statusFilter])
 
   const handleRefresh = useCallback(() => {
     if (modelCount === 0 && authFiles.length > 0) {
@@ -791,7 +819,7 @@ export function CodexChannelDetail({
       {oauthPanelOpen && oauthSession.flowType ? (
         <OAuthFlowDialog
           open={oauthPanelOpen}
-          onOpenChange={setOauthPanelOpen}
+          onOpenChange={handleOAuthPanelOpenChange}
           title={t("runtime.importOAuth", { provider: providerLabel })}
           description={oauthDialogDescription}
           flowType={oauthSession.flowType}

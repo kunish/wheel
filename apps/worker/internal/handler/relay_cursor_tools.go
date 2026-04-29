@@ -459,6 +459,11 @@ func anthropicBodyToCursorComChat(anth map[string]any, cursorModel string) (map[
 				suffix = "\n\nFirst think step by step if needed, then respond with the appropriate action using the structured format."
 			}
 			messages = append(messages, cursorCursorMessage("user", txt+suffix))
+		case "tool":
+			txt := cursorExtractAnthropicMessageText(msg)
+			if txt != "" {
+				messages = append(messages, cursorCursorMessage("user", "Action output:\n"+txt+"\n\nContinue with the next action."))
+			}
 		default:
 			txt := cursorExtractAnthropicMessageText(msg)
 			if txt != "" {
@@ -529,9 +534,18 @@ func openAIChatBodyToAnthropicShape(body map[string]any) map[string]any {
 		out["tools"] = anthTools
 	}
 	if tc := body["tool_choice"]; tc != nil {
-		// OpenAI tool_choice can be string "auto" / object — pass through when map
 		if m, ok := tc.(map[string]any); ok {
-			out["tool_choice"] = m
+			// OpenAI names a required function as {type:"function", function:{name:"..."}};
+			// the Cursor tool bridge expects Anthropic's {type:"tool", name:"..."}.
+			if typ, _ := m["type"].(string); typ == "function" {
+				if fn, ok := m["function"].(map[string]any); ok {
+					if name, _ := fn["name"].(string); name != "" {
+						out["tool_choice"] = map[string]any{"type": "tool", "name": name}
+					}
+				}
+			} else {
+				out["tool_choice"] = m
+			}
 		} else if s, ok := tc.(string); ok {
 			switch s {
 			case "required", "any":

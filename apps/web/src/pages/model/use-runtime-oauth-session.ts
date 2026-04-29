@@ -5,7 +5,7 @@ import type {
   RuntimeOAuthStatusCode,
   RuntimeOAuthStatusResponse,
 } from "@/lib/api/codex"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import {
   getCodexOAuthStatus,
   runtimeProviderFilter,
@@ -66,6 +66,17 @@ interface RuntimeOAuthSessionState {
   errorCode?: string
 }
 
+interface RuntimeOAuthState {
+  session: RuntimeOAuthSessionState
+  restoredFromStorage: boolean
+}
+
+type RuntimeOAuthStateAction =
+  | { type: "replaceSession"; session: RuntimeOAuthSessionState }
+  | { type: "patchSession"; patch: Partial<RuntimeOAuthSessionState> }
+  | { type: "setRestoredFromStorage"; restoredFromStorage: boolean }
+  | { type: "restoreStoredSession"; stored: StoredRuntimeOAuthSession }
+
 function getInitialState(): RuntimeOAuthSessionState {
   return {
     status: "idle",
@@ -82,6 +93,49 @@ function getInitialState(): RuntimeOAuthSessionState {
 
 function getPhaseForFlow(flowType: RuntimeOAuthFlowType) {
   return flowType === "device_code" ? "awaiting_browser" : "awaiting_callback"
+}
+
+function getSessionFromStoredSession(stored: StoredRuntimeOAuthSession): RuntimeOAuthSessionState {
+  return {
+    status: "waiting",
+    phase: getPhaseForFlow(stored.flowType),
+    flowType: stored.flowType,
+    oauthUrl: stored.oauthUrl,
+    userCode: stored.userCode || "",
+    verificationUri: stored.verificationUri || "",
+    state: stored.state,
+    expiresAt: stored.expiresAt,
+    supportsManualCallbackImport: stored.supportsManualCallbackImport,
+    canRetry: true,
+  }
+}
+
+function getInitialOAuthState(storageKey: string): RuntimeOAuthState {
+  const stored = readStoredSession(storageKey)
+  if (!stored || Date.parse(stored.expiresAt) <= Date.now()) {
+    return { session: getInitialState(), restoredFromStorage: false }
+  }
+
+  return { session: getSessionFromStoredSession(stored), restoredFromStorage: true }
+}
+
+function runtimeOAuthStateReducer(
+  state: RuntimeOAuthState,
+  action: RuntimeOAuthStateAction,
+): RuntimeOAuthState {
+  switch (action.type) {
+    case "replaceSession":
+      return { ...state, session: action.session }
+    case "patchSession":
+      return { ...state, session: { ...state.session, ...action.patch } }
+    case "setRestoredFromStorage":
+      return { ...state, restoredFromStorage: action.restoredFromStorage }
+    case "restoreStoredSession":
+      return {
+        session: getSessionFromStoredSession(action.stored),
+        restoredFromStorage: true,
+      }
+  }
 }
 
 function getValidationMessage(code: Exclude<LocalCallbackValidationCode, "empty" | "ok">) {
@@ -211,14 +265,17 @@ export function useRuntimeOAuthSession(input: {
     () => getRuntimeOAuthSessionStorageKey(input.channelId, input.channelType),
     [input.channelId, input.channelType],
   )
-  const [session, setSession] = useState<RuntimeOAuthSessionState>(getInitialState)
-  const [callbackInput, setCallbackInputRaw] = useState("")
+  const [{ session, restoredFromStorage }, dispatchOAuthState] = useReducer(
+    runtimeOAuthStateReducer,
+    storageKey,
+    getInitialOAuthState,
+  )
+  const [callbackInputValue, setCallbackInputValue] = useState("")
   const [callbackValidation, setCallbackValidation] = useState<CallbackValidation>({
     code: "empty",
   })
   const [warning, setWarning] = useState<RuntimeOAuthWarning | null>(null)
   const [isSubmittingCallback, setIsSubmittingCallback] = useState(false)
-  const [restoredFromStorage, setRestoredFromStorage] = useState(false)
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollingActiveRef = useRef(false)
   const consecutivePollFailuresRef = useRef(0)
@@ -265,7 +322,11 @@ export function useRuntimeOAuthSession(input: {
   }, [])
 
   const setSessionFields = useCallback((patch: Partial<RuntimeOAuthSessionState>) => {
-    setSession((current) => ({ ...current, ...patch }))
+    dispatchOAuthState({ type: "patchSession", patch })
+  }, [])
+
+  const setRestoredFromStorage = useCallback((restoredFromStorage: boolean) => {
+    dispatchOAuthState({ type: "setRestoredFromStorage", restoredFromStorage })
   }, [])
 
   const markCompleted = useCallback(() => {
@@ -283,7 +344,14 @@ export function useRuntimeOAuthSession(input: {
       completedRef.current = true
       input.onCompleted?.()
     }
-  }, [clearStoredSession, clearWarningCode, input, setSessionFields, stopPolling])
+  }, [
+    clearStoredSession,
+    clearWarningCode,
+    input,
+    setRestoredFromStorage,
+    setSessionFields,
+    stopPolling,
+  ])
 
   const expireToRestartOnly = useCallback(
     (errorCode?: string, error?: string, patch?: Partial<RuntimeOAuthSessionState>) => {
@@ -305,7 +373,7 @@ export function useRuntimeOAuthSession(input: {
       })
       clearWarningCode()
     },
-    [clearStoredSession, clearWarningCode, setSessionFields, stopPolling],
+    [clearStoredSession, clearWarningCode, setRestoredFromStorage, setSessionFields, stopPolling],
   )
 
   const setTerminalCallbackError = useCallback(
@@ -321,7 +389,7 @@ export function useRuntimeOAuthSession(input: {
       })
       clearWarningCode()
     },
-    [clearStoredSession, clearWarningCode, setSessionFields, stopPolling],
+    [clearStoredSession, clearWarningCode, setRestoredFromStorage, setSessionFields, stopPolling],
   )
 
   const setTerminalPollError = useCallback(
@@ -466,8 +534,7 @@ export function useRuntimeOAuthSession(input: {
         setWarningCode("import_stalled")
       }
 
-      setSession((current) => ({
-        ...current,
+      setSessionFields({
         status: response.data.status,
         phase: response.data.phase,
         expiresAt: response.data.expiresAt,
@@ -475,7 +542,7 @@ export function useRuntimeOAuthSession(input: {
         supportsManualCallbackImport: response.data.supportsManualCallbackImport,
         error: undefined,
         errorCode: undefined,
-      }))
+      })
       return true
     } catch {
       consecutivePollFailuresRef.current += 1
@@ -484,7 +551,7 @@ export function useRuntimeOAuthSession(input: {
       }
       return true
     }
-  }, [applyTerminalState, clearWarningCode, input, session.state, setWarningCode])
+  }, [applyTerminalState, clearWarningCode, input, session.state, setSessionFields, setWarningCode])
 
   const scheduleNextPoll = useCallback(() => {
     if (!pollingActiveRef.current) {
@@ -556,7 +623,7 @@ export function useRuntimeOAuthSession(input: {
         supportsManualCallbackImport: data.supportsManualCallbackImport,
         canRetry: true,
       }
-      setSession(nextSession)
+      dispatchOAuthState({ type: "replaceSession", session: nextSession })
       persistSession({
         channelId: input.channelId,
         channelType: input.channelType,
@@ -568,10 +635,10 @@ export function useRuntimeOAuthSession(input: {
         verificationUri: data.verification_uri,
         expiresAt: data.expiresAt,
       })
-      setCallbackInputRaw("")
+      setCallbackInputValue("")
       setCallbackValidation({ code: "empty" })
     },
-    [clearWarningCode, input.channelId, input.channelType, persistSession],
+    [clearWarningCode, input.channelId, input.channelType, persistSession, setRestoredFromStorage],
   )
 
   const startFlow = useCallback(
@@ -583,12 +650,12 @@ export function useRuntimeOAuthSession(input: {
       })
       hydrateFromStart(response.data)
     },
-    [hydrateFromStart, input.channelId, input.channelType, stopPolling],
+    [hydrateFromStart, input.channelId, input.channelType, setRestoredFromStorage, stopPolling],
   )
 
   const setCallbackInput = useCallback(
     (value: string) => {
-      setCallbackInputRaw(value)
+      setCallbackInputValue(value)
       setCallbackValidation(validateCallbackUrl(value, session.state || undefined))
       clearWarningCode("clipboard_read_failed")
     },
@@ -604,7 +671,7 @@ export function useRuntimeOAuthSession(input: {
       return false
     }
 
-    const validation = validateCallbackUrl(callbackInput, session.state || undefined)
+    const validation = validateCallbackUrl(callbackInputValue, session.state || undefined)
     setCallbackValidation(validation)
     if (validation.code !== "ok") {
       return false
@@ -614,7 +681,7 @@ export function useRuntimeOAuthSession(input: {
     try {
       const response = await submitCodexOAuthCallback(
         input.channelId,
-        callbackInput.trim(),
+        callbackInputValue.trim(),
         input.channelType,
       )
       if (applyTerminalCallbackState(response.data)) {
@@ -628,13 +695,12 @@ export function useRuntimeOAuthSession(input: {
         postCallbackStartedAtRef.current = Date.now()
       }
 
-      setSession((current) => ({
-        ...current,
+      setSessionFields({
         phase: response.data.phase,
         status: "waiting",
         error: undefined,
         errorCode: undefined,
-      }))
+      })
       setCallbackValidation({ code: "ok" })
       if (response.data.shouldContinuePolling) {
         scheduleNextPoll()
@@ -645,11 +711,12 @@ export function useRuntimeOAuthSession(input: {
     }
   }, [
     applyTerminalCallbackState,
-    callbackInput,
+    callbackInputValue,
     input.channelId,
     input.channelType,
     scheduleNextPoll,
     session.state,
+    setSessionFields,
   ])
 
   const pasteCallbackFromClipboard = useCallback(async () => {
@@ -702,19 +769,7 @@ export function useRuntimeOAuthSession(input: {
 
     completedRef.current = false
     pollingActiveRef.current = true
-    setRestoredFromStorage(true)
-    setSession({
-      status: "waiting",
-      phase: getPhaseForFlow(stored.flowType),
-      flowType: stored.flowType,
-      oauthUrl: stored.oauthUrl,
-      userCode: stored.userCode || "",
-      verificationUri: stored.verificationUri || "",
-      state: stored.state,
-      expiresAt: stored.expiresAt,
-      supportsManualCallbackImport: stored.supportsManualCallbackImport,
-      canRetry: true,
-    })
+    dispatchOAuthState({ type: "restoreStoredSession", stored })
   }, [clearStoredSession, storageKey])
 
   useEffect(() => () => stopPolling(), [stopPolling])
@@ -731,7 +786,7 @@ export function useRuntimeOAuthSession(input: {
     oauthUrl: session.oauthUrl,
     userCode: session.userCode,
     verificationUri: session.verificationUri,
-    callbackInput,
+    callbackInput: callbackInputValue,
     callbackValidation,
     isSubmittingCallback,
     canRetry: session.canRetry,
