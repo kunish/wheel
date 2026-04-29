@@ -32,6 +32,7 @@ export function CursorChannelDetail({ channelId }: { channelId: number }) {
         {t("cursor.managementTitle")}
       </h5>
       <p className="text-muted-foreground text-xs">{t("cursor.refreshHint")}</p>
+      <p className="text-muted-foreground text-xs">{t("cursor.agentToolsUnsupported")}</p>
       <Button
         type="button"
         variant="outline"

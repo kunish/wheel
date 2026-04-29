@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useModelMeta } from "@/hooks/use-model-meta"
+import { cn } from "@/lib/utils"
 import { formatCost, formatDuration } from "./columns"
 import { CodeBlock } from "./detail/code-block"
 import { detectLoggedRequestType } from "./detail/message-parsers"
@@ -241,11 +242,26 @@ export function LogDetailSheet() {
   )
 }
 
-function DetailField({ label, value }: { label: string; value: ReactNode }) {
+function DetailField({
+  label,
+  value,
+  wrapValue = false,
+}: {
+  label: string
+  value: ReactNode
+  wrapValue?: boolean
+}) {
   return (
     <div className="min-w-0">
       <p className="text-muted-foreground text-xs">{label}</p>
-      <div className="mt-1 min-w-0 truncate font-medium">{value}</div>
+      <div
+        className={cn(
+          "mt-1 min-w-0 font-medium",
+          wrapValue ? "break-words whitespace-normal" : "truncate",
+        )}
+      >
+        {value}
+      </div>
     </div>
   )
 }
@@ -406,12 +422,37 @@ function DetailPanel({
                   value={detail.ftut > 0 ? formatDuration(detail.ftut) : "—"}
                 />
                 <DetailField
+                  wrapValue
                   label={t("detail.field.outputSpeed")}
-                  value={
-                    detail.outputTokens > 0 && detail.useTime > 0
-                      ? `${(detail.outputTokens / (detail.useTime / 1000)).toFixed(1)} tok/s`
-                      : "—"
-                  }
+                  value={(() => {
+                    if (detail.outputTokens <= 0 || detail.useTime <= 0) return "—"
+                    const overall = detail.outputTokens / (detail.useTime / 1000)
+                    const genMs = detail.useTime - detail.ftut
+                    const generation =
+                      detail.ftut > 0 && genMs > 0 ? detail.outputTokens / (genMs / 1000) : null
+                    return (
+                      <div className="space-y-1 text-sm leading-normal">
+                        <p title={t("detail.field.outputSpeedOverall")}>
+                          <span className="text-muted-foreground">
+                            {t("detail.field.outputSpeedAbbrE2E")}
+                          </span>
+                          <span className="text-muted-foreground/80"> · </span>
+                          <span className="font-mono tabular-nums">{overall.toFixed(1)}</span>
+                          <span className="text-muted-foreground"> tok/s</span>
+                        </p>
+                        {generation != null ? (
+                          <p title={t("detail.field.outputSpeedGeneration")}>
+                            <span className="text-muted-foreground">
+                              {t("detail.field.outputSpeedAbbrGen")}
+                            </span>
+                            <span className="text-muted-foreground/80"> · </span>
+                            <span className="font-mono tabular-nums">{generation.toFixed(1)}</span>
+                            <span className="text-muted-foreground"> tok/s</span>
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
                 />
                 {detail.totalAttempts > 1 && (
                   <DetailField

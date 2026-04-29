@@ -42,6 +42,12 @@ func (h *RelayHandler) executeWithRetry(
 	isAnthropicInbound := req.IsAnthropicInbound
 	apiKeyId := req.ApiKeyID
 
+	// Original wire JSON (plugins / routing may mutate req.Body later).
+	var inboundSnapshot map[string]any
+	if len(req.BodyBytes) > 0 {
+		_ = json.Unmarshal(req.BodyBytes, &inboundSnapshot)
+	}
+
 	orderedItems := sel.OrderedItems
 	channelMap := sel.ChannelMap
 	firstTokenTimeout := sel.FirstTokenTimeout
@@ -152,6 +158,15 @@ func (h *RelayHandler) executeWithRetry(
 			// Build upstream request
 			isAnthropicPassthrough := isAnthropicInbound && channel.Type == types.OutboundAnthropic
 
+			var bridgeOriginalBody map[string]any
+			if isAnthropicInbound && !isAnthropicPassthrough {
+				if inboundSnapshot != nil {
+					bridgeOriginalBody = inboundSnapshot
+				} else {
+					bridgeOriginalBody = copyCopilotBody(body)
+				}
+			}
+
 			// For Anthropic inbound to non-Anthropic outbound channels, convert the
 			// request body from Anthropic Messages format to OpenAI Chat Completions
 			// format so that downstream proxy paths and upstream APIs receive the
@@ -233,6 +248,9 @@ func (h *RelayHandler) executeWithRetry(
 				TargetModel:            targetModel,
 				RequestModel:           model,
 				Body:                   attemptBody,
+				BridgeOriginalBody:     bridgeOriginalBody,
+				InboundSnapshot:        inboundSnapshot,
+				InboundRawJSON:         req.BodyBytes,
 				UpstreamBodyForLog:     upstreamBodyForLog,
 				IsAnthropicPassthrough: isAnthropicPassthrough,
 				IsAnthropicInbound:     isAnthropicInbound,
@@ -415,8 +433,7 @@ func (h *RelayHandler) handleExhaustion(c *gin.Context, req *relayRequest, outco
 		errType = "rate_limit_error"
 	}
 
-	apiError(c, exhaustedStatus, errType,
-		fmt.Sprintf("All channels exhausted after %d rounds. Last error: %s", maxRetryRounds, outcome.LastError),
-		isAnthropicInbound,
-	)
+	errBody := fmt.Sprintf("All channels exhausted after %d rounds. Last error: %s", maxRetryRounds, outcome.LastError)
+	errBody += cursorExhaustionHintAfterPlainTextRelayError(outcome.LastError)
+	apiError(c, exhaustedStatus, errType, errBody, isAnthropicInbound)
 }

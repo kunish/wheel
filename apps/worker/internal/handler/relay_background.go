@@ -88,14 +88,30 @@ func (h *RelayHandler) executeBackgroundNonStream(
 				if requestType == relay.RequestTypeAnthropicMsg {
 					bodyForCursor = convertAnthropicBodyToOpenAI(requestBody)
 				}
-				result, err = h.CursorRelay.ProxyNonStreaming(
-					context.Background(),
-					channel,
-					selectedKey.ChannelKey,
-					requestModel,
-					targetModel,
-					bodyForCursor,
-				)
+				hasCom := h.cursorComChatHTTPClient() != nil
+				if hasCom {
+					result, err = h.executeCursorComChatToolsBackground(
+						context.Background(),
+						requestType,
+						requestBody,
+						bodyForCursor,
+						requestModel,
+						targetModel,
+						selectedKey.ChannelKey,
+					)
+				} else {
+					result, err = h.CursorRelay.ProxyNonStreaming(
+						context.Background(),
+						channel,
+						selectedKey.ChannelKey,
+						requestModel,
+						targetModel,
+						bodyForCursor,
+						requestType == relay.RequestTypeAnthropicMsg,
+						false,
+						h.cursorComChatHTTPClient(),
+					)
+				}
 			} else if relay.ShouldUseMultimodalExecution(requestType, channel.Type) {
 				upstream = relay.BuildMultimodalUpstreamRequest(
 					channelConfig,

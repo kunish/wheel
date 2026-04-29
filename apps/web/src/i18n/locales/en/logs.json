@@ -101,6 +101,10 @@
       "ttft": "TTFT",
       "totalLatency": "Total Latency",
       "outputSpeed": "Output Speed",
+      "outputSpeedAbbrE2E": "Overall",
+      "outputSpeedAbbrGen": "Generation",
+      "outputSpeedOverall": "End-to-end (incl. queue + TTFT)",
+      "outputSpeedGeneration": "Generation only (excl. TTFT; similar to Cherry Studio)",
       "attempts": "Attempts"
     },
     "type": {

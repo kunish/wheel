@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Cursor channel:** when requests include `tools`, Wheel calls **`https://cursor.com/api/chat`** internally (browser-style headers, SSE `text-delta`), converts Anthropic/OpenAI tool formats, and parses fenced `json action` tool blocks—same approach as [cursor2api](https://github.com/7836246/cursor2api); plain-text traffic still uses `api2.cursor.sh` AgentService
+
+### Bug Fixes
+
+- **Cursor channel:** reject tools on the Agent-only relay (HTTP 422) with a clear message; tool workflows use the separate web chat path above instead
+
 ## [1.35.0](https://github.com/kunish/wheel/compare/v1.34.0...v1.35.0) (2026-03-20)
 
 ### Features

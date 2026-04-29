@@ -10,14 +10,16 @@ import (
 )
 
 // requestTypeSupportedByCursor reports whether the inbound request can be executed on a Cursor channel.
-// Anthropic POST /v1/messages is converted to OpenAI chat shape in relay_retry (attemptBody) before
-// these handlers run, so we accept it alongside native /v1/chat/completions.
+// Anthropic POST /v1/messages and OpenAI POST /v1/responses are converted to Chat Completions shape
+// in relay_retry (attemptBody) before these handlers run.
 func requestTypeSupportedByCursor(rt string, isAnthropicInbound bool) bool {
 	switch rt {
 	case relay.RequestTypeChat:
 		return true
 	case relay.RequestTypeAnthropicMsg:
 		return isAnthropicInbound
+	case relay.RequestTypeResponses:
+		return true
 	default:
 		return false
 	}
@@ -26,9 +28,20 @@ func requestTypeSupportedByCursor(rt string, isAnthropicInbound bool) bool {
 func (h *RelayHandler) executeCursorNonStreaming(p *relayAttemptParams) (*relayResult, error) {
 	if !requestTypeSupportedByCursor(p.RequestType, p.IsAnthropicInbound) {
 		return nil, &relay.ProxyError{
-			Message:    "Cursor channel only supports /v1/chat/completions",
+			Message:    "Cursor channel supports /v1/chat/completions, /v1/messages, and /v1/responses only",
 			StatusCode: http.StatusNotImplemented,
 		}
+	}
+	hasCom := h.cursorComChatHTTPClient() != nil
+	toolsComChat := cursorRelayShouldUseComChat(p)
+	if hasCom {
+		if toolsComChat && p.IsGeminiNative {
+			return nil, &relay.ProxyError{
+				Message:    "Cursor channel: Gemini native streaming with tools is not supported",
+				StatusCode: http.StatusNotImplemented,
+			}
+		}
+		return h.executeCursorComChatToolsNonStreaming(p)
 	}
 	if h.CursorRelay == nil {
 		return nil, &relay.ProxyError{Message: "cursor relay not configured", StatusCode: http.StatusInternalServerError}
@@ -40,6 +53,9 @@ func (h *RelayHandler) executeCursorNonStreaming(p *relayAttemptParams) (*relayR
 		p.RequestModel,
 		p.TargetModel,
 		p.Body,
+		p.IsAnthropicInbound,
+		p.IsGeminiNative,
+		h.cursorComChatHTTPClient(),
 	)
 	if proxyErr != nil {
 		return nil, proxyErr
@@ -57,15 +73,76 @@ func (h *RelayHandler) executeCursorNonStreaming(p *relayAttemptParams) (*relayR
 func (h *RelayHandler) executeCursorStreaming(p *relayAttemptParams) (*relayResult, error) {
 	if !requestTypeSupportedByCursor(p.RequestType, p.IsAnthropicInbound) {
 		return nil, &relay.ProxyError{
-			Message:    "Cursor channel only supports /v1/chat/completions",
+			Message:    "Cursor channel supports /v1/chat/completions, /v1/messages, and /v1/responses only",
 			StatusCode: http.StatusNotImplemented,
 		}
 	}
+
+	streamID := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), p.Channel.ID, p.ApiKeyID)
+
+	hasCom := h.cursorComChatHTTPClient() != nil
+	toolsComChat := cursorRelayShouldUseComChat(p)
+	if hasCom {
+		if toolsComChat && p.IsGeminiNative {
+			return &relayResult{StreamID: streamID}, &relay.ProxyError{
+				Message:    "Cursor channel: Gemini native streaming with tools is not supported",
+				StatusCode: http.StatusNotImplemented,
+			}
+		}
+		h.Observer.StreamStarted(p.C.Request.Context())
+		bodyJSON, _ := json.Marshal(p.Body)
+		estimatedInputTokens := len(bodyJSON) / 3
+		var inputPrice, outputPrice float64
+		if mp := relay.LookupModelPrice(p.TargetModel, p.C.Request.Context(), h.DB); mp != nil {
+			inputPrice = mp.InputPrice
+			outputPrice = mp.OutputPrice
+		}
+		streamStartPayload := map[string]any{
+			"streamId":             streamID,
+			"requestModelName":     p.RequestModel,
+			"actualModelName":      p.TargetModel,
+			"channelId":            p.Channel.ID,
+			"channelName":          p.Channel.Name,
+			"time":                 time.Now().Unix(),
+			"estimatedInputTokens": estimatedInputTokens,
+			"inputPrice":           inputPrice,
+			"outputPrice":          outputPrice,
+			"requestContent":       string(bodyJSON),
+			"cursorWebChat":        true,
+			"cursorWebChatTools":   toolsComChat,
+		}
+		if h.Broadcast != nil {
+			h.Broadcast("log-stream-start", streamStartPayload)
+		}
+		if h.StreamTracker != nil {
+			h.StreamTracker.TrackStream(streamID, streamStartPayload)
+		}
+		var onContent relay.StreamContentCallback
+		if h.Broadcast != nil {
+			onContent = func(thinking, response string) {
+				h.Broadcast("log-streaming", map[string]any{
+					"streamId":        streamID,
+					"thinkingContent": thinking,
+					"responseContent": response,
+					"thinkingLength":  len(thinking),
+					"responseLength":  len(response),
+				})
+			}
+		}
+		res, err := h.executeCursorComChatToolsStreaming(p, streamID)
+		if err != nil {
+			return res, err
+		}
+		if onContent != nil {
+			onContent("", res.ResponseContent)
+		}
+		return res, nil
+	}
+
 	if h.CursorRelay == nil {
 		return nil, &relay.ProxyError{Message: "cursor relay not configured", StatusCode: http.StatusInternalServerError}
 	}
 
-	streamID := fmt.Sprintf("%d-%d-%d", time.Now().UnixNano(), p.Channel.ID, p.ApiKeyID)
 	h.Observer.StreamStarted(p.C.Request.Context())
 
 	bodyJSON, _ := json.Marshal(p.Body)
@@ -117,6 +194,7 @@ func (h *RelayHandler) executeCursorStreaming(p *relayAttemptParams) (*relayResu
 		p.Body,
 		p.IsAnthropicInbound,
 		p.IsGeminiNative,
+		h.cursorComChatHTTPClient(),
 	)
 	if proxyErr != nil {
 		return &relayResult{StreamID: streamID}, proxyErr

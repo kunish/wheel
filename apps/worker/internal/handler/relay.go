@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +26,21 @@ const (
 	maxRetryRounds          = 3
 	openAIModelsCreatedUnix = 0
 )
+
+// cursorComChatFallbackHTTPClient is used when neither RelayHandler.HTTPClient nor CursorRelay.HTTPClient
+// is set. Cursor (37) chat still uses cursor.com/api/chat via this client unless CURSOR_NO_COM_CHAT_FALLBACK=1
+// (then com-chat is unavailable and requests fail with an explicit 502).
+var (
+	cursorComChatFallbackOnce sync.Once
+	cursorComChatFallback     *http.Client
+)
+
+func cursorComChatFallbackHTTPClient() *http.Client {
+	cursorComChatFallbackOnce.Do(func() {
+		cursorComChatFallback = &http.Client{}
+	})
+	return cursorComChatFallback
+}
 
 // attemptRecord tracks a single relay attempt for logging.
 type attemptRecord struct {
@@ -132,12 +149,30 @@ type RelayHandler struct {
 	// ── Antigravity (Google internal Gemini API) ──
 	AntigravityRelay *AntigravityRelay
 
-	// ── Cursor IDE (api2.cursor.sh Agent API) ──
+	// ── Cursor (cursor.com/api/chat + optional GetUsableModels on api2) ──
 	CursorRelay *CursorRelay
 
 	// ── Codex runtime (in-process) ──
 	CodexStreamClient *http.Client
 	CodexHTTPClient   *http.Client
+}
+
+// cursorComChatHTTPClient returns the client for cursor.com/api/chat (web chat).
+// Prefers RelayHandler.HTTPClient, then CursorRelay.HTTPClient, then a process-wide default client.
+func (h *RelayHandler) cursorComChatHTTPClient() *http.Client {
+	if h == nil {
+		return cursorComChatFallbackHTTPClient()
+	}
+	if h.HTTPClient != nil {
+		return h.HTTPClient
+	}
+	if h.CursorRelay != nil && h.CursorRelay.HTTPClient != nil {
+		return h.CursorRelay.HTTPClient
+	}
+	if strings.TrimSpace(os.Getenv("CURSOR_NO_COM_CHAT_FALLBACK")) == "1" {
+		return nil
+	}
+	return cursorComChatFallbackHTTPClient()
 }
 
 // RegisterRelayRoutes registers relay and related /v1 routes on a Gin engine.

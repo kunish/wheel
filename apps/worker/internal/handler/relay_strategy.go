@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,16 +13,57 @@ import (
 	"github.com/kunish/wheel/apps/worker/internal/types"
 )
 
+// guardOpenAICompatProxyToCursorAPI2WithTools blocks OpenAI-compatible channels that point at api2.cursor.sh
+// for chat-like endpoints. That combination hits Cursor's OpenAI façade / Agent edge and routinely returns
+// the confusing "client-side tools / plain text" error for Claude Code–style traffic. Use OutboundCursor (37)
+// so Wheel can bridge via cursor.com/api/chat. Opt out with CURSOR_ALLOW_OPENAI_COMPAT_API2=1.
+func guardOpenAICompatProxyToCursorAPI2WithTools(p *relayAttemptParams) *relay.ProxyError {
+	if p == nil {
+		return nil
+	}
+	if p.Channel.Type == types.OutboundCursor {
+		return nil
+	}
+	if strings.TrimSpace(os.Getenv("CURSOR_ALLOW_OPENAI_COMPAT_API2")) == "1" {
+		return nil
+	}
+	url := strings.ToLower(p.Upstream.URL)
+	if !strings.Contains(url, "api2.cursor.sh") {
+		return nil
+	}
+	if !strings.Contains(url, "/v1/chat/completions") &&
+		!strings.Contains(url, "/v1/messages") &&
+		!strings.Contains(url, "/v1/responses") {
+		return nil
+	}
+	return &relay.ProxyError{
+		Message: "Channel base URL targets api2.cursor.sh but the channel type is not Cursor (37). " +
+			"Set the channel type to Cursor in the admin UI so Wheel uses the cursor.com/api/chat bridge. " +
+			"OpenAI-compatible channels must not proxy chat to Cursor Agent hosts. " +
+			"(Advanced: set env CURSOR_ALLOW_OPENAI_COMPAT_API2=1 on the worker to bypass this check.)",
+		StatusCode: http.StatusUnprocessableEntity,
+	}
+}
+
 // relayAttemptParams holds per-attempt context shared by both strategies.
 type relayAttemptParams struct {
-	C                      *gin.Context
-	RequestType            string
-	Upstream               relay.UpstreamRequest
-	Channel                *types.Channel
-	SelectedKey            *types.ChannelKey
-	TargetModel            string
-	RequestModel           string
-	Body                   map[string]any
+	C            *gin.Context
+	RequestType  string
+	Upstream     relay.UpstreamRequest
+	Channel      *types.Channel
+	SelectedKey  *types.ChannelKey
+	TargetModel  string
+	RequestModel string
+	Body         map[string]any
+	// BridgeOriginalBody is the inbound Anthropic /v1/messages body before convertAnthropicBodyToOpenAI.
+	// Used for Cursor channels with tools (builtin cursor.com/api/chat path).
+	BridgeOriginalBody map[string]any
+	// InboundSnapshot is req.BodyBytes unmarshalled once per attempt (original wire JSON).
+	// Plugins or routing may mutate req.Body; this preserves tools for Cursor com-chat routing.
+	InboundSnapshot map[string]any
+	// InboundRawJSON is the raw request body bytes (same as req.BodyBytes) for Cursor tooling heuristics
+	// when map-based detection fails (unusual encodings, partial maps, etc.).
+	InboundRawJSON         []byte
 	UpstreamBodyForLog     *string
 	IsAnthropicPassthrough bool
 	IsAnthropicInbound     bool
@@ -46,6 +89,8 @@ type relayResult struct {
 	StreamID            string         // streaming: the stream ID
 	ResponseHeaders     http.Header
 	BinaryResponse      bool
+	// PassthroughJSON: non-streaming response is already in client wire format (e.g. from cursor2api bridge); skip ConvertToAnthropicResponse.
+	PassthroughJSON bool
 }
 
 // RelayStrategy abstracts the streaming/non-streaming proxy execution.
@@ -78,8 +123,11 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 		return h.executeAntigravityStreaming(p)
 	}
 
-	// Cursor IDE channels: ConnectRPC AgentService (HTTP/2).
-	if p.Channel.Type == types.OutboundCursor && h.CursorRelay != nil {
+	// Cursor channels: cursor.com/api/chat (never fall through to generic api2 OpenAI-compat proxy).
+	if p.Channel.Type == types.OutboundCursor {
+		if h.CursorRelay == nil {
+			return nil, &relay.ProxyError{Message: "Cursor channel requires CursorRelay (worker misconfiguration)", StatusCode: http.StatusInternalServerError}
+		}
 		return h.executeCursorStreaming(p)
 	}
 
@@ -134,6 +182,10 @@ func (s *streamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*relay
 	streamClient := h.StreamClient
 	if p.Channel.Type == types.OutboundCodex && h.CodexStreamClient != nil {
 		streamClient = h.CodexStreamClient
+	}
+
+	if err := guardOpenAICompatProxyToCursorAPI2WithTools(p); err != nil {
+		return nil, err
 	}
 
 	streamInfo, proxyErr := relay.ProxyStreaming(
@@ -207,8 +259,11 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 		return h.executeAntigravityNonStreaming(p)
 	}
 
-	// Cursor IDE channels: ConnectRPC AgentService (HTTP/2).
-	if p.Channel.Type == types.OutboundCursor && h.CursorRelay != nil {
+	// Cursor channels: cursor.com/api/chat.
+	if p.Channel.Type == types.OutboundCursor {
+		if h.CursorRelay == nil {
+			return nil, &relay.ProxyError{Message: "Cursor channel requires CursorRelay (worker misconfiguration)", StatusCode: http.StatusInternalServerError}
+		}
 		return h.executeCursorNonStreaming(p)
 	}
 
@@ -260,6 +315,10 @@ func (s *nonStreamStrategy) Execute(h *RelayHandler, p *relayAttemptParams) (*re
 		}, nil
 	}
 
+	if err := guardOpenAICompatProxyToCursorAPI2WithTools(p); err != nil {
+		return nil, err
+	}
+
 	result, proxyErr := relay.ProxyNonStreaming(
 		httpClient,
 		p.Upstream.URL,
@@ -295,6 +354,10 @@ func (s *nonStreamStrategy) HandleSuccess(h *RelayHandler, p *relayAttemptParams
 	relay.CopyForwardableHeaders(p.C.Writer.Header(), result.ResponseHeaders)
 
 	// Write response
+	if result.PassthroughJSON {
+		p.C.JSON(200, result.Response)
+		return
+	}
 	if p.IsAnthropicPassthrough {
 		p.C.JSON(200, result.Response)
 		return

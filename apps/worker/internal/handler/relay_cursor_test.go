@@ -1,9 +1,14 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 )
@@ -72,6 +77,22 @@ func TestCursorModelIDsFromUsableModelsJSON(t *testing.T) {
 	}
 }
 
+func TestCursorBodyDeclaresTools(t *testing.T) {
+	t.Parallel()
+	if cursorBodyDeclaresTools(nil) {
+		t.Fatal("nil body")
+	}
+	if cursorBodyDeclaresTools(map[string]any{}) {
+		t.Fatal("empty map")
+	}
+	if cursorBodyDeclaresTools(map[string]any{"tools": []any{}}) {
+		t.Fatal("empty tools")
+	}
+	if !cursorBodyDeclaresTools(map[string]any{"tools": []any{map[string]any{"type": "function"}}}) {
+		t.Fatal("expected tools")
+	}
+}
+
 func TestRequestTypeSupportedByCursor(t *testing.T) {
 	t.Parallel()
 	if !requestTypeSupportedByCursor(relay.RequestTypeChat, false) {
@@ -82,6 +103,9 @@ func TestRequestTypeSupportedByCursor(t *testing.T) {
 	}
 	if requestTypeSupportedByCursor(relay.RequestTypeAnthropicMsg, false) {
 		t.Fatal("unexpected anthropic without inbound flag")
+	}
+	if !requestTypeSupportedByCursor(relay.RequestTypeResponses, false) {
+		t.Fatal("expected OpenAI /v1/responses after conversion to chat shape")
 	}
 }
 
@@ -101,6 +125,94 @@ func TestCursorMessagesToPrompt(t *testing.T) {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("expected %q in %q", needle, s)
 		}
+	}
+}
+
+func TestCursorComChatEventError(t *testing.T) {
+	t.Parallel()
+	if _, ok := cursorComChatEventError(map[string]any{"type": "text-delta", "delta": "hi"}); ok {
+		t.Fatal("expected no error for text-delta")
+	}
+	msg, ok := cursorComChatEventError(map[string]any{"type": "error", "message": "x"})
+	if !ok || msg != "x" {
+		t.Fatalf("got %q %v", msg, ok)
+	}
+	msg, ok = cursorComChatEventError(map[string]any{"type": "error", "error": map[string]any{"message": "y"}})
+	if !ok || msg != "y" {
+		t.Fatalf("got %q %v", msg, ok)
+	}
+}
+
+func TestPostCursorComChatStopsIdleWatcherOnReturn(t *testing.T) {
+	t.Setenv("CURSOR_COM_CHAT_IDLE_TIMEOUT", "1h")
+
+	unblockRoundTrip := make(chan struct{})
+	roundTripStarted := make(chan struct{})
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		close(roundTripStarted)
+		<-unblockRoundTrip
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("")),
+			Request:    req,
+		}, nil
+	})}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- postCursorComChat(context.Background(), client, map[string]any{"messages": []any{}}, "", nil)
+	}()
+
+	<-roundTripStarted
+	if !eventually(func() bool { return countCursorComChatIdleWatchers() > 0 }, 500*time.Millisecond) {
+		close(unblockRoundTrip)
+		t.Fatal("expected idle watcher goroutine to start")
+	}
+
+	close(unblockRoundTrip)
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	if !eventually(func() bool { return countCursorComChatIdleWatchers() == 0 }, 500*time.Millisecond) {
+		t.Fatalf("idle watcher goroutine still running after request returned")
+	}
+}
+
+func countCursorComChatIdleWatchers() int {
+	buf := make([]byte, 1<<20)
+	n := runtime.Stack(buf, true)
+	return strings.Count(string(buf[:n]), "postCursorComChat.func")
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func eventually(fn func() bool, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if fn() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fn()
+}
+
+func TestCursorExhaustionHintAfterPlainTextRelayError(t *testing.T) {
+	t.Parallel()
+	if s := cursorExhaustionHintAfterPlainTextRelayError(""); s != "" {
+		t.Fatalf("want empty got %q", s)
+	}
+	if s := cursorExhaustionHintAfterPlainTextRelayError("random"); s != "" {
+		t.Fatalf("want empty got %q", s)
+	}
+	if s := cursorExhaustionHintAfterPlainTextRelayError("Cursor Agent API cannot be used"); !strings.Contains(s, "Wheel:") {
+		t.Fatalf("want Wheel hint got %q", s)
 	}
 }
 

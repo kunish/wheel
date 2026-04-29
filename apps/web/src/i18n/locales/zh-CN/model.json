@@ -220,6 +220,7 @@
   },
   "cursor": {
     "managementTitle": "Cursor IDE",
+    "agentToolsUnsupported": "Cursor **Agent** 中继仅支持纯文本（无 tools）。含 **tools** 的请求会由 Wheel **内置**走 **cursor.com/api/chat**（思路同 cursor2api）：自动转换协议并解析模型输出的 ```json action``` 工具块。仅在 Agent 路径上误带 tools 会返回 422。Gemini 原生 + 本渠道 + tools 暂不支持。",
     "refreshHint": "从 Cursor 上游重新获取可用模型列表（GetUsableModels）并保存到本渠道。",
     "refreshSuccess": "已更新本渠道 {{count}} 个模型",
     "refreshUnchanged": "没有可用的模型列表（请检查凭证是否启用、渠道密钥是否填写）；渠道模型未改动。",

@@ -101,6 +101,10 @@
       "ttft": "首字时间",
       "totalLatency": "总耗时",
       "outputSpeed": "输出速度",
+      "outputSpeedAbbrE2E": "整段",
+      "outputSpeedAbbrGen": "生成",
+      "outputSpeedOverall": "整段（含首字与排队）",
+      "outputSpeedGeneration": "仅生成段（不含首字；与 Cherry 等客户端口径接近）",
       "attempts": "尝试次数"
     },
     "type": {

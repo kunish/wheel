@@ -220,6 +220,7 @@
   },
   "cursor": {
     "managementTitle": "Cursor IDE",
+    "agentToolsUnsupported": "The Cursor **Agent** relay is plain-text only (no tools). Wheel enables **tool / function calling** automatically via the builtin **cursor.com/api/chat** path (same idea as cursor2api): declare tools in your request and they are translated and parsed server-side. For Gemini-native requests with tools on this channel, use another provider.",
     "refreshHint": "Pull the latest model list from Cursor (GetUsableModels) and save it on this channel.",
     "refreshSuccess": "Updated {{count}} models on this channel",
     "refreshUnchanged": "No model list available (check that a channel key is set and enabled). The channel was not changed.",

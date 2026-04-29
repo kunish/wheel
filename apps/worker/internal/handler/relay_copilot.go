@@ -536,7 +536,7 @@ func convertAnthropicBodyToOpenAI(body map[string]any) map[string]any {
 	out["messages"] = openAIMessages
 
 	// --- tools --------------------------------------------------------------
-	if tools, ok := body["tools"].([]any); ok {
+	if tools := namedJSONArray(body, "tools"); len(tools) > 0 {
 		out["tools"] = convertAnthropicToolsToOpenAI(tools)
 	}
 

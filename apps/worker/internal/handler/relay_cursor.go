@@ -9,30 +9,265 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"runtime"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kunish/wheel/apps/worker/internal/protocol"
 	"github.com/kunish/wheel/apps/worker/internal/relay"
 	"github.com/kunish/wheel/apps/worker/internal/types"
 	"golang.org/x/net/http2"
 )
 
-// Cursor API — OpenAI-compatible bridge to Cursor IDE AgentService (ConnectRPC over HTTP/2).
-// Protocol reference: https://github.com/kunish/cursoride2api
+// Cursor channel — OpenAI-compatible bridge via https://cursor.com/api/chat (web chat API).
+// Optional: GetUsableModels uses Cursor api2 Connect (HTTP/2) for model listing only.
 
 const (
 	cursorDefaultBaseURL      = "https://api2.cursor.sh"
 	cursorDefaultClientVer    = "2.6.20"
 	cursorDefaultDisplayModel = "claude-4.5-sonnet"
-	cursorAgentRunPath        = "/agent.v1.AgentService/Run"
 	cursorAgentModelsPath     = "/agent.v1.AgentService/GetUsableModels"
-	cursorHeartbeatInterval   = 5 * time.Second
 )
+
+// Wire-level detection: some intermediaries produce JSON that round-trips oddly into map[string]any.
+var (
+	cursorWireToolsArrayKey = regexp.MustCompile(`"tools"\s*:\s*\[`)
+	cursorWireFunctionsKey  = regexp.MustCompile(`"functions"\s*:\s*\[`)
+)
+
+// relayHeuristicToolsInJSON is a last-resort scan of raw JSON for structured tool fields.
+func relayHeuristicToolsInJSON(b []byte) bool {
+	if len(b) < 24 {
+		return false
+	}
+	if bytes.Contains(b, []byte(`"tool_calls"`)) ||
+		bytes.Contains(b, []byte(`"tool_use"`)) ||
+		bytes.Contains(b, []byte(`"tool_result"`)) {
+		return true
+	}
+	if bytes.Contains(b, []byte(`"role":"tool"`)) || bytes.Contains(b, []byte(`"role": "tool"`)) {
+		return true
+	}
+	if bytes.Contains(b, []byte(`"tool_choice"`)) {
+		return true
+	}
+	if cursorWireToolsArrayKey.Match(b) || cursorWireFunctionsKey.Match(b) {
+		return true
+	}
+	// Some JSON encoders emit Unicode-escaped quotes around keys.
+	if bytes.Contains(b, []byte(`\u0022tools\u0022`)) && bytes.Contains(b, []byte(`[`)) {
+		return true
+	}
+	if bytes.Contains(b, []byte(`\u0022functions\u0022`)) && bytes.Contains(b, []byte(`[`)) {
+		return true
+	}
+	// Claude Code MCP plugin tools use stable name prefixes in definitions.
+	if bytes.Contains(b, []byte(`"mcp__`)) {
+		return true
+	}
+	if bytes.Contains(b, []byte(`"input_schema"`)) && bytes.Contains(b, []byte(`"name"`)) {
+		return true
+	}
+	if bytes.Contains(b, []byte(`parallel_tool_calls`)) {
+		return true
+	}
+	if bytes.Contains(b, []byte(`tool_resources`)) || bytes.Contains(b, []byte(`"tool_resources"`)) {
+		return true
+	}
+	if bytes.Contains(b, []byte(`"function_call"`)) {
+		return true
+	}
+	return false
+}
+
+func cursorLegacyAgentDisabledMessage() string {
+	return "Wheel does not call Cursor api2 Agent Run (ConnectRPC). Cursor channels use https://cursor.com/api/chat only. " +
+		"If you still see Cursor's own “client-side tools / plain text relay” message, you are not hitting this worker's relay code path: " +
+		"use channel type Cursor (37), point Claude Code BASE_URL at this Wheel /v1, redeploy the latest apps/worker image, and remove any intermediate proxy that forwards to api2 or a third-party plain-text Cursor relay."
+}
+
+// cursorExhaustionHintAfterPlainTextRelayError appends context when upstream returns Cursor Agent / plain-text-relay wording
+// (Wheel does not emit that text; it comes from api2 or a third-party OpenAI facade in front of Cursor).
+func cursorExhaustionHintAfterPlainTextRelayError(lastError string) string {
+	if lastError == "" {
+		return ""
+	}
+	lr := strings.ToLower(lastError)
+	if !strings.Contains(lr, "client-side tools") &&
+		!strings.Contains(lr, "plain text relay") &&
+		!strings.Contains(lr, "plain text to") &&
+		!strings.Contains(lr, "cursor agent api") {
+		return ""
+	}
+	return " [Wheel: that message is from Cursor Agent or a plain-text Cursor relay, not from Wheel's Cursor (37) bridge. " +
+		"In the admin UI set the channel type to Cursor (37) with a Cursor token; do not use an OpenAI-compatible channel whose base URL points at api2 or another Cursor OpenAI façade. " +
+		"Unset CURSOR_NO_COM_CHAT_FALLBACK unless you intentionally disabled the HTTP client for cursor.com/api/chat.]"
+}
+
+// cursorToolsUnsupportedMessage is returned when tool/workflows are detected but CursorRelay.HTTPClient is not set.
+const cursorToolsUnsupportedMessage = "Cursor tool calling requires Wheel HTTP client configuration (internal error). Rebuild/restart the worker, or report this issue."
+
+// namedJSONArray returns a JSON array from body[key] even when the dynamic type is not []any
+// (e.g. json.RawMessage, typed slices, or alternate decoders). Empty arrays return nil.
+func namedJSONArray(body map[string]any, key string) []any {
+	if body == nil {
+		return nil
+	}
+	v, ok := body[key]
+	if !ok || v == nil {
+		return nil
+	}
+	switch x := v.(type) {
+	case []any:
+		if len(x) == 0 {
+			return nil
+		}
+		return x
+	case string:
+		// Some proxies stringify the tools JSON array; parse it.
+		s := strings.TrimSpace(x)
+		if len(s) > 1 && s[0] == '[' {
+			var arr []any
+			if json.Unmarshal([]byte(s), &arr) == nil && len(arr) > 0 {
+				return arr
+			}
+		}
+		return nil
+	default:
+		raw, err := json.Marshal(x)
+		if err != nil {
+			return nil
+		}
+		var arr []any
+		if err := json.Unmarshal(raw, &arr); err != nil || len(arr) == 0 {
+			return nil
+		}
+		return arr
+	}
+}
+
+// cursorBodyDeclaresTools reports whether the request declares OpenAI tools and/or legacy "functions".
+func cursorBodyDeclaresTools(body map[string]any) bool {
+	return len(namedJSONArray(body, "tools")) > 0 || len(namedJSONArray(body, "functions")) > 0
+}
+
+// bodyDeclaresToolChoice is true when the client set tool_choice / routing wants tools (Anthropic or OpenAI).
+func bodyDeclaresToolChoice(body map[string]any) bool {
+	if body == nil {
+		return false
+	}
+	tc, ok := body["tool_choice"]
+	if !ok || tc == nil {
+		return false
+	}
+	switch x := tc.(type) {
+	case string:
+		s := strings.TrimSpace(strings.ToLower(x))
+		return s != "" && s != "none"
+	case map[string]any:
+		return len(x) > 0
+	default:
+		return true
+	}
+}
+
+func toolCallsInOpenAIMessage(msg map[string]any) bool {
+	tc, ok := msg["tool_calls"]
+	if !ok || tc == nil {
+		return false
+	}
+	if arr, ok := tc.([]any); ok && len(arr) > 0 {
+		return true
+	}
+	raw, err := json.Marshal(tc)
+	if err != nil {
+		return false
+	}
+	var arr []any
+	return json.Unmarshal(raw, &arr) == nil && len(arr) > 0
+}
+
+// cursorBodyImpliesClientTooling is true for top-level tools/functions or an OpenAI chat history that uses tools.
+func cursorBodyImpliesClientTooling(body map[string]any) bool {
+	if bodyDeclaresToolChoice(body) {
+		return true
+	}
+	if cursorBodyDeclaresTools(body) {
+		return true
+	}
+	for _, m := range namedJSONArray(body, "messages") {
+		msg, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		if role, _ := msg["role"].(string); role == "tool" {
+			return true
+		}
+		if toolCallsInOpenAIMessage(msg) {
+			return true
+		}
+	}
+	return false
+}
+
+// anthropicBodyImpliesTooling detects tool_use / tool_result in Anthropic-shaped bodies (BridgeOriginalBody).
+func anthropicBodyImpliesTooling(body map[string]any) bool {
+	if body == nil {
+		return false
+	}
+	if bodyDeclaresToolChoice(body) {
+		return true
+	}
+	if cursorBodyDeclaresTools(body) {
+		return true
+	}
+	for _, m := range namedJSONArray(body, "messages") {
+		msg, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		c := msg["content"]
+		arr, ok := c.([]any)
+		if !ok {
+			continue
+		}
+		for _, x := range arr {
+			b, ok := x.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch typ, _ := b["type"].(string); typ {
+			case "tool_use", "tool_result":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// cursorRelayShouldUseComChat is true when we must use cursor.com/api/chat (tools / function calling).
+func cursorRelayShouldUseComChat(p *relayAttemptParams) bool {
+	if p == nil {
+		return false
+	}
+	if cursorBodyImpliesClientTooling(p.Body) {
+		return true
+	}
+	if p.BridgeOriginalBody != nil && anthropicBodyImpliesTooling(p.BridgeOriginalBody) {
+		return true
+	}
+	if p.InboundSnapshot != nil {
+		if cursorBodyImpliesClientTooling(p.InboundSnapshot) || anthropicBodyImpliesTooling(p.InboundSnapshot) {
+			return true
+		}
+	}
+	if len(p.InboundRawJSON) > 0 && relayHeuristicToolsInJSON(p.InboundRawJSON) {
+		return true
+	}
+	return false
+}
 
 var (
 	cursorHTTP2Once   sync.Once
@@ -48,32 +283,38 @@ func cursorSharedH2Client() *http.Client {
 	return cursorHTTP2Client
 }
 
-// cursorAgentRunTimeout bounds how long a single AgentService.Run round-trip may block on reading
-// the streaming body (matches cursoride2api REQUEST_TIMEOUT default ~120s).
-func cursorAgentRunTimeout() time.Duration {
-	s := strings.TrimSpace(os.Getenv("CURSOR_AGENT_RUN_TIMEOUT"))
-	if s != "" {
-		if d, err := time.ParseDuration(s); err == nil && d > 0 {
-			return d
-		}
-	}
-	return 120 * time.Second
+// CursorRelay implements Cursor web-chat relay and auxiliary Cursor API calls.
+type CursorRelay struct {
+	// HTTPClient is used for cursor.com/api/chat when the request implies client-side tools.
+	// Must be set by the worker (see main); if nil and tools are implied, requests fail with an explicit error.
+	HTTPClient *http.Client
 }
-
-// cursorAgentRunHTTPClient is an HTTP/2 client with a finite timeout for Agent Run only
-// (shared transport, separate from the unbounded client used elsewhere).
-func cursorAgentRunHTTPClient() *http.Client {
-	return &http.Client{
-		Transport: cursorSharedH2Client().Transport,
-		Timeout:   cursorAgentRunTimeout(),
-	}
-}
-
-// CursorRelay implements Cursor Agent API requests (non-stream and SSE).
-type CursorRelay struct{}
 
 // NewCursorRelay returns a stateless Cursor relay.
 func NewCursorRelay() *CursorRelay { return &CursorRelay{} }
+
+// cursorRelayComChatHTTPClient picks the HTTP client for cursor.com/api/chat (handler override or relay).
+func cursorRelayComChatHTTPClient(comChatHTTP *http.Client, r *CursorRelay) *http.Client {
+	if comChatHTTP != nil {
+		return comChatHTTP
+	}
+	if r != nil && r.HTTPClient != nil {
+		return r.HTTPClient
+	}
+	if strings.TrimSpace(os.Getenv("CURSOR_NO_COM_CHAT_FALLBACK")) == "1" {
+		return nil
+	}
+	return cursorComChatFallbackHTTPClient()
+}
+
+// cursorRelayRouteComChat is true whenever we have an HTTP client for cursor.com/api/chat.
+// Agent (api2 ConnectRPC) is not used for Cursor channels when this client exists: Claude Code and
+// similar clients embed tool instructions in prompts that Agent rejects as “client-side tools”, so
+// we always prefer the web chat bridge. CURSOR_USE_AGENT no longer switches routing when a client is set.
+func cursorRelayRouteComChat(comChatHTTP *http.Client, r *CursorRelay, toolsLike bool) bool {
+	_ = toolsLike // reserved for call-site symmetry / future limits
+	return cursorRelayComChatHTTPClient(comChatHTTP, r) != nil
+}
 
 type cursorCredentials struct {
 	AccessToken   string `json:"accessToken"`
@@ -272,134 +513,6 @@ func encodeCursorFrame(obj map[string]any) ([]byte, error) {
 	return frame, nil
 }
 
-func cursorShellAndOS() (osName, shell string) {
-	switch runtime.GOOS {
-	case "windows":
-		return "windows", "powershell"
-	default:
-		return runtime.GOOS, "bash"
-	}
-}
-
-func cursorExecIDs(exec map[string]any) (idInt int, execID string) {
-	execID, _ = exec["execId"].(string)
-	switch v := exec["id"].(type) {
-	case float64:
-		idInt = int(v)
-	case int:
-		idInt = v
-	case int64:
-		idInt = int(v)
-	}
-	return idInt, execID
-}
-
-func cursorExecReply(exec map[string]any, write func(map[string]any)) {
-	idInt, execID := cursorExecIDs(exec)
-
-	if _, ok := exec["requestContextArgs"]; ok {
-		o, sh := cursorShellAndOS()
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID,
-				"requestContextResult": map[string]any{
-					"success": map[string]any{
-						"requestContext": map[string]any{
-							"env": map[string]any{
-								"operatingSystem": o,
-								"defaultShell":    sh,
-							},
-						},
-					},
-				},
-			},
-		})
-		return
-	}
-	if _, ok := exec["readArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID,
-				"readResult": map[string]any{"fileNotFound": map[string]any{}},
-			},
-		})
-		return
-	}
-	if _, ok := exec["lsArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID,
-				"lsResult": map[string]any{"error": map[string]any{"path": "", "error": "Headless mode"}},
-			},
-		})
-		return
-	}
-	if _, ok := exec["shellArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID,
-				"shellResult": map[string]any{"rejected": map[string]any{"reason": "Headless mode"}},
-			},
-		})
-		return
-	}
-	if _, ok := exec["grepArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID,
-				"grepResult": map[string]any{"error": map[string]any{"error": "Headless mode"}},
-			},
-		})
-		return
-	}
-	if _, ok := exec["writeArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID, "writeResult": map[string]any{},
-			},
-		})
-		return
-	}
-	if _, ok := exec["deleteArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID,
-				"deleteResult": map[string]any{"error": map[string]any{"path": "", "error": "Headless mode"}},
-			},
-		})
-		return
-	}
-	if _, ok := exec["diagnosticsArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id": idInt, "execId": execID,
-				"diagnosticsResult": map[string]any{"diagnostics": []any{}},
-			},
-		})
-		return
-	}
-	// Newer Cursor builds may request screen capture during agent runs.
-	// Use an empty result; a wrongly-shaped "rejected" branch has been observed to stall the agent.
-	if _, ok := exec["recordScreenArgs"]; ok {
-		write(map[string]any{
-			"execClientMessage": map[string]any{
-				"id":                 idInt,
-				"execId":             execID,
-				"recordScreenResult": map[string]any{},
-			},
-		})
-		return
-	}
-	write(map[string]any{
-		"execClientMessage": map[string]any{
-			"id": idInt, "execId": execID,
-			"requestContextResult": map[string]any{
-				"error": map[string]any{"error": "Unknown exec type"},
-			},
-		},
-	})
-}
-
 func cursorMessagesToPrompt(body map[string]any) (string, error) {
 	raw, ok := body["messages"]
 	if !ok {
@@ -460,161 +573,6 @@ func cursorMessagesToPrompt(body map[string]any) (string, error) {
 	return out, nil
 }
 
-func cursorExtractTextDelta(iu map[string]any) string {
-	if iu == nil {
-		return ""
-	}
-	for _, key := range []string{"textDelta", "text_delta"} {
-		td, ok := iu[key]
-		if !ok {
-			continue
-		}
-		switch v := td.(type) {
-		case string:
-			return v
-		case map[string]any:
-			if s, _ := v["text"].(string); s != "" {
-				return s
-			}
-			if s, _ := v["delta"].(string); s != "" {
-				return s
-			}
-		}
-	}
-	return ""
-}
-
-func cursorParseTokenCount(v any) int {
-	switch t := v.(type) {
-	case string:
-		var n int
-		_, _ = fmt.Sscanf(t, "%d", &n)
-		return n
-	case float64:
-		return int(t)
-	case int:
-		return t
-	case int64:
-		return int(t)
-	default:
-		return 0
-	}
-}
-
-func cursorParseTurnEndedMap(te map[string]any) (inT, outT int) {
-	if te == nil {
-		return 0, 0
-	}
-	inT = cursorParseTokenCount(te["inputTokens"])
-	if inT == 0 {
-		inT = cursorParseTokenCount(te["input_tokens"])
-	}
-	outT = cursorParseTokenCount(te["outputTokens"])
-	if outT == 0 {
-		outT = cursorParseTokenCount(te["output_tokens"])
-	}
-	return inT, outT
-}
-
-func cursorExtractTurnEnded(iu map[string]any) (ended bool, inputTok, outputTok int) {
-	if iu == nil {
-		return false, 0, 0
-	}
-	for _, key := range []string{"turnEnded", "turn_ended"} {
-		te, ok := iu[key].(map[string]any)
-		if !ok {
-			continue
-		}
-		inT, outT := cursorParseTurnEndedMap(te)
-		return true, inT, outT
-	}
-	return false, 0, 0
-}
-
-func cursorProcessInteractionUpdate(
-	iu map[string]any,
-	onDelta func(string),
-) (ended bool, inputTok, outputTok int) {
-	if iu == nil {
-		return false, 0, 0
-	}
-	if _, ok := iu["heartbeat"]; ok {
-		return false, 0, 0
-	}
-	if ok, inT, outT := cursorExtractTurnEnded(iu); ok {
-		return true, inT, outT
-	}
-	if d := cursorExtractTextDelta(iu); d != "" && onDelta != nil {
-		onDelta(d)
-	}
-	// Matches cursoride2api: these frames are expected until turnEnded arrives.
-	if _, ok := iu["thinkingDelta"]; ok {
-		return false, 0, 0
-	}
-	if _, ok := iu["thinking_delta"]; ok {
-		return false, 0, 0
-	}
-	if _, ok := iu["thinkingCompleted"]; ok {
-		return false, 0, 0
-	}
-	if _, ok := iu["thinking_completed"]; ok {
-		return false, 0, 0
-	}
-	if _, ok := iu["tokenDelta"]; ok {
-		return false, 0, 0
-	}
-	if _, ok := iu["token_delta"]; ok {
-		return false, 0, 0
-	}
-	if _, ok := iu["stepCompleted"]; ok {
-		return false, 0, 0
-	}
-	if _, ok := iu["step_completed"]; ok {
-		return false, 0, 0
-	}
-
-	if msg, ok := iu["message"].(map[string]any); ok {
-		if ok, inT, outT := cursorExtractTurnEnded(msg); ok {
-			return true, inT, outT
-		}
-		if d := cursorExtractTextDelta(msg); d != "" && onDelta != nil {
-			onDelta(d)
-		}
-	}
-	return false, 0, 0
-}
-
-func cursorParseErrorPayload(msg map[string]any) string {
-	errObj, ok := msg["error"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	if details, ok := errObj["details"].([]any); ok && len(details) > 0 {
-		if d0, ok := details[0].(map[string]any); ok {
-			if v, _ := d0["value"].(string); v != "" {
-				if dec, err := base64.StdEncoding.DecodeString(v); err == nil {
-					return string(dec)
-				}
-			}
-		}
-	}
-	if m, _ := errObj["message"].(string); m != "" {
-		return m
-	}
-	if c, _ := errObj["code"].(string); c != "" {
-		return c
-	}
-	return "Unknown error"
-}
-
-type cursorAgentOutcome struct {
-	fullText    string
-	inputTok    int
-	outputTok   int
-	errText     string
-	earlyFinish bool
-}
-
 func cursorApplyCustomHeaders(req *http.Request, ch *types.Channel) {
 	if req == nil || ch == nil {
 		return
@@ -625,211 +583,6 @@ func cursorApplyCustomHeaders(req *http.Request, ch *types.Channel) {
 			continue
 		}
 		req.Header.Set(k, h.Value)
-	}
-}
-
-func (r *CursorRelay) runCursorAgent(
-	ctx context.Context,
-	ch *types.Channel,
-	baseURL string,
-	cred cursorCredentials,
-	prompt string,
-	cursorModel string,
-	onDelta func(string),
-) (*cursorAgentOutcome, error) {
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if baseURL == "" {
-		baseURL = cursorDefaultBaseURL
-	}
-	runURL := baseURL + cursorAgentRunPath
-
-	pr, pw := io.Pipe()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, runURL, pr)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/connect+json")
-	req.Header.Set("connect-protocol-version", "1")
-	req.Header.Set("Authorization", "Bearer "+cred.AccessToken)
-	req.Header.Set("x-cursor-checksum", cursorChecksum(cred.MachineID, cred.MacMachineID))
-	req.Header.Set("x-cursor-client-version", cred.ClientVersion)
-	tz := time.Now().Location().String()
-	if tz == "" || tz == "Local" {
-		tz = "UTC"
-	}
-	req.Header.Set("x-cursor-timezone", tz)
-	req.Header.Set("x-request-id", uuid.NewString())
-	cursorApplyCustomHeaders(req, ch)
-
-	convID := uuid.NewString()
-	runReq := map[string]any{
-		"runRequest": map[string]any{
-			"conversationState": map[string]any{},
-			"action": map[string]any{
-				"userMessageAction": map[string]any{
-					"userMessage": map[string]any{"text": prompt},
-				},
-			},
-			"modelDetails": map[string]any{
-				"modelId":          cursorModel,
-				"displayName":      cursorModel,
-				"displayNameShort": cursorModel,
-			},
-			"requestedModel": map[string]any{"modelId": cursorModel},
-			"conversationId": convID,
-		},
-	}
-
-	frameMu := &sync.Mutex{}
-	pumpCtx, pumpCancel := context.WithCancel(ctx)
-	defer pumpCancel()
-
-	outcome := &cursorAgentOutcome{}
-
-	writerDone := make(chan error, 1)
-	go func() {
-		writerDone <- cursorWritePump(pumpCtx, pw, frameMu, runReq)
-	}()
-
-	client := cursorAgentRunHTTPClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		pumpCancel()
-		_ = pr.CloseWithError(err)
-		<-writerDone
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		pumpCancel()
-		_ = pr.Close()
-		<-writerDone
-		return nil, fmt.Errorf("cursor upstream %d: %s", resp.StatusCode, string(b))
-	}
-
-	buf := make([]byte, 0, 64*1024)
-	tmp := make([]byte, 32*1024)
-	for {
-		select {
-		case <-ctx.Done():
-			pumpCancel()
-			_ = pr.Close()
-			<-writerDone
-			return outcome, ctx.Err()
-		default:
-		}
-		n, rerr := resp.Body.Read(tmp)
-		if n > 0 {
-			buf = append(buf, tmp[:n]...)
-		}
-		offset := 0
-		for offset+5 <= len(buf) {
-			length := int(buf[offset+1])<<24 | int(buf[offset+2])<<16 | int(buf[offset+3])<<8 | int(buf[offset+4])
-			if length < 0 || length > 50*1024*1024 || offset+5+length > len(buf) {
-				break
-			}
-			payload := buf[offset+5 : offset+5+length]
-			offset += 5 + length
-			var msg map[string]any
-			if json.Unmarshal(payload, &msg) != nil {
-				continue
-			}
-			if errText := cursorParseErrorPayload(msg); errText != "" {
-				outcome.errText = errText
-				outcome.earlyFinish = true
-				break
-			}
-			if msg["kvServerMessage"] != nil {
-				continue
-			}
-			if msg["conversationCheckpointUpdate"] != nil {
-				continue
-			}
-			if msg["interactionQuery"] != nil {
-				continue
-			}
-			if ok, inT, outT := cursorExtractTurnEnded(msg); ok {
-				outcome.inputTok = inT
-				outcome.outputTok = outT
-				outcome.earlyFinish = true
-				break
-			}
-			if es, ok := msg["execServerMessage"].(map[string]any); ok {
-				cursorExecReply(es, func(m map[string]any) {
-					if err := cursorWriteFrameSync(frameMu, pw, m); err != nil {
-						outcome.errText = fmt.Sprintf("cursor exec reply write: %v", err)
-						outcome.earlyFinish = true
-					}
-				})
-				if outcome.earlyFinish {
-					break
-				}
-				continue
-			}
-			if iu, ok := msg["interactionUpdate"].(map[string]any); ok {
-				end, inT, outT := cursorProcessInteractionUpdate(iu, onDelta)
-				if end {
-					outcome.inputTok = inT
-					outcome.outputTok = outT
-					outcome.earlyFinish = true
-					break
-				}
-			}
-		}
-		buf = buf[offset:]
-		if outcome.earlyFinish {
-			break
-		}
-		if rerr != nil {
-			if rerr == io.EOF {
-				break
-			}
-			pumpCancel()
-			_ = pr.Close()
-			<-writerDone
-			return outcome, rerr
-		}
-	}
-
-	pumpCancel()
-	_ = pr.Close()
-	<-writerDone
-	return outcome, nil
-}
-
-// cursorWriteFrameSync writes one Connect-style frame to the request body pipe.
-// Caller must use the same mutex as cursorWritePump so exec replies interleave safely with heartbeats.
-func cursorWriteFrameSync(mu *sync.Mutex, pw *io.PipeWriter, obj map[string]any) error {
-	mu.Lock()
-	defer mu.Unlock()
-	frame, err := encodeCursorFrame(obj)
-	if err != nil {
-		return err
-	}
-	_, err = pw.Write(frame)
-	return err
-}
-
-func cursorWritePump(ctx context.Context, pw *io.PipeWriter, frameMu *sync.Mutex, initial map[string]any) error {
-	if err := cursorWriteFrameSync(frameMu, pw, initial); err != nil {
-		_ = pw.CloseWithError(err)
-		return err
-	}
-	tick := time.NewTicker(cursorHeartbeatInterval)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			_ = pw.Close()
-			return ctx.Err()
-		case <-tick.C:
-			if err := cursorWriteFrameSync(frameMu, pw, map[string]any{"clientHeartbeat": map[string]any{}}); err != nil {
-				_ = pw.CloseWithError(err)
-				return err
-			}
-		}
 	}
 }
 
@@ -844,7 +597,7 @@ func (r *CursorRelay) cursorChannelBaseURL(ch *types.Channel) string {
 	return strings.TrimRight(u, "/")
 }
 
-// ProxyNonStreaming runs Cursor Agent and returns an OpenAI chat.completion JSON object.
+// ProxyNonStreaming returns an OpenAI chat.completion JSON object via cursor.com/api/chat.
 func (r *CursorRelay) ProxyNonStreaming(
 	ctx context.Context,
 	ch *types.Channel,
@@ -852,6 +605,9 @@ func (r *CursorRelay) ProxyNonStreaming(
 	requestModel string,
 	cursorModel string,
 	body map[string]any,
+	anthropicInbound bool,
+	geminiNative bool,
+	comChatHTTP *http.Client,
 ) (*relay.ProxyResult, error) {
 	if r == nil {
 		return nil, &relay.ProxyError{Message: "cursor relay not configured", StatusCode: http.StatusInternalServerError}
@@ -860,30 +616,25 @@ func (r *CursorRelay) ProxyNonStreaming(
 	if err != nil {
 		return nil, &relay.ProxyError{Message: err.Error(), StatusCode: http.StatusUnauthorized}
 	}
-	prompt, err := cursorMessagesToPrompt(body)
-	if err != nil {
-		return nil, &relay.ProxyError{Message: err.Error(), StatusCode: http.StatusBadRequest}
+	toolsLike := cursorBodyImpliesClientTooling(body)
+	if cursorRelayRouteComChat(comChatHTTP, r, toolsLike) {
+		client := cursorRelayComChatHTTPClient(comChatHTTP, r)
+		if client == nil {
+			return nil, &relay.ProxyError{Message: cursorToolsUnsupportedMessage, StatusCode: http.StatusInternalServerError}
+		}
+		if geminiNative && toolsLike {
+			return nil, &relay.ProxyError{
+				Message:    "Cursor channel: Gemini native requests with tools must use a non-Cursor provider",
+				StatusCode: http.StatusNotImplemented,
+			}
+		}
+		return cursorComChatProxyResult(ctx, client, cred.AccessToken, body, requestModel, cursorModel, anthropicInbound)
 	}
-
-	var acc strings.Builder
-	outcome, err := r.runCursorAgent(ctx, ch, r.cursorChannelBaseURL(ch), cred, prompt, cursorModel, func(s string) {
-		acc.WriteString(s)
-	})
-	if err != nil {
-		return nil, &relay.ProxyError{Message: fmt.Sprintf("cursor agent: %v", err), StatusCode: http.StatusBadGateway}
+	msg := cursorLegacyAgentDisabledMessage()
+	if cursorRelayComChatHTTPClient(comChatHTTP, r) == nil {
+		msg = "No HTTP client for cursor.com/api/chat. Unset CURSOR_NO_COM_CHAT_FALLBACK or set RelayHandler/CursorRelay HTTPClient in main. " + msg
 	}
-	if outcome.errText != "" {
-		return nil, &relay.ProxyError{Message: outcome.errText, StatusCode: http.StatusBadGateway}
-	}
-	text := acc.String()
-	resp := cursorOpenAIChatCompletionResponse(requestModel, text, outcome.inputTok, outcome.outputTok)
-	return &relay.ProxyResult{
-		Response:        resp,
-		InputTokens:     outcome.inputTok,
-		OutputTokens:    outcome.outputTok,
-		StatusCode:      http.StatusOK,
-		UpstreamHeaders: http.Header{"Content-Type": []string{"application/json"}},
-	}, nil
+	return nil, &relay.ProxyError{Message: msg, StatusCode: http.StatusBadGateway}
 }
 
 func cursorChatCompletionID() string {
@@ -993,6 +744,7 @@ func (r *CursorRelay) ProxyStreaming(
 	body map[string]any,
 	anthropicInbound bool,
 	geminiNative bool,
+	comChatHTTP *http.Client,
 ) (*relay.StreamCompleteInfo, error) {
 	if r == nil {
 		return nil, &relay.ProxyError{Message: "cursor relay not configured", StatusCode: http.StatusInternalServerError}
@@ -1001,135 +753,22 @@ func (r *CursorRelay) ProxyStreaming(
 	if err != nil {
 		return nil, &relay.ProxyError{Message: err.Error(), StatusCode: http.StatusUnauthorized}
 	}
-	prompt, err := cursorMessagesToPrompt(body)
-	if err != nil {
-		return nil, &relay.ProxyError{Message: err.Error(), StatusCode: http.StatusBadRequest}
+	toolsLike := cursorBodyImpliesClientTooling(body)
+	if cursorRelayRouteComChat(comChatHTTP, r, toolsLike) {
+		if geminiNative && toolsLike {
+			return nil, &relay.ProxyError{Message: "Cursor channel: Gemini native streaming with client tools is not supported", StatusCode: http.StatusNotImplemented}
+		}
+		client := cursorRelayComChatHTTPClient(comChatHTTP, r)
+		if client == nil {
+			return nil, &relay.ProxyError{Message: cursorToolsUnsupportedMessage, StatusCode: http.StatusInternalServerError}
+		}
+		return cursorComChatStreamProxy(w, ctx, client, cred.AccessToken, body, requestModel, cursorModel, anthropicInbound)
 	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	flusher, _ := w.(http.Flusher)
-
-	meta := newCursorStreamOpenAIMeta(requestModel)
-	var convertAnthropic func(string) []string
-	if anthropicInbound {
-		convertAnthropic = relay.CreateOpenAIToAnthropicSSEConverter()
+	msg := cursorLegacyAgentDisabledMessage()
+	if cursorRelayComChatHTTPClient(comChatHTTP, r) == nil {
+		msg = "No HTTP client for cursor.com/api/chat. Unset CURSOR_NO_COM_CHAT_FALLBACK or set RelayHandler/CursorRelay HTTPClient in main. " + msg
 	}
-	var gemAccum *protocol.OpenAIToGeminiAccum
-	if geminiNative {
-		gemAccum = protocol.NewOpenAIToGeminiAccum()
-	}
-
-	openAIPassthrough := convertAnthropic == nil && gemAccum == nil
-
-	if openAIPassthrough {
-		_, _ = w.Write(meta.sseRole())
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
-
-	emitFromOpenAIJSON := func(chunkJSON []byte) {
-		if len(chunkJSON) == 0 {
-			return
-		}
-		if convertAnthropic != nil {
-			for _, line := range convertAnthropic(string(chunkJSON)) {
-				fmt.Fprintf(w, "%s\n", line)
-			}
-			return
-		}
-		if gemAccum != nil {
-			for _, gl := range protocol.ConvertOpenAIChunkToGemini(chunkJSON, gemAccum) {
-				fmt.Fprintf(w, "data: %s\n\n", gl)
-			}
-		}
-	}
-
-	// After 200 + SSE headers, clients (e.g. Anthropic /v1/messages) must always see a terminal
-	// chunk; otherwise UIs spin forever if the agent stream stalls or errors mid-flight.
-	sseTerminalSent := false
-	emitStreamTerminal := func() {
-		if sseTerminalSent {
-			return
-		}
-		sseTerminalSent = true
-		stop := "stop"
-		if openAIPassthrough {
-			_, _ = w.Write(meta.sseData("", &stop))
-			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-		} else {
-			emitFromOpenAIJSON(meta.openAIChunkJSON("", &stop))
-			if convertAnthropic != nil {
-				for _, line := range convertAnthropic("[DONE]") {
-					fmt.Fprintf(w, "%s\n", line)
-				}
-			}
-		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
-	defer emitStreamTerminal()
-
-	var acc strings.Builder
-	started := time.Now()
-	firstMs := 0
-	var sentFirst bool
-
-	outcome, agentErr := r.runCursorAgent(ctx, ch, r.cursorChannelBaseURL(ch), cred, prompt, cursorModel, func(s string) {
-		if s == "" {
-			return
-		}
-		if !sentFirst {
-			firstMs = int(time.Since(started).Milliseconds())
-			sentFirst = true
-		}
-		acc.WriteString(s)
-		if openAIPassthrough {
-			_, _ = w.Write(meta.sseData(s, nil))
-		} else {
-			emitFromOpenAIJSON(meta.openAIChunkJSON(s, nil))
-		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-	})
-	if agentErr != nil {
-		msg := fmt.Sprintf("\n\n[Error: cursor agent: %v]", agentErr)
-		if openAIPassthrough {
-			_, _ = w.Write(meta.sseData(msg, nil))
-		} else {
-			emitFromOpenAIJSON(meta.openAIChunkJSON(msg, nil))
-		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
-	if outcome != nil && outcome.errText != "" {
-		errText := "\n\n[Error: " + outcome.errText + "]"
-		if openAIPassthrough {
-			_, _ = w.Write(meta.sseData(errText, nil))
-		} else {
-			emitFromOpenAIJSON(meta.openAIChunkJSON(errText, nil))
-		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
-	inT, outT := 0, 0
-	if outcome != nil {
-		inT, outT = outcome.inputTok, outcome.outputTok
-	}
-	return &relay.StreamCompleteInfo{
-		InputTokens:     inT,
-		OutputTokens:    outT,
-		FirstTokenTime:  firstMs,
-		ResponseContent: acc.String(),
-		UpstreamHeaders: w.Header().Clone(),
-	}, nil
+	return nil, &relay.ProxyError{Message: msg, StatusCode: http.StatusBadGateway}
 }
 
 // FetchUsableModels returns model IDs from Cursor GetUsableModels (optional; for “fetch models” UI).

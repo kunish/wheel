@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -42,6 +43,11 @@ import (
 func main() {
 	cfg := config.Load()
 	cfg.Validate()
+
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		log.Printf("[wheel] worker build: module=%s version=%s", bi.Main.Path, bi.Main.Version)
+	}
+	log.Printf("[wheel] Cursor: api2 Agent Run is disabled; only cursor.com/api/chat is used for chat (type-37 channels)")
 
 	// ── Database ──
 	database, err := db.Open(cfg.DBDSN)
@@ -310,6 +316,9 @@ func main() {
 		CodexManagementClient: codexHTTPClient,
 	}
 
+	cursorRelay := handler.NewCursorRelay()
+	cursorRelay.HTTPClient = nonStreamClient
+
 	rh := &handler.RelayHandler{
 		Handler: handler.Handler{
 			DB:                    database,
@@ -339,7 +348,7 @@ func main() {
 		CopilotRelay:      handler.NewCopilotRelay(database),
 		CodexCLIRelay:     handler.NewCodexCLIRelay(database),
 		AntigravityRelay:  handler.NewAntigravityRelay(database),
-		CursorRelay:       handler.NewCursorRelay(),
+		CursorRelay:       cursorRelay,
 		CodexStreamClient: codexStreamClient,
 		CodexHTTPClient:   codexHTTPClient,
 	}
