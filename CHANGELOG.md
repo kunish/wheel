@@ -10,6 +10,22 @@
 
 - **Cursor channel:** reject tools on the Agent-only relay (HTTP 422) with a clear message; tool workflows use the separate web chat path above instead
 
+## [1.36.0](https://github.com/kunish/wheel/compare/v1.35.0...v1.36.0) (2026-04-29)
+
+
+### Features
+
+* **worker,web:** add Copilot Responses API support and reasoning normalization ([#114](https://github.com/kunish/wheel/issues/114)) ([aaa9656](https://github.com/kunish/wheel/commit/aaa96562a036dc117fd61f3f7531fb1e05275785))
+* **worker,web:** support Cursor tool calls via web chat ([82ff015](https://github.com/kunish/wheel/commit/82ff0153ed981c389863223806f70ca54a422c54))
+
+
+### Bug Fixes
+
+* resolve code quality issues across frontend and backend ([38f5153](https://github.com/kunish/wheel/commit/38f5153faff7f08186ef9cc1bcc871c2088dad3e))
+* resolve code quality issues across frontend and backend ([7ffb28f](https://github.com/kunish/wheel/commit/7ffb28ffcf992dedf1f76bac76e951bba39d32dd))
+* **runtime:** sync upstream fixes from CLIProxyAPIPlus ([f146447](https://github.com/kunish/wheel/commit/f1464476de91163191e9f233a21f5d770d618015))
+* **worker,web:** clean up relay and oauth state handling ([605bdaa](https://github.com/kunish/wheel/commit/605bdaa3a81e9644fd389ce30c9a658e2150e0ec))
+
 ## [1.35.0](https://github.com/kunish/wheel/compare/v1.34.0...v1.35.0) (2026-03-20)
 
 ### Features
