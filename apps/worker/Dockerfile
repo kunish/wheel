@@ -14,7 +14,7 @@ ENV GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION OUTPUT=/wheel
 RUN make build
 
 # ── Runtime ──
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata curl \
     && addgroup -g 1001 -S app \
